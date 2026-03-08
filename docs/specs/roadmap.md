@@ -21,14 +21,14 @@ This is the shared source of truth for what to build next.
 
 Goal: `cargo run` starts a server, opens the browser, and shows something. Backend tooling is in place.
 
-- [ ] Init `Cargo.toml` with deps: `axum`, `tokio`, `open`, `serde`, `serde_json`
-- [ ] `src/main.rs`: bind to a random available localhost port, start axum server, open browser
-- [ ] `src/server.rs`: axum router with a single `GET /` route returning `"gh-inbox works"`
-- [ ] Add `tower` and `http-body-util` as dev-dependencies (axum integration test helpers)
-- [ ] Integration test for `GET /`: assert 200
-- [ ] Integration test for unknown routes: assert 404
-- [ ] Ensure `cargo fmt`, `cargo clippy` pass with no warnings
-- [ ] Confirm: `cargo run` opens browser showing the text; `cargo test` passes
+- [x] Init `Cargo.toml` with deps: `axum`, `tokio`, `open`, `serde`, `serde_json`
+- [x] `src/main.rs`: bind to a random available localhost port, start axum server, open browser
+- [x] `src/server.rs`: axum router with a single `GET /` route returning `"gh-inbox works"`
+- [x] Add `tower` and `http-body-util` as dev-dependencies (axum integration test helpers)
+- [x] Integration test for `GET /`: assert 200
+- [x] Integration test for unknown routes: assert 404
+- [x] Ensure `cargo fmt`, `cargo clippy` pass with no warnings
+- [x] Confirm: `cargo run` opens browser showing the text; `cargo test` passes
 
 **Done when:** `cargo run` opens the browser, page loads, and `cargo test` passes with both route tests green.
 
