@@ -3,6 +3,8 @@ use std::sync::Arc;
 use axum::{Router, routing::get};
 use sqlx::SqlitePool;
 
+use crate::api;
+
 /// Shared application state available to all handlers.
 #[derive(Clone)]
 pub struct AppState {
@@ -21,5 +23,8 @@ pub fn app(pool: SqlitePool, token: Arc<str>) -> Router {
         token,
         client: reqwest::Client::new(),
     };
-    Router::new().route("/", get(index)).with_state(state)
+    Router::new()
+        .route("/", get(index))
+        .route("/api/inbox", get(api::inbox::get_inbox))
+        .with_state(state)
 }

@@ -1,4 +1,7 @@
+pub mod api;
 pub mod db;
-mod server;
+pub mod github;
+pub mod models;
+pub(crate) mod server;
 
 pub use server::{AppState, app};
