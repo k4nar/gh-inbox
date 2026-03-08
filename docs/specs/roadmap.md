@@ -56,17 +56,17 @@ Goal: The Svelte app is set up with a Vite dev server proxying `/api/*` to the R
 
 Goal: The database layer is set up with migrations and tested. The schema matches the architecture spec.
 
-- [ ] Add `sqlx` with SQLite feature to `Cargo.toml`
-- [ ] `src/db/mod.rs`: init SQLite database (create file in OS data dir if missing), run migrations
-- [ ] Migration: create `notifications` table (id, pr_id, reason, unread, archived, updated_at)
-- [ ] Migration: create `pull_requests` table (id, title, repo, author, url, ci_status, last_viewed_at)
-- [ ] Migration: create `comments` table (id, pr_id, thread_id, author, body, created_at)
-- [ ] Migration: create `last_fetched_at` table (resource, fetched_at)
-- [ ] `src/db/queries.rs`: basic CRUD — insert/upsert notification, query inbox (unarchived), query archived
-- [ ] Validate data model against architecture spec: confirm all fields from the API surface can be served from these tables
-- [ ] Unit tests for queries: insert + query round-trip, archive/unarchive, upsert idempotency
-- [ ] Wire DB init into `main.rs` startup (after token acquisition, before server start)
-- [ ] Confirm: `cargo test` passes; server starts and creates the DB file
+- [x] Add `sqlx` with SQLite feature to `Cargo.toml`
+- [x] `src/db/mod.rs`: init SQLite database (create file in OS data dir if missing), run migrations
+- [x] Migration: create `notifications` table (id, pr_id, reason, unread, archived, updated_at)
+- [x] Migration: create `pull_requests` table (id, title, repo, author, url, ci_status, last_viewed_at)
+- [x] Migration: create `comments` table (id, pr_id, thread_id, author, body, created_at)
+- [x] Migration: create `last_fetched_at` table (resource, fetched_at)
+- [x] `src/db/queries.rs`: basic CRUD — insert/upsert notification, query inbox (unarchived), query archived
+- [x] Validate data model against architecture spec: confirm all fields from the API surface can be served from these tables
+- [x] Unit tests for queries: insert + query round-trip, archive/unarchive, upsert idempotency
+- [x] Wire DB init into `main.rs` startup (after token acquisition, before server start)
+- [x] Confirm: `cargo test` passes; server starts and creates the DB file
 
 **Done when:** `cargo test` passes with query tests green, and the server creates a valid SQLite DB on startup.
 
