@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS pull_requests (
+CREATE TABLE pull_requests (
     id              INTEGER PRIMARY KEY NOT NULL,
     title           TEXT NOT NULL,
     repo            TEXT NOT NULL,

@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS comments (
+CREATE TABLE comments (
     id          INTEGER PRIMARY KEY NOT NULL,
     pr_id       INTEGER NOT NULL,
     thread_id   TEXT,

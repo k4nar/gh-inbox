@@ -32,7 +32,8 @@ pub async fn upsert_notification(pool: &SqlitePool, notif: &NotificationRow) -> 
            pr_id = excluded.pr_id,
            reason = excluded.reason,
            unread = excluded.unread,
-           updated_at = excluded.updated_at",
+           updated_at = excluded.updated_at,
+           archived = CASE WHEN excluded.unread = 1 THEN 0 ELSE notifications.archived END",
     )
     .bind(&notif.id)
     .bind(notif.pr_id)
@@ -185,14 +186,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upsert_does_not_overwrite_archived_status() {
+    async fn upsert_unread_moves_archived_back_to_inbox() {
         let pool = test_pool().await;
         let notif = sample_notification("n4");
 
         upsert_notification(&pool, &notif).await.unwrap();
         archive_notification(&pool, "n4").await.unwrap();
 
-        // Re-upserting should not reset archived status
+        // Re-upserting with unread=true should unarchive (new activity)
+        upsert_notification(&pool, &notif).await.unwrap();
+        assert_eq!(query_inbox(&pool).await.unwrap().len(), 1);
+        assert_eq!(query_archived(&pool).await.unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn upsert_read_keeps_archived_status() {
+        let pool = test_pool().await;
+        let mut notif = sample_notification("n6");
+
+        upsert_notification(&pool, &notif).await.unwrap();
+        archive_notification(&pool, "n6").await.unwrap();
+
+        // Re-upserting with unread=false should preserve archived status
+        notif.unread = false;
         upsert_notification(&pool, &notif).await.unwrap();
         assert_eq!(query_inbox(&pool).await.unwrap().len(), 0);
         assert_eq!(query_archived(&pool).await.unwrap().len(), 1);

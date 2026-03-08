@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS notifications (
+CREATE TABLE notifications (
     id          TEXT PRIMARY KEY NOT NULL,
     pr_id       INTEGER NOT NULL,
     reason      TEXT NOT NULL,

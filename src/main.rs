@@ -1,13 +1,11 @@
-#[allow(dead_code)]
-mod db;
-mod server;
+use gh_inbox::{app, db};
 
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() {
-    let _pool = db::init().await;
+    let pool = db::init().await;
     println!("Database initialized");
 
     let addr = match std::env::var("GH_INBOX_PORT") {
@@ -28,7 +26,7 @@ async fn main() {
         eprintln!("Failed to open browser: {e}");
     }
 
-    axum::serve(listener, server::app())
+    axum::serve(listener, app(pool))
         .await
         .expect("server error");
 }
