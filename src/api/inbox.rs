@@ -11,7 +11,8 @@ use super::AppError;
 pub async fn get_inbox(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<NotificationRow>>, AppError> {
-    let notifications = github::fetch_notifications(&state.token, &state.client).await?;
+    let notifications =
+        github::fetch_notifications(&state.token, &state.client, &state.github_base_url).await?;
 
     for notif in &notifications {
         // Extract PR id from the subject URL (e.g. ".../pulls/42" -> 42), default to 0

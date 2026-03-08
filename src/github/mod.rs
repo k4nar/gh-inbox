@@ -5,13 +5,17 @@ pub fn parse_notifications(json: &str) -> Result<Vec<Notification>, serde_json::
     serde_json::from_str(json)
 }
 
+pub const GITHUB_API_BASE: &str = "https://api.github.com";
+
 /// Fetch notifications from the GitHub REST API.
 pub async fn fetch_notifications(
     token: &str,
     client: &reqwest::Client,
+    base_url: &str,
 ) -> Result<Vec<Notification>, reqwest::Error> {
+    let url = format!("{base_url}/notifications");
     let response = client
-        .get("https://api.github.com/notifications")
+        .get(&url)
         .header("Authorization", format!("Bearer {token}"))
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", "gh-inbox")

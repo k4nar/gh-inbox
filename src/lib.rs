@@ -4,4 +4,4 @@ pub mod github;
 pub mod models;
 pub(crate) mod server;
 
-pub use server::{AppState, app};
+pub use server::{AppState, app, app_with_base_url};
