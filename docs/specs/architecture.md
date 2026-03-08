@@ -2,7 +2,7 @@
 
 ## Overview
 
-`gh-inbox` is a `gh` CLI extension. Running `gh inbox` starts a local Rust HTTP server, opens the browser to `localhost`, and serves a Svelte SPA that communicates with the server over a JSON REST API. The backend calls the GitHub REST API directly using a token obtained at startup — no `gh` process is spawned per request.
+`gh-inbox` is a `gh` CLI extension. Running `gh inbox` starts a local Rust HTTP server, opens the browser to `localhost`, and serves a Svelte SPA that communicates with the server over a JSON REST API. The backend calls the GitHub REST API directly using a token obtained at startup.
 
 ```
 gh inbox
@@ -32,7 +32,7 @@ The binary is a single self-contained Rust executable. Compiled Svelte assets ar
 3. The browser opens automatically to `http://localhost:<port>`.
 4. The Svelte frontend loads and begins fetching data from `/api/*`.
 5. The server calls the GitHub REST API directly (using the token obtained at startup), persists local state to SQLite, and returns JSON responses.
-6. When the browser tab is closed or the user sends SIGINT, the server shuts down.
+6. The server shuts down when the user sends SIGINT (Ctrl-C).
 
 ## Backend (Rust)
 
@@ -96,7 +96,8 @@ SQLite stores state that has no equivalent in GitHub's API:
 | Table | Purpose |
 |---|---|
 | `notifications` | Cached notification list with read/unread/archived status |
-| `pull_requests` | Cached PR metadata (title, author, CI status, etc.) |
+| `pull_requests` | Cached PR metadata (title, author, CI status, `last_viewed_at`) |
+| `comments` | Cached PR comments and review comments for thread grouping |
 | `last_fetched_at` | Timestamp per resource for cache invalidation |
 
 The database file lives in the OS user data directory (e.g., `~/.local/share/gh-inbox/db.sqlite` on Linux, `~/Library/Application Support/gh-inbox/db.sqlite` on macOS).
@@ -121,9 +122,10 @@ Frontend                           Rust server
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/notifications` | List inbox notifications (unread + unarchived) |
-| `POST` | `/api/notifications/:id/read` | Mark a notification as read |
-| `POST` | `/api/notifications/:id/archive` | Archive a notification |
+| `GET` | `/api/inbox` | List PR with notifications. Query params: `?status=inbox\|archived`, `?repo=`, `?team=` |
+| `POST` | `/api/inbox/:id/read` | Mark the notifications of a PR as read |
+| `POST` | `/api/inbox/:id/archive` | Archive the notifications of a PR |
+| `POST` | `/api/notifications/:id/unarchive` | Unarchive the notifications of a PR (move back to inbox) |
 | `GET` | `/api/pull-requests/:id` | PR detail: metadata, comments, commits, CI |
 | `GET` | `/api/pull-requests/:id/threads` | Review threads grouped by conversation |
 
@@ -134,7 +136,7 @@ Frontend                           Rust server
 | `GET /api/events` | Persistent stream of server-push events |
 
 Event types pushed by the server:
-- `notifications:updated` — new or changed notifications after a background sync
+- `notifications:new` — new or changed notifications after a background sync
 - `pr:ci_updated` — CI status changed for a tracked PR
 - `sync:status` — background sync started / completed / errored
 
@@ -166,9 +168,7 @@ gh-inbox/
 
 ## Non-negotiables
 
-- `gh` is used only once at startup to retrieve the auth token — never per request.
 - All GitHub data comes from the GitHub REST API via `reqwest`, never from the frontend.
 - No `.unwrap()` in API handlers — use typed errors with proper HTTP status codes.
 - Frontend never holds auth tokens.
 - Keep handlers thin. Business logic lives in `github/` and `db/` modules.
-- SQLite is the only persistence mechanism — no external services.
