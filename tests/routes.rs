@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::http::StatusCode;
 use http_body_util::BodyExt;
 use tower::util::ServiceExt;
@@ -5,7 +7,7 @@ use tower::util::ServiceExt;
 #[tokio::test]
 async fn get_root_returns_200() {
     let pool = gh_inbox::db::init_with_path(":memory:").await;
-    let app = gh_inbox::app(pool);
+    let app = gh_inbox::app(pool, Arc::from("fake-token"));
 
     let response = app
         .oneshot(
@@ -26,7 +28,7 @@ async fn get_root_returns_200() {
 #[tokio::test]
 async fn unknown_route_returns_404() {
     let pool = gh_inbox::db::init_with_path(":memory:").await;
-    let app = gh_inbox::app(pool);
+    let app = gh_inbox::app(pool, Arc::from("fake-token"));
 
     let response = app
         .oneshot(

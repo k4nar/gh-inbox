@@ -1,4 +1,4 @@
 pub mod db;
 mod server;
 
-pub use server::app;
+pub use server::{AppState, app};
