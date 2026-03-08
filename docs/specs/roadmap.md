@@ -38,15 +38,15 @@ Goal: `cargo run` starts a server, opens the browser, and shows something. Backe
 
 Goal: The Svelte app is set up with a Vite dev server proxying `/api/*` to the Rust backend. Hot reload works. Frontend test infra is in place.
 
-- [ ] Init frontend: `npm create vite frontend -- --template svelte` (Svelte 5)
-- [ ] Add `bits-ui` dependency
-- [ ] Configure Vite dev server to proxy `/api/*` to the Rust backend port
-- [ ] Build the static layout: topbar, sidebar (Inbox / Archived / Repos / Teams), PR list area — styled to match `docs/mockups/inbox.html`
-- [ ] Add `vitest` and `@testing-library/svelte` as dev-dependencies; configure Vitest in `vite.config.ts` with jsdom environment
-- [ ] Add `npm test` script to `frontend/package.json`
-- [ ] Test: sidebar renders the Inbox and Archived nav items
-- [ ] Test: `reasonLabel(reason)` utility maps `review_requested`, `mention`, `assign` to the correct label strings
-- [ ] Confirm: `npm test` passes; Vite dev server shows the styled inbox shell with hot reload
+- [x] Init frontend: `npm create vite frontend -- --template svelte` (Svelte 5)
+- [x] Add `bits-ui` dependency
+- [x] Configure Vite dev server to proxy `/api/*` to the Rust backend port
+- [x] Build the static layout: topbar, sidebar (Inbox / Archived / Repos / Teams), PR list area — styled to match `docs/mockups/inbox.html`
+- [x] Add `vitest` and `@testing-library/svelte` as dev-dependencies; configure Vitest in `vite.config.ts` with jsdom environment
+- [x] Add `npm test` script to `frontend/package.json`
+- [x] Test: sidebar renders the Inbox and Archived nav items
+- [x] Test: `reasonLabel(reason)` utility maps `review_requested`, `mention`, `assign` to the correct label strings
+- [x] Confirm: `npm test` passes; Vite dev server shows the styled inbox shell with hot reload
 
 **Done when:** `npm run dev` shows the styled inbox shell with hot reload, and `npm test` passes.
 
