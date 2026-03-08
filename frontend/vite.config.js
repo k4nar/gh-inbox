@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 
+const backendPort = process.env.GH_INBOX_PORT ?? '3000'
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [svelte({
@@ -9,7 +11,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:3000',
+        target: `http://127.0.0.1:${backendPort}`,
         changeOrigin: true,
       },
     },
