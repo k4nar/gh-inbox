@@ -15,5 +15,12 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.js'],
+    alias: {
+      // Ensure Svelte resolves to browser bundle in tests
+      svelte: 'svelte',
+    },
+  },
+  resolve: {
+    conditions: process.env.VITEST ? ['browser'] : [],
   },
 })
