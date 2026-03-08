@@ -1,3 +1,5 @@
+#[allow(dead_code)]
+mod db;
 mod server;
 
 use std::net::SocketAddr;
@@ -5,6 +7,9 @@ use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() {
+    let _pool = db::init().await;
+    println!("Database initialized");
+
     let addr = match std::env::var("GH_INBOX_PORT") {
         Ok(port) => format!("127.0.0.1:{port}"),
         Err(_) => "127.0.0.1:0".to_string(),
