@@ -3,7 +3,9 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [svelte({ hot: !process.env.VITEST })],
+  plugins: [svelte({
+    compilerOptions: { hmr: !process.env.VITEST },
+  })],
   server: {
     proxy: {
       '/api': {
