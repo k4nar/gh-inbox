@@ -1,8 +1,34 @@
 [[repos]]
 repo = "local"
-hooks = [
-  { id = "cargo-fmt", name = "cargo fmt", language = "system", entry = "cargo fmt --check", files = "\\.rs$", pass_filenames = false },
-  { id = "cargo-clippy", name = "cargo clippy", language = "system", entry = "cargo clippy -- -D warnings", files = "\\.rs$", pass_filenames = false },
-  { id = "biome-check", name = "biome check", language = "system", entry = "bash -c 'cd frontend && npx biome check .'", files = "^frontend/", pass_filenames = false },
-  { id = "npm-test", name = "npm test", language = "system", entry = "npm test --prefix frontend", files = "^frontend/", pass_filenames = false },
-]
+
+[[repos.hooks]]
+id = "cargo-fmt"
+name = "cargo fmt"
+language = "system"
+entry = "cargo fmt"
+types = ["rust"]
+pass_filenames = false
+
+[[repos.hooks]]
+id = "cargo-clippy"
+name = "cargo clippy"
+language = "system"
+entry = "cargo clippy -- -D warnings"
+types = ["rust"]
+pass_filenames = false
+
+[[repos.hooks]]
+id = "biome-check"
+name = "biome check"
+language = "system"
+entry = "bash -c 'cd frontend && npx biome check --write .'"
+files = "^frontend/"
+pass_filenames = false
+
+[[repos.hooks]]
+id = "npm-test"
+name = "npm test"
+language = "system"
+entry = "npm test --prefix frontend"
+files = "^frontend/"
+pass_filenames = false
