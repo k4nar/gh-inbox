@@ -26,6 +26,8 @@ pub async fn get_inbox(
         let row = NotificationRow {
             id: notif.id.clone(),
             pr_id,
+            title: notif.subject.title.clone(),
+            repository: notif.repository.full_name.clone(),
             reason: notif.reason.clone(),
             unread: notif.unread,
             archived: false,
