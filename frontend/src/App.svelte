@@ -1,7 +1,7 @@
 <script>
-  import Topbar from './lib/Topbar.svelte'
-  import Sidebar from './lib/Sidebar.svelte'
-  import PrList from './lib/PrList.svelte'
+import PrList from "./lib/PrList.svelte";
+import Sidebar from "./lib/Sidebar.svelte";
+import Topbar from "./lib/Topbar.svelte";
 </script>
 
 <Topbar />

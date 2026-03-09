@@ -1,44 +1,59 @@
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
 
 :root {
-  --canvas-default:   #0d1117;
-  --canvas-subtle:    #161b22;
-  --canvas-inset:     #010409;
-  --border-default:   #30363d;
-  --border-muted:     #21262d;
-  --fg-default:       #e6edf3;
-  --fg-muted:         #7d8590;
-  --fg-subtle:        #6e7681;
-  --fg-on-emphasis:   #ffffff;
-  --accent-fg:        #2f81f7;
-  --accent-subtle:    #121d2f;
-  --accent-emphasis:  #1f6feb;
-  --success-fg:       #3fb950;
-  --danger-fg:        #f85149;
-  --attention-fg:     #d29922;
-  --done-fg:          #a371f7;
-  --sidebar-w:        240px;
+	--canvas-default: #0d1117;
+	--canvas-subtle: #161b22;
+	--canvas-inset: #010409;
+	--border-default: #30363d;
+	--border-muted: #21262d;
+	--fg-default: #e6edf3;
+	--fg-muted: #7d8590;
+	--fg-subtle: #6e7681;
+	--fg-on-emphasis: #ffffff;
+	--accent-fg: #2f81f7;
+	--accent-subtle: #121d2f;
+	--accent-emphasis: #1f6feb;
+	--success-fg: #3fb950;
+	--danger-fg: #f85149;
+	--attention-fg: #d29922;
+	--done-fg: #a371f7;
+	--sidebar-w: 240px;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  background: var(--canvas-default);
-  color: var(--fg-default);
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+	font-family:
+		-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica,
+		Arial, sans-serif;
+	font-size: 14px;
+	line-height: 1.5;
+	background: var(--canvas-default);
+	color: var(--fg-default);
+	height: 100vh;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
 }
 
 #app {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	overflow: hidden;
 }
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
+::-webkit-scrollbar {
+	width: 6px;
+}
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+::-webkit-scrollbar-thumb {
+	background: var(--border-default);
+	border-radius: 3px;
+}

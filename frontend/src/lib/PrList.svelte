@@ -1,19 +1,19 @@
 <script>
-  import { onMount } from 'svelte';
-  import { reasonLabel, reasonClass } from './reason.js';
-  import { timeAgo } from './timeago.js';
+import { onMount } from "svelte";
+import { reasonClass, reasonLabel } from "./reason.js";
+import { timeAgo } from "./timeago.js";
 
-  let notifications = $state([]);
+let notifications = $state([]);
 
-  onMount(async () => {
-    const res = await fetch('/api/inbox');
-    if (res.ok) {
-      notifications = await res.json();
-    }
-  });
+onMount(async () => {
+	const res = await fetch("/api/inbox");
+	if (res.ok) {
+		notifications = await res.json();
+	}
+});
 
-  let count = $derived(notifications.length);
-  let unreadCount = $derived(notifications.filter(n => n.unread).length);
+let count = $derived(notifications.length);
+let unreadCount = $derived(notifications.filter((n) => n.unread).length);
 </script>
 
 <div class="main">
