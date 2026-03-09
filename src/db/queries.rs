@@ -4,7 +4,7 @@ use sqlx::SqlitePool;
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct NotificationRow {
     pub id: String,
-    pub pr_id: i64,
+    pub pr_id: Option<i64>,
     pub reason: String,
     pub unread: bool,
     pub archived: bool,
@@ -133,7 +133,7 @@ mod tests {
     fn sample_notification(id: &str) -> NotificationRow {
         NotificationRow {
             id: id.to_string(),
-            pr_id: 42,
+            pr_id: Some(42),
             reason: "review_requested".to_string(),
             unread: true,
             archived: false,

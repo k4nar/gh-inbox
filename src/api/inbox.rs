@@ -15,14 +15,13 @@ pub async fn get_inbox(
         github::fetch_notifications(&state.token, &state.client, &state.github_base_url).await?;
 
     for notif in &notifications {
-        // Extract PR id from the subject URL (e.g. ".../pulls/42" -> 42), default to 0
+        // Extract PR id from the subject URL (e.g. ".../pulls/42" -> 42)
         let pr_id = notif
             .subject
             .url
             .as_deref()
             .and_then(|url| url.rsplit('/').next())
-            .and_then(|s| s.parse::<i64>().ok())
-            .unwrap_or(0);
+            .and_then(|s| s.parse::<i64>().ok());
 
         let row = NotificationRow {
             id: notif.id.clone(),
