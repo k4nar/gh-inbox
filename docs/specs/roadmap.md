@@ -111,10 +111,11 @@ Goal: The frontend fetches and renders real notifications from the API. Key UI c
 
 Goal: The binary serves the compiled Svelte app. Single-binary distribution works.
 
-- [ ] Add `include_dir` crate; embed `frontend/dist/` in binary at build time
-- [ ] `src/server.rs`: serve embedded static assets from `/` (fallback to `index.html` for SPA)
-- [ ] Add `Makefile` target that runs `npm run build` then `cargo build`
-- [ ] Integration test: assert `GET /` returns HTML (not the old plain-text response)
-- [ ] Confirm: `make build && ./target/debug/gh-inbox` serves the full app
+- [ ] Add `include_dir` crate to `Cargo.toml`
+- [ ] Add a `build.rs` that runs `npm run build` inside `frontend/` so the dist is ready before `rustc` compiles
+- [ ] `src/server.rs`: use `include_dir!` to embed `frontend/dist/` at compile time; serve embedded files from `/` with correct MIME types and SPA fallback to `index.html`
+- [ ] Keep the existing dev-mode behaviour (`cfg!(debug_assertions)` → Vite dev server); only serve embedded assets in release mode
+- [ ] Integration test: build the app with `--release`, assert `GET /` returns HTML containing the Svelte mount point (not the old plain-text response)
+- [ ] Confirm: `cargo build --release && ./target/release/gh-inbox` serves the full app with no external files
 
-**Done when:** The single binary serves the Svelte app with no external files needed.
+**Done when:** `cargo build --release` produces a single binary that serves the Svelte app, and `cargo test` still passes (dev-mode tests unchanged).
