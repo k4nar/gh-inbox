@@ -11,13 +11,23 @@ fn main() {
     println!("cargo:rerun-if-changed=frontend/index.html");
     println!("cargo:rerun-if-changed=frontend/package.json");
 
-    let status = Command::new("npm")
+    let ci_status = Command::new("npm")
+        .args(["ci"])
+        .current_dir("frontend")
+        .status()
+        .expect("failed to run `npm ci` — is npm installed?");
+
+    if !ci_status.success() {
+        panic!("`npm ci` failed — check frontend/package-lock.json");
+    }
+
+    let build_status = Command::new("npm")
         .args(["run", "build"])
         .current_dir("frontend")
         .status()
-        .expect("failed to run `npm run build` — is npm installed?");
+        .expect("failed to run `npm run build`");
 
-    if !status.success() {
+    if !build_status.success() {
         panic!("frontend build failed");
     }
 }

@@ -44,8 +44,12 @@ fn mime_from_path(path: &str) -> &'static str {
 }
 
 /// Serve an embedded file, or fall back to index.html for SPA routing.
+/// Paths under /api/ are never served as static files — they should 404 normally.
 #[cfg(not(debug_assertions))]
 async fn static_file(axum::extract::Path(path): axum::extract::Path<String>) -> Response {
+    if path.starts_with("api/") {
+        return StatusCode::NOT_FOUND.into_response();
+    }
     serve_embedded(&path)
 }
 
@@ -63,8 +67,21 @@ fn serve_embedded(path: &str) -> Response {
 
     match file {
         Some(f) => {
-            let mime = mime_from_path(f.path().to_str().unwrap_or(""));
-            (StatusCode::OK, [(header::CONTENT_TYPE, mime)], f.contents()).into_response()
+            let file_path = f.path().to_str().unwrap_or("");
+            let mime = mime_from_path(file_path);
+            // Vite hashed assets (e.g. index-abc123.js) are immutable.
+            // index.html must always be revalidated to pick up new deploys.
+            let cache = if file_path == "index.html" || file_path.ends_with(".html") {
+                "no-cache"
+            } else {
+                "public, max-age=31536000, immutable"
+            };
+            (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, mime), (header::CACHE_CONTROL, cache)],
+                f.contents(),
+            )
+                .into_response()
         }
         None => StatusCode::NOT_FOUND.into_response(),
     }

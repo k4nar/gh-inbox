@@ -60,4 +60,14 @@ else
   exit 1
 fi
 
+# Unknown /api/* routes must return 404, not SPA fallback
+API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$PORT/api/nonexistent")
+
+if [ "$API_STATUS" = "404" ]; then
+  echo "PASS: unknown /api/ route returns 404"
+else
+  echo "FAIL: unknown /api/ route returned $API_STATUS (expected 404)"
+  exit 1
+fi
+
 echo "All release embed tests passed."
