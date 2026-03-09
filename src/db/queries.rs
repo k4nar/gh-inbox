@@ -5,6 +5,8 @@ use sqlx::SqlitePool;
 pub struct NotificationRow {
     pub id: String,
     pub pr_id: Option<i64>,
+    pub title: String,
+    pub repository: String,
     pub reason: String,
     pub unread: bool,
     pub archived: bool,
@@ -26,10 +28,12 @@ pub struct PullRequestRow {
 /// Insert or update a notification.
 pub async fn upsert_notification(pool: &SqlitePool, notif: &NotificationRow) -> sqlx::Result<()> {
     sqlx::query(
-        "INSERT INTO notifications (id, pr_id, reason, unread, archived, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+        "INSERT INTO notifications (id, pr_id, title, repository, reason, unread, archived, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            pr_id = excluded.pr_id,
+           title = excluded.title,
+           repository = excluded.repository,
            reason = excluded.reason,
            unread = excluded.unread,
            updated_at = excluded.updated_at,
@@ -37,6 +41,8 @@ pub async fn upsert_notification(pool: &SqlitePool, notif: &NotificationRow) -> 
     )
     .bind(&notif.id)
     .bind(notif.pr_id)
+    .bind(&notif.title)
+    .bind(&notif.repository)
     .bind(&notif.reason)
     .bind(notif.unread)
     .bind(notif.archived)
@@ -49,7 +55,7 @@ pub async fn upsert_notification(pool: &SqlitePool, notif: &NotificationRow) -> 
 /// Query all non-archived (inbox) notifications.
 pub async fn query_inbox(pool: &SqlitePool) -> sqlx::Result<Vec<NotificationRow>> {
     sqlx::query_as::<_, NotificationRow>(
-        "SELECT id, pr_id, reason, unread, archived, updated_at
+        "SELECT id, pr_id, title, repository, reason, unread, archived, updated_at
          FROM notifications
          WHERE archived = 0
          ORDER BY updated_at DESC",
@@ -61,7 +67,7 @@ pub async fn query_inbox(pool: &SqlitePool) -> sqlx::Result<Vec<NotificationRow>
 /// Query all archived notifications.
 pub async fn query_archived(pool: &SqlitePool) -> sqlx::Result<Vec<NotificationRow>> {
     sqlx::query_as::<_, NotificationRow>(
-        "SELECT id, pr_id, reason, unread, archived, updated_at
+        "SELECT id, pr_id, title, repository, reason, unread, archived, updated_at
          FROM notifications
          WHERE archived = 1
          ORDER BY updated_at DESC",
@@ -94,6 +100,37 @@ pub async fn mark_read(pool: &SqlitePool, id: &str) -> sqlx::Result<()> {
         .bind(id)
         .execute(pool)
         .await?;
+    Ok(())
+}
+
+/// Get the last fetched epoch (seconds since UNIX epoch) for a resource.
+pub async fn get_last_fetched_epoch(
+    pool: &SqlitePool,
+    resource: &str,
+) -> sqlx::Result<Option<i64>> {
+    let row: Option<(i64,)> =
+        sqlx::query_as("SELECT fetched_at FROM last_fetched_at WHERE resource = ?")
+            .bind(resource)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row.map(|r| r.0))
+}
+
+/// Set the last fetched timestamp for a resource to now (epoch seconds).
+pub async fn set_last_fetched_now(pool: &SqlitePool, resource: &str) -> sqlx::Result<()> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock before UNIX epoch")
+        .as_secs() as i64;
+    sqlx::query(
+        "INSERT INTO last_fetched_at (resource, fetched_at)
+         VALUES (?, ?)
+         ON CONFLICT(resource) DO UPDATE SET fetched_at = excluded.fetched_at",
+    )
+    .bind(resource)
+    .bind(now)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -134,6 +171,8 @@ mod tests {
         NotificationRow {
             id: id.to_string(),
             pr_id: Some(42),
+            title: "Fix bug in parser".to_string(),
+            repository: "owner/repo".to_string(),
             reason: "review_requested".to_string(),
             unread: true,
             archived: false,

@@ -26,13 +26,38 @@ async fn main() {
 
     println!("Listening on {url}");
 
-    if let Err(e) = open::that(&url) {
-        eprintln!("Failed to open browser: {e}");
+    let mut vite_child: Option<std::process::Child> = None;
+
+    if cfg!(debug_assertions) {
+        // Dev mode: spawn the Vite dev server with hot reload
+        match std::process::Command::new("npm")
+            .args(["run", "dev", "--", "--open"])
+            .current_dir("frontend")
+            .env("GH_INBOX_PORT", addr.port().to_string())
+            .spawn()
+        {
+            Ok(child) => {
+                println!("Vite dev server starting…");
+                vite_child = Some(child);
+            }
+            Err(e) => eprintln!("Could not start Vite dev server: {e}"),
+        }
+    } else {
+        // Prod mode: open the browser directly to the backend
+        if let Err(e) = open::that(&url) {
+            eprintln!("Failed to open browser: {e}");
+        }
     }
 
     axum::serve(listener, app(pool, Arc::from(token)))
         .await
         .expect("server error");
+
+    // Clean up the Vite dev server when the backend shuts down
+    if let Some(mut child) = vite_child {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
 }
 
 /// Run `gh auth token` once and return the token string.

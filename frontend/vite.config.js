@@ -25,6 +25,6 @@ export default defineConfig({
     },
   },
   resolve: {
-    conditions: process.env.VITEST ? ['browser'] : [],
+    ...(process.env.VITEST && { conditions: ['browser'] }),
   },
 })

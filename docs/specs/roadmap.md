@@ -94,14 +94,14 @@ Goal: The backend acquires a token, fetches notifications from GitHub, caches th
 
 Goal: The frontend fetches and renders real notifications from the API. Key UI components are tested.
 
-- [ ] Frontend: `GET /api/inbox` on load, store results in Svelte 5 state (`$state`)
-- [ ] Render each notification as a PR row: repo, author, title/PR number, reason label, updated_at
-- [ ] Reason label maps `review_requested` / `mention` / `assign` to the pill styles from the mockup
-- [ ] Show unread dot for unread notifications (use `unread` field from gh response)
-- [ ] Empty state when inbox is empty
-- [ ] Test: PR row renders repo, title, reason pill, and unread dot correctly
-- [ ] Test: empty state renders when inbox is empty
-- [ ] Confirm: running the app shows real PRs from your GitHub notifications; `npm test` passes
+- [x] Frontend: `GET /api/inbox` on load, store results in Svelte 5 state (`$state`)
+- [x] Render each notification as a PR row: repo, author, title/PR number, reason label, updated_at
+- [x] Reason label maps `review_requested` / `mention` / `assign` to the pill styles from the mockup
+- [x] Show unread dot for unread notifications (use `unread` field from gh response)
+- [x] Empty state when inbox is empty
+- [x] Test: PR row renders repo, title, reason pill, and unread dot correctly
+- [x] Test: empty state renders when inbox is empty
+- [x] Confirm: running the app shows real PRs from your GitHub notifications; `npm test` passes
 
 **Done when:** Real notifications appear in the inbox UI and all frontend tests pass.
 
