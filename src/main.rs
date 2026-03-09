@@ -26,8 +26,23 @@ async fn main() {
 
     println!("Listening on {url}");
 
-    if let Err(e) = open::that(&url) {
-        eprintln!("Failed to open browser: {e}");
+    if cfg!(debug_assertions) {
+        // Dev mode: spawn the Vite dev server with hot reload
+        let vite = std::process::Command::new("npm")
+            .args(["run", "dev", "--", "--open"])
+            .current_dir("frontend")
+            .env("GH_INBOX_PORT", addr.port().to_string())
+            .spawn();
+
+        match vite {
+            Ok(_) => println!("Vite dev server starting…"),
+            Err(e) => eprintln!("Could not start Vite dev server: {e}"),
+        }
+    } else {
+        // Prod mode: open the browser directly to the backend
+        if let Err(e) = open::that(&url) {
+            eprintln!("Failed to open browser: {e}");
+        }
     }
 
     axum::serve(listener, app(pool, Arc::from(token)))
