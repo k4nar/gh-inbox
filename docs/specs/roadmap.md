@@ -76,15 +76,15 @@ Goal: The database layer is set up with migrations and tested. The schema matche
 
 Goal: The backend acquires a token, fetches notifications from GitHub, caches them in SQLite, and serves `GET /api/inbox`. Tested end-to-end.
 
-- [ ] At startup, run `gh auth token` (one subprocess) and store the token in an `Arc<str>` shared across handlers
-- [ ] `src/models/notification.rs`: typed `Notification` struct (id, title, repository, reason, updated_at, url)
-- [ ] `src/github/mod.rs`: `parse_notifications(json: &str) -> Result<Vec<Notification>>` (pure) + `fetch_notifications(token, client)` that calls `GET https://api.github.com/notifications`
-- [ ] `src/api/inbox.rs`: thin handler for `GET /api/inbox` — calls `fetch_notifications`, caches to SQLite, returns JSON
-- [ ] Wire the route in `src/server.rs`; add typed error type; no `.unwrap()` in handlers
-- [ ] Unit tests for `parse_notifications`: valid input, missing fields, empty array, malformed JSON
-- [ ] Unit tests for error variants: confirm each maps to the expected HTTP status code
-- [ ] Integration test for `GET /api/inbox`: mock the GitHub API response, assert correct JSON shape and 200
-- [ ] Confirm: `curl localhost:<port>/api/inbox` returns real data and `cargo test` passes
+- [x] At startup, run `gh auth token` (one subprocess) and store the token in an `Arc<str>` shared across handlers
+- [x] `src/models/notification.rs`: typed `Notification` struct (id, title, repository, reason, updated_at, url)
+- [x] `src/github/mod.rs`: `parse_notifications(json: &str) -> Result<Vec<Notification>>` (pure) + `fetch_notifications(token, client)` that calls `GET https://api.github.com/notifications`
+- [x] `src/api/inbox.rs`: thin handler for `GET /api/inbox` — calls `fetch_notifications`, caches to SQLite, returns JSON
+- [x] Wire the route in `src/server.rs`; add typed error type; no `.unwrap()` in handlers
+- [x] Unit tests for `parse_notifications`: valid input, missing fields, empty array, malformed JSON
+- [x] Unit tests for error variants: confirm each maps to the expected HTTP status code
+- [x] Integration test for `GET /api/inbox`: mock the GitHub API response, assert correct JSON shape and 200
+- [x] Confirm: `curl localhost:<port>/api/inbox` returns real data and `cargo test` passes
 
 **Done when:** The endpoint returns real data from the GitHub API, data is cached in SQLite, and all tests pass.
 
