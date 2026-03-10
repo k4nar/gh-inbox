@@ -2,6 +2,7 @@
 import PrDetail from "./lib/PrDetail.svelte";
 import PrList from "./lib/PrList.svelte";
 import Sidebar from "./lib/Sidebar.svelte";
+import Toast from "./lib/Toast.svelte";
 import Topbar from "./lib/Topbar.svelte";
 
 let currentView = $state("inbox");
@@ -29,6 +30,7 @@ function handleViewChange(view) {
     <PrDetail notification={selectedNotification} onClose={handleClose} />
   {/if}
 </div>
+<Toast />
 
 <style>
   .layout {

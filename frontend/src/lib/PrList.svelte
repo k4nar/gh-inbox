@@ -1,6 +1,7 @@
 <script>
 import { reasonClass, reasonLabel } from "./reason.js";
 import { timeAgo } from "./timeago.js";
+import { showError } from "./toast.svelte.js";
 
 /** @type {{ currentView?: string, onSelect?: (notification: any) => void, selectedId?: string|null }} */
 let {
@@ -34,7 +35,18 @@ async function handleSelect(notif) {
 	if (notif.unread) {
 		notif.unread = false;
 		notifications = [...notifications];
-		fetch(`/api/inbox/${notif.id}/read`, { method: "POST" });
+		try {
+			const res = await fetch(`/api/inbox/${notif.id}/read`, {
+				method: "POST",
+			});
+			if (!res.ok) {
+				console.error(`Failed to mark read: ${res.status} ${res.statusText}`);
+				showError("Failed to mark notification as read");
+			}
+		} catch (err) {
+			console.error("Failed to mark read:", err);
+			showError("Failed to mark notification as read");
+		}
 	}
 	onSelect(notif);
 }
@@ -42,13 +54,39 @@ async function handleSelect(notif) {
 async function handleArchive(e, notif) {
 	e.stopPropagation();
 	notifications = notifications.filter((n) => n.id !== notif.id);
-	fetch(`/api/inbox/${notif.id}/archive`, { method: "POST" });
+	try {
+		const res = await fetch(`/api/inbox/${notif.id}/archive`, {
+			method: "POST",
+		});
+		if (!res.ok) {
+			console.error(`Failed to archive: ${res.status} ${res.statusText}`);
+			showError("Failed to archive notification");
+			notifications = [...notifications, notif];
+		}
+	} catch (err) {
+		console.error("Failed to archive:", err);
+		showError("Failed to archive notification");
+		notifications = [...notifications, notif];
+	}
 }
 
 async function handleUnarchive(e, notif) {
 	e.stopPropagation();
 	notifications = notifications.filter((n) => n.id !== notif.id);
-	fetch(`/api/inbox/${notif.id}/unarchive`, { method: "POST" });
+	try {
+		const res = await fetch(`/api/inbox/${notif.id}/unarchive`, {
+			method: "POST",
+		});
+		if (!res.ok) {
+			console.error(`Failed to unarchive: ${res.status} ${res.statusText}`);
+			showError("Failed to unarchive notification");
+			notifications = [...notifications, notif];
+		}
+	} catch (err) {
+		console.error("Failed to unarchive:", err);
+		showError("Failed to unarchive notification");
+		notifications = [...notifications, notif];
+	}
 }
 </script>
 
