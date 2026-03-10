@@ -93,7 +93,7 @@ async function handleUnarchive(e, notif) {
 <div class="main">
   <div class="list-header">
     <span class="list-title">{viewTitle}</span>
-    <span class="list-count">{count} · {unreadCount} unread</span>
+    <span class="list-count">{count}{#if currentView !== "archived"} · {unreadCount} unread{/if}</span>
     <div class="list-spacer"></div>
     <button class="filter-btn">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M.75 3h14.5a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1 0-1.5ZM3 7.75A.75.75 0 0 1 3.75 7h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 3 7.75Zm3 4a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1-.75-.75Z"/></svg>
@@ -139,7 +139,7 @@ async function handleUnarchive(e, notif) {
   </div>
 
   <div class="statusbar">
-    <span>{count} PRs · {unreadCount} unread</span>
+    <span>{count} PRs{#if currentView !== "archived"} · {unreadCount} unread{/if}</span>
   </div>
 </div>
 

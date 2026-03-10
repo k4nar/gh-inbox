@@ -114,15 +114,21 @@ describe("PrList", () => {
 	it("displays correct count in header and statusbar", async () => {
 		globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
 
-		render(PrList);
+		const { container } = render(PrList);
 
 		await waitFor(() => {
 			expect(screen.getByText("owner/repo")).toBeInTheDocument();
 		});
 
-		// Header shows "2 · 1 unread", statusbar shows "2 PRs · 1 unread"
-		expect(screen.getByText("2 · 1 unread")).toBeInTheDocument();
-		expect(screen.getByText("2 PRs · 1 unread")).toBeInTheDocument();
+		// Header shows count with unread info
+		const listCount = container.querySelector(".list-count");
+		expect(listCount.textContent).toContain("2");
+		expect(listCount.textContent).toContain("1 unread");
+
+		// Statusbar shows count with unread info
+		const statusbar = container.querySelector(".statusbar");
+		expect(statusbar.textContent).toContain("2 PRs");
+		expect(statusbar.textContent).toContain("1 unread");
 	});
 
 	it("fetches with ?status= query param", async () => {
