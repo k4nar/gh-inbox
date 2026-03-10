@@ -2,8 +2,10 @@
 import PrDetail from "./lib/PrDetail.svelte";
 import PrList from "./lib/PrList.svelte";
 import Sidebar from "./lib/Sidebar.svelte";
+import Toast from "./lib/Toast.svelte";
 import Topbar from "./lib/Topbar.svelte";
 
+let currentView = $state("inbox");
 let selectedNotification = $state(null);
 
 function handleSelect(notification) {
@@ -13,16 +15,22 @@ function handleSelect(notification) {
 function handleClose() {
 	selectedNotification = null;
 }
+
+function handleViewChange(view) {
+	currentView = view;
+	selectedNotification = null;
+}
 </script>
 
 <Topbar />
 <div class="layout">
-  <Sidebar />
-  <PrList onSelect={handleSelect} selectedId={selectedNotification?.id} />
+  <Sidebar {currentView} onViewChange={handleViewChange} />
+  <PrList {currentView} onSelect={handleSelect} selectedId={selectedNotification?.id} />
   {#if selectedNotification}
     <PrDetail notification={selectedNotification} onClose={handleClose} />
   {/if}
 </div>
+<Toast />
 
 <style>
   .layout {

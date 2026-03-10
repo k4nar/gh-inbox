@@ -97,31 +97,31 @@ pub async fn query_archived(pool: &SqlitePool) -> sqlx::Result<Vec<NotificationR
     .await
 }
 
-/// Archive a notification by ID.
-pub async fn archive_notification(pool: &SqlitePool, id: &str) -> sqlx::Result<()> {
-    sqlx::query("UPDATE notifications SET archived = 1 WHERE id = ?")
+/// Archive a notification by ID. Returns the number of rows affected.
+pub async fn archive_notification(pool: &SqlitePool, id: &str) -> sqlx::Result<u64> {
+    let result = sqlx::query("UPDATE notifications SET archived = 1 WHERE id = ?")
         .bind(id)
         .execute(pool)
         .await?;
-    Ok(())
+    Ok(result.rows_affected())
 }
 
-/// Unarchive a notification by ID (move back to inbox).
-pub async fn unarchive_notification(pool: &SqlitePool, id: &str) -> sqlx::Result<()> {
-    sqlx::query("UPDATE notifications SET archived = 0 WHERE id = ?")
+/// Unarchive a notification by ID (move back to inbox). Returns the number of rows affected.
+pub async fn unarchive_notification(pool: &SqlitePool, id: &str) -> sqlx::Result<u64> {
+    let result = sqlx::query("UPDATE notifications SET archived = 0 WHERE id = ?")
         .bind(id)
         .execute(pool)
         .await?;
-    Ok(())
+    Ok(result.rows_affected())
 }
 
-/// Mark a notification as read.
-pub async fn mark_read(pool: &SqlitePool, id: &str) -> sqlx::Result<()> {
-    sqlx::query("UPDATE notifications SET unread = 0 WHERE id = ?")
+/// Mark a notification as read. Returns the number of rows affected.
+pub async fn mark_read(pool: &SqlitePool, id: &str) -> sqlx::Result<u64> {
+    let result = sqlx::query("UPDATE notifications SET unread = 0 WHERE id = ?")
         .bind(id)
         .execute(pool)
         .await?;
-    Ok(())
+    Ok(result.rows_affected())
 }
 
 /// Get the last fetched epoch (seconds since UNIX epoch) for a resource.

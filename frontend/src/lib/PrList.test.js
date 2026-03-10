@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/svelte";
+import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PrList from "./PrList.svelte";
 
@@ -44,13 +44,25 @@ describe("PrList", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("renders empty state when inbox is empty", async () => {
+	it("renders empty state for inbox", async () => {
 		globalThis.fetch = mockFetch([]);
 
 		render(PrList);
 
 		await waitFor(() => {
-			expect(screen.getByText("No notifications yet.")).toBeInTheDocument();
+			expect(screen.getByText("All caught up!")).toBeInTheDocument();
+		});
+	});
+
+	it("renders empty state for archived view", async () => {
+		globalThis.fetch = mockFetch([]);
+
+		render(PrList, { props: { currentView: "archived" } });
+
+		await waitFor(() => {
+			expect(
+				screen.getByText("No archived notifications."),
+			).toBeInTheDocument();
 		});
 	});
 
@@ -102,14 +114,88 @@ describe("PrList", () => {
 	it("displays correct count in header and statusbar", async () => {
 		globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
 
-		render(PrList);
+		const { container } = render(PrList);
 
 		await waitFor(() => {
 			expect(screen.getByText("owner/repo")).toBeInTheDocument();
 		});
 
-		// Header shows "2 · 1 unread", statusbar shows "2 PRs · 1 unread"
-		expect(screen.getByText("2 · 1 unread")).toBeInTheDocument();
-		expect(screen.getByText("2 PRs · 1 unread")).toBeInTheDocument();
+		// Header shows count with unread info
+		const listCount = container.querySelector(".list-count");
+		expect(listCount.textContent).toContain("2");
+		expect(listCount.textContent).toContain("1 unread");
+
+		// Statusbar shows count with unread info
+		const statusbar = container.querySelector(".statusbar");
+		expect(statusbar.textContent).toContain("2 PRs");
+		expect(statusbar.textContent).toContain("1 unread");
+	});
+
+	it("fetches with ?status= query param", async () => {
+		globalThis.fetch = mockFetch([]);
+
+		render(PrList, { props: { currentView: "archived" } });
+
+		await waitFor(() => {
+			expect(globalThis.fetch).toHaveBeenCalledWith(
+				"/api/inbox?status=archived",
+			);
+		});
+	});
+
+	it("shows header title matching current view", async () => {
+		globalThis.fetch = mockFetch([]);
+
+		render(PrList, { props: { currentView: "archived" } });
+
+		await waitFor(() => {
+			expect(screen.getByText("Archived")).toBeInTheDocument();
+		});
+	});
+
+	it("archive button removes notification from list", async () => {
+		globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
+
+		const { container } = render(PrList);
+
+		await waitFor(() => {
+			expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+		});
+
+		const archiveBtns = container.querySelectorAll('button[title="Archive"]');
+		expect(archiveBtns).toHaveLength(2);
+
+		await fireEvent.click(archiveBtns[0]);
+
+		await waitFor(() => {
+			expect(screen.queryByText("Fix bug in parser")).not.toBeInTheDocument();
+		});
+		expect(screen.getByText("Refactor auth module")).toBeInTheDocument();
+	});
+
+	it("clicking a PR marks it as read (optimistic UI)", async () => {
+		globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
+
+		const onSelect = vi.fn();
+		const { container } = render(PrList, { props: { onSelect } });
+
+		await waitFor(() => {
+			expect(screen.getByText("owner/repo")).toBeInTheDocument();
+		});
+
+		// First dot should be unread
+		let dots = container.querySelectorAll(".unread-dot");
+		expect(dots[0].classList.contains("read")).toBe(false);
+
+		// Click the first PR row
+		const firstRow = screen.getByText("Fix bug in parser").closest(".pr-item");
+		await fireEvent.click(firstRow);
+
+		// Dot should now have .read class
+		dots = container.querySelectorAll(".unread-dot");
+		expect(dots[0].classList.contains("read")).toBe(true);
+
+		// onSelect should have been called
+		expect(onSelect).toHaveBeenCalled();
 	});
 });

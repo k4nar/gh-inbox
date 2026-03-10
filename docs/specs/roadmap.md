@@ -154,19 +154,19 @@ Goal: Clicking a PR in the inbox opens a detail panel showing metadata, CI statu
 
 Goal: Users can mark notifications as read, archive PRs, view archived PRs, and unarchive. The inbox becomes a workflow tool with inbox-zero flow.
 
-- [ ] `src/api/inbox.rs`: add `post_mark_read` handler for `POST /api/inbox/:id/read` — calls existing `queries::mark_read`, returns 204
-- [ ] `src/api/inbox.rs`: add `post_archive` handler for `POST /api/inbox/:id/archive` — calls existing `queries::archive_notification`, returns 204
-- [ ] `src/api/inbox.rs`: add `post_unarchive` handler for `POST /api/inbox/:id/unarchive` — calls existing `queries::unarchive_notification`, returns 204
-- [ ] `src/api/inbox.rs`: add `?status=archived` query param to `get_inbox` — calls `query_archived` when set
-- [ ] `src/api/error.rs`: add `NotFound` variant (404) for missing notification IDs
-- [ ] Wire routes in `src/server.rs`
-- [ ] Integration tests: archive → verify gone from inbox, visible in archived; unarchive → back in inbox; mark read; 404 for nonexistent ID
-- [ ] Frontend: shared state for `currentView` (inbox/archived) and `notifications` so Sidebar and PrList can share state
-- [ ] `Sidebar.svelte`: clicking Inbox/Archived sets `currentView`; active style follows it
-- [ ] `PrList.svelte`: refetch from `/api/inbox?status={currentView}` when view changes; archive/unarchive buttons on rows; clicking a PR marks it as read (optimistic UI)
-- [ ] Empty state differs by view: "All caught up!" vs "No archived notifications."
-- [ ] Frontend tests: archive removes from list, view switching works, mark-read removes unread dot
-- [ ] Confirm: full archive/read/unarchive flow works end-to-end; `cargo test` and `npm test` pass
+- [x] `src/api/inbox.rs`: add `post_mark_read` handler for `POST /api/inbox/:id/read` — calls existing `queries::mark_read`, returns 204
+- [x] `src/api/inbox.rs`: add `post_archive` handler for `POST /api/inbox/:id/archive` — calls existing `queries::archive_notification`, returns 204
+- [x] `src/api/inbox.rs`: add `post_unarchive` handler for `POST /api/inbox/:id/unarchive` — calls existing `queries::unarchive_notification`, returns 204
+- [x] `src/api/inbox.rs`: add `?status=archived` query param to `get_inbox` — calls `query_archived` when set
+- [x] `src/api/error.rs`: add `NotFound` variant (404) for missing notification IDs
+- [x] Wire routes in `src/server.rs`
+- [x] Integration tests: archive → verify gone from inbox, visible in archived; unarchive → back in inbox; mark read; 404 for nonexistent ID
+- [x] Frontend: shared state for `currentView` (inbox/archived) and `notifications` so Sidebar and PrList can share state
+- [x] `Sidebar.svelte`: clicking Inbox/Archived sets `currentView`; active style follows it
+- [x] `PrList.svelte`: refetch from `/api/inbox?status={currentView}` when view changes; archive/unarchive buttons on rows; clicking a PR marks it as read (optimistic UI)
+- [x] Empty state differs by view: "All caught up!" vs "No archived notifications."
+- [x] Frontend tests: archive removes from list, view switching works, mark-read removes unread dot
+- [x] Confirm: full archive/read/unarchive flow works end-to-end; `cargo test` and `npm test` pass
 
 **Done when:** Full archive/read/unarchive flow works end-to-end with optimistic UI. `cargo test` and `npm test` pass.
 

@@ -4,7 +4,10 @@ use std::sync::Arc;
 use axum::http::{StatusCode, header};
 #[cfg(not(debug_assertions))]
 use axum::response::{IntoResponse, Response};
-use axum::{Router, routing::get};
+use axum::{
+    Router,
+    routing::{get, post},
+};
 use sqlx::SqlitePool;
 
 use crate::api;
@@ -107,6 +110,12 @@ pub fn app_with_base_url(pool: SqlitePool, token: Arc<str>, github_base_url: Str
 
     let router = Router::new()
         .route("/api/inbox", get(api::inbox::get_inbox))
+        .route("/api/inbox/{id}/read", post(api::inbox::post_mark_read))
+        .route("/api/inbox/{id}/archive", post(api::inbox::post_archive))
+        .route(
+            "/api/inbox/{id}/unarchive",
+            post(api::inbox::post_unarchive),
+        )
         .route(
             "/api/pull-requests/{owner}/{repo}/{number}",
             get(api::pull_requests::get_pr),
