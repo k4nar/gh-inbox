@@ -76,10 +76,10 @@ pub async fn post_mark_read(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    if !queries::notification_exists(&state.pool, &id).await? {
+    let rows = queries::mark_read(&state.pool, &id).await?;
+    if rows == 0 {
         return Err(AppError::NotFound(format!("notification {id} not found")));
     }
-    queries::mark_read(&state.pool, &id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -88,10 +88,10 @@ pub async fn post_archive(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    if !queries::notification_exists(&state.pool, &id).await? {
+    let rows = queries::archive_notification(&state.pool, &id).await?;
+    if rows == 0 {
         return Err(AppError::NotFound(format!("notification {id} not found")));
     }
-    queries::archive_notification(&state.pool, &id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -100,9 +100,9 @@ pub async fn post_unarchive(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    if !queries::notification_exists(&state.pool, &id).await? {
+    let rows = queries::unarchive_notification(&state.pool, &id).await?;
+    if rows == 0 {
         return Err(AppError::NotFound(format!("notification {id} not found")));
     }
-    queries::unarchive_notification(&state.pool, &id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
