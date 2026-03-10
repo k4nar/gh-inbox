@@ -8,6 +8,8 @@ pub enum AppError {
     GitHub(reqwest::Error),
     /// Database query failed.
     Database(sqlx::Error),
+    /// Resource not found.
+    NotFound(String),
 }
 
 impl From<reqwest::Error> for AppError {
@@ -36,6 +38,7 @@ impl IntoResponse for AppError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Database error: {err}"),
             ),
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
         };
 
         eprintln!("{message}");
@@ -58,6 +61,13 @@ mod tests {
         let app_err = AppError::GitHub(err);
         let response = app_err.into_response();
         assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    }
+
+    #[test]
+    fn not_found_error_maps_to_404() {
+        let app_err = AppError::NotFound("notification not found".to_string());
+        let response = app_err.into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[test]
