@@ -12,15 +12,15 @@ let {
 
 let notifications = $state([]);
 
-async function fetchNotifications() {
-	const res = await fetch(`/api/inbox?status=${currentView}`);
+async function fetchNotifications(view) {
+	const res = await fetch(`/api/inbox?status=${view}`);
 	if (res.ok) {
 		notifications = await res.json();
 	}
 }
 
 $effect(() => {
-	fetchNotifications();
+	fetchNotifications(currentView);
 });
 
 let count = $derived(notifications.length);
