@@ -115,6 +115,15 @@ pub async fn unarchive_notification(pool: &SqlitePool, id: &str) -> sqlx::Result
     Ok(())
 }
 
+/// Check if a notification exists by ID.
+pub async fn notification_exists(pool: &SqlitePool, id: &str) -> sqlx::Result<bool> {
+    let row: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM notifications WHERE id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.is_some())
+}
+
 /// Mark a notification as read.
 pub async fn mark_read(pool: &SqlitePool, id: &str) -> sqlx::Result<()> {
     sqlx::query("UPDATE notifications SET unread = 0 WHERE id = ?")
