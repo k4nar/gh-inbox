@@ -24,9 +24,6 @@ Keep things simple.
 - Frontend never holds auth tokens
 
 ## Dev workflow
-- `cargo run` to start the server (opens browser automatically)
-- `cargo test` before any PR
-- Commit on every working checkpoint
-
-## On new sessions
-Read @docs/specs/roadmap.md and check off completed items before starting work.
+- Look at the next milestone in @docs/specs/roadmap.md
+- Create a branch for each milestone
+- Commit on every working checkpoint -> The tests run with the pre-commit hooks
