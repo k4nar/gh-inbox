@@ -3,6 +3,9 @@ import { onMount } from "svelte";
 import { reasonClass, reasonLabel } from "./reason.js";
 import { timeAgo } from "./timeago.js";
 
+/** @type {{ onSelect?: (notification: any) => void, selectedId?: string|null }} */
+let { onSelect = () => {}, selectedId = null } = $props();
+
 let notifications = $state([]);
 
 onMount(async () => {
@@ -34,7 +37,7 @@ let unreadCount = $derived(notifications.filter((n) => n.unread).length);
       </div>
     {:else}
       {#each notifications as notif (notif.id)}
-        <div class="pr-item" class:read={!notif.unread}>
+        <div class="pr-item" class:read={!notif.unread} class:selected={notif.id === selectedId} onclick={() => onSelect(notif)} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && onSelect(notif)}>
           <div class="unread-dot" class:read={!notif.unread}></div>
           <div class="pr-body">
             <div class="pr-meta-top">
@@ -126,6 +129,7 @@ let unreadCount = $derived(notifications.filter((n) => n.unread).length);
     gap: 12px;
   }
   .pr-item:hover { background: var(--canvas-subtle); }
+  .pr-item.selected { background: var(--accent-subtle); border-left: 2px solid var(--accent-fg); }
 
   .unread-dot {
     width: 8px;

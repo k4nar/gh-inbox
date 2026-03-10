@@ -23,6 +23,27 @@ pub struct PullRequestRow {
     pub url: String,
     pub ci_status: Option<String>,
     pub last_viewed_at: Option<String>,
+    pub body: String,
+    pub state: String,
+    pub head_sha: String,
+    pub additions: i64,
+    pub deletions: i64,
+    pub changed_files: i64,
+}
+
+/// A comment row from the database.
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+pub struct CommentRow {
+    pub id: i64,
+    pub pr_id: i64,
+    pub thread_id: Option<String>,
+    pub author: String,
+    pub body: String,
+    pub created_at: String,
+    pub comment_type: String,
+    pub path: Option<String>,
+    pub position: Option<i64>,
+    pub in_reply_to_id: Option<i64>,
 }
 
 /// Insert or update a notification.
@@ -137,14 +158,20 @@ pub async fn set_last_fetched_now(pool: &SqlitePool, resource: &str) -> sqlx::Re
 /// Insert or update a pull request.
 pub async fn upsert_pull_request(pool: &SqlitePool, pr: &PullRequestRow) -> sqlx::Result<()> {
     sqlx::query(
-        "INSERT INTO pull_requests (id, title, repo, author, url, ci_status, last_viewed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO pull_requests (id, title, repo, author, url, ci_status, last_viewed_at, body, state, head_sha, additions, deletions, changed_files)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            title = excluded.title,
            repo = excluded.repo,
            author = excluded.author,
            url = excluded.url,
-           ci_status = excluded.ci_status",
+           ci_status = excluded.ci_status,
+           body = excluded.body,
+           state = excluded.state,
+           head_sha = excluded.head_sha,
+           additions = excluded.additions,
+           deletions = excluded.deletions,
+           changed_files = excluded.changed_files",
     )
     .bind(pr.id)
     .bind(&pr.title)
@@ -153,9 +180,78 @@ pub async fn upsert_pull_request(pool: &SqlitePool, pr: &PullRequestRow) -> sqlx
     .bind(&pr.url)
     .bind(&pr.ci_status)
     .bind(&pr.last_viewed_at)
+    .bind(&pr.body)
+    .bind(&pr.state)
+    .bind(&pr.head_sha)
+    .bind(pr.additions)
+    .bind(pr.deletions)
+    .bind(pr.changed_files)
     .execute(pool)
     .await?;
     Ok(())
+}
+
+/// Get a pull request by repo and number.
+pub async fn get_pull_request(
+    pool: &SqlitePool,
+    repo: &str,
+    number: i64,
+) -> sqlx::Result<Option<PullRequestRow>> {
+    sqlx::query_as::<_, PullRequestRow>(
+        "SELECT id, title, repo, author, url, ci_status, last_viewed_at, body, state, head_sha, additions, deletions, changed_files
+         FROM pull_requests
+         WHERE repo = ? AND id = ?",
+    )
+    .bind(repo)
+    .bind(number)
+    .fetch_optional(pool)
+    .await
+}
+
+/// Update last_viewed_at to now (ISO 8601) for a pull request.
+pub async fn update_last_viewed_at(pool: &SqlitePool, pr_id: i64) -> sqlx::Result<()> {
+    sqlx::query("UPDATE pull_requests SET last_viewed_at = datetime('now') WHERE id = ?")
+        .bind(pr_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Insert or update a comment.
+pub async fn upsert_comment(pool: &SqlitePool, comment: &CommentRow) -> sqlx::Result<()> {
+    sqlx::query(
+        "INSERT INTO comments (id, pr_id, thread_id, author, body, created_at, comment_type, path, position, in_reply_to_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           body = excluded.body,
+           thread_id = excluded.thread_id",
+    )
+    .bind(comment.id)
+    .bind(comment.pr_id)
+    .bind(&comment.thread_id)
+    .bind(&comment.author)
+    .bind(&comment.body)
+    .bind(&comment.created_at)
+    .bind(&comment.comment_type)
+    .bind(&comment.path)
+    .bind(comment.position)
+    .bind(comment.in_reply_to_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Query all comments for a given PR, ordered by creation time.
+pub async fn query_comments_for_pr(pool: &SqlitePool, pr_id: i64) -> sqlx::Result<Vec<CommentRow>> {
+    sqlx::query_as::<_, CommentRow>(
+        "SELECT id, pr_id, thread_id, author, body, created_at, comment_type, path, position, in_reply_to_id
+         FROM comments
+         WHERE pr_id = ?
+         ORDER BY created_at ASC",
+    )
+    .bind(pr_id)
+    .fetch_all(pool)
+    .await
 }
 
 #[cfg(test)]
@@ -265,30 +361,155 @@ mod tests {
         assert!(!inbox[0].unread);
     }
 
-    #[tokio::test]
-    async fn upsert_pull_request_roundtrip() {
-        let pool = test_pool().await;
-        let pr = PullRequestRow {
-            id: 100,
+    fn sample_pr(id: i64) -> PullRequestRow {
+        PullRequestRow {
+            id,
             title: "Fix bug".to_string(),
             repo: "owner/repo".to_string(),
             author: "alice".to_string(),
             url: "https://github.com/owner/repo/pull/100".to_string(),
             ci_status: Some("success".to_string()),
             last_viewed_at: None,
-        };
+            body: "PR body".to_string(),
+            state: "open".to_string(),
+            head_sha: "abc123".to_string(),
+            additions: 10,
+            deletions: 3,
+            changed_files: 2,
+        }
+    }
+
+    fn sample_comment(id: i64, pr_id: i64) -> CommentRow {
+        CommentRow {
+            id,
+            pr_id,
+            thread_id: None,
+            author: "bob".to_string(),
+            body: "Looks good!".to_string(),
+            created_at: "2025-01-01T00:00:00Z".to_string(),
+            comment_type: "issue_comment".to_string(),
+            path: None,
+            position: None,
+            in_reply_to_id: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn upsert_pull_request_roundtrip() {
+        let pool = test_pool().await;
+        let pr = sample_pr(100);
 
         upsert_pull_request(&pool, &pr).await.unwrap();
 
-        let row = sqlx::query_as::<_, PullRequestRow>(
-            "SELECT id, title, repo, author, url, ci_status, last_viewed_at FROM pull_requests WHERE id = ?",
-        )
-        .bind(100)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let row = get_pull_request(&pool, "owner/repo", 100)
+            .await
+            .unwrap()
+            .unwrap();
 
         assert_eq!(row.title, "Fix bug");
         assert_eq!(row.ci_status, Some("success".to_string()));
+        assert_eq!(row.body, "PR body");
+        assert_eq!(row.state, "open");
+        assert_eq!(row.head_sha, "abc123");
+        assert_eq!(row.additions, 10);
+        assert_eq!(row.deletions, 3);
+        assert_eq!(row.changed_files, 2);
+    }
+
+    #[tokio::test]
+    async fn get_pull_request_not_found() {
+        let pool = test_pool().await;
+        let result = get_pull_request(&pool, "owner/repo", 999).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn upsert_and_query_comments() {
+        let pool = test_pool().await;
+        let pr = sample_pr(42);
+        upsert_pull_request(&pool, &pr).await.unwrap();
+
+        let c1 = sample_comment(1, 42);
+        let mut c2 = sample_comment(2, 42);
+        c2.created_at = "2025-01-02T00:00:00Z".to_string();
+        c2.body = "LGTM".to_string();
+
+        upsert_comment(&pool, &c1).await.unwrap();
+        upsert_comment(&pool, &c2).await.unwrap();
+
+        let comments = query_comments_for_pr(&pool, 42).await.unwrap();
+        assert_eq!(comments.len(), 2);
+        assert_eq!(comments[0].body, "Looks good!");
+        assert_eq!(comments[1].body, "LGTM");
+    }
+
+    #[tokio::test]
+    async fn upsert_comment_is_idempotent() {
+        let pool = test_pool().await;
+        let pr = sample_pr(42);
+        upsert_pull_request(&pool, &pr).await.unwrap();
+
+        let mut c = sample_comment(1, 42);
+        upsert_comment(&pool, &c).await.unwrap();
+        c.body = "Updated body".to_string();
+        upsert_comment(&pool, &c).await.unwrap();
+
+        let comments = query_comments_for_pr(&pool, 42).await.unwrap();
+        assert_eq!(comments.len(), 1);
+        assert_eq!(comments[0].body, "Updated body");
+    }
+
+    #[tokio::test]
+    async fn update_last_viewed_at_works() {
+        let pool = test_pool().await;
+        let pr = sample_pr(42);
+        upsert_pull_request(&pool, &pr).await.unwrap();
+
+        assert!(
+            get_pull_request(&pool, "owner/repo", 42)
+                .await
+                .unwrap()
+                .unwrap()
+                .last_viewed_at
+                .is_none()
+        );
+
+        update_last_viewed_at(&pool, 42).await.unwrap();
+
+        let row = get_pull_request(&pool, "owner/repo", 42)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(row.last_viewed_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn review_comments_with_threading() {
+        let pool = test_pool().await;
+        let pr = sample_pr(42);
+        upsert_pull_request(&pool, &pr).await.unwrap();
+
+        // A root review comment
+        let mut root = sample_comment(10, 42);
+        root.comment_type = "review_comment".to_string();
+        root.path = Some("src/main.rs".to_string());
+        root.position = Some(5);
+        root.thread_id = Some("thread-1".to_string());
+        upsert_comment(&pool, &root).await.unwrap();
+
+        // A reply to it
+        let mut reply = sample_comment(11, 42);
+        reply.comment_type = "review_comment".to_string();
+        reply.path = Some("src/main.rs".to_string());
+        reply.position = Some(5);
+        reply.in_reply_to_id = Some(10);
+        reply.thread_id = Some("thread-1".to_string());
+        reply.created_at = "2025-01-02T00:00:00Z".to_string();
+        upsert_comment(&pool, &reply).await.unwrap();
+
+        let comments = query_comments_for_pr(&pool, 42).await.unwrap();
+        assert_eq!(comments.len(), 2);
+        assert_eq!(comments[0].thread_id, Some("thread-1".to_string()));
+        assert_eq!(comments[1].thread_id, Some("thread-1".to_string()));
     }
 }

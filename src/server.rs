@@ -105,7 +105,16 @@ pub fn app_with_base_url(pool: SqlitePool, token: Arc<str>, github_base_url: Str
         github_base_url,
     };
 
-    let router = Router::new().route("/api/inbox", get(api::inbox::get_inbox));
+    let router = Router::new()
+        .route("/api/inbox", get(api::inbox::get_inbox))
+        .route(
+            "/api/pull-requests/{owner}/{repo}/{number}",
+            get(api::pull_requests::get_pr),
+        )
+        .route(
+            "/api/pull-requests/{owner}/{repo}/{number}/threads",
+            get(api::pull_requests::get_threads),
+        );
 
     #[cfg(not(debug_assertions))]
     let router = router

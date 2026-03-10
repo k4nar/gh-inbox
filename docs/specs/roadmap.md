@@ -126,25 +126,25 @@ Goal: The binary serves the compiled Svelte app. Single-binary distribution work
 
 Goal: Clicking a PR in the inbox opens a detail panel showing metadata, CI status, and comments grouped by thread. New comments since last view are highlighted.
 
-- [ ] Migration 005: add columns to `pull_requests` — `body TEXT DEFAULT ''`, `state TEXT DEFAULT 'open'`, `head_sha TEXT DEFAULT ''`, `additions INTEGER DEFAULT 0`, `deletions INTEGER DEFAULT 0`, `changed_files INTEGER DEFAULT 0`
-- [ ] Migration 006: add columns to `comments` — `comment_type TEXT DEFAULT 'issue_comment'`, `path TEXT`, `position INTEGER`, `in_reply_to_id INTEGER`
-- [ ] `src/models/pull_request.rs`: typed structs for GitHub API responses — `GithubPullRequest`, `GithubIssueComment`, `GithubReviewComment`, `GithubCheckRun`, `GithubCheckRunList`
-- [ ] `src/github/mod.rs`: add `fetch_pull_request()`, `fetch_issue_comments()`, `fetch_review_comments()`, `fetch_check_runs()` — each calls the corresponding GitHub REST endpoint
-- [ ] Unit tests for each parse function (valid input, empty array, missing optional fields)
-- [ ] `src/db/queries.rs`: update `PullRequestRow` with new fields; update `upsert_pull_request()`; add `get_pull_request(pool, repo, number)`
-- [ ] `src/db/queries.rs`: add `CommentRow` struct with all fields; add `upsert_comment()`, `query_comments_for_pr(pool, pr_id)`
-- [ ] `src/db/queries.rs`: add `update_last_viewed_at(pool, pr_id)` — sets timestamp when user opens a PR
-- [ ] Unit tests for comment queries (insert + query round-trip, thread grouping)
-- [ ] `src/api/pull_requests.rs`: handler for `GET /api/pull-requests/:owner/:repo/:number` — fetches from GitHub (with 30s throttle), caches in SQLite, updates `last_viewed_at`, returns JSON (PR metadata + comments + check runs)
-- [ ] `src/api/pull_requests.rs`: handler for `GET /api/pull-requests/:owner/:repo/:number/threads` — queries comments from SQLite, groups by `thread_id`, returns JSON array of thread objects
-- [ ] Wire routes in `src/server.rs`
-- [ ] Integration tests: mock GitHub endpoints, assert correct JSON shape and threading
-- [ ] `frontend/src/lib/PrDetail.svelte`: detail panel — PR title, author, body, CI status badges, threaded comments
-- [ ] `frontend/src/lib/CommentThread.svelte`: renders a thread (file path header for inline comments, comment bodies with author/date)
-- [ ] `frontend/src/App.svelte`: add `selectedPr` state; clicking a row shows `PrDetail` in a right panel
-- [ ] Highlight "new" comments where `comment.created_at > pr.last_viewed_at`
-- [ ] Frontend tests for PrDetail and CommentThread rendering
-- [ ] Confirm: clicking a PR in the inbox shows the detail panel with real data; `cargo test` and `npm test` pass
+- [x] Migration 005: add columns to `pull_requests` — `body TEXT DEFAULT ''`, `state TEXT DEFAULT 'open'`, `head_sha TEXT DEFAULT ''`, `additions INTEGER DEFAULT 0`, `deletions INTEGER DEFAULT 0`, `changed_files INTEGER DEFAULT 0`
+- [x] Migration 006: add columns to `comments` — `comment_type TEXT DEFAULT 'issue_comment'`, `path TEXT`, `position INTEGER`, `in_reply_to_id INTEGER`
+- [x] `src/models/pull_request.rs`: typed structs for GitHub API responses — `GithubPullRequest`, `GithubIssueComment`, `GithubReviewComment`, `GithubCheckRun`, `GithubCheckRunList`
+- [x] `src/github/mod.rs`: add `fetch_pull_request()`, `fetch_issue_comments()`, `fetch_review_comments()`, `fetch_check_runs()` — each calls the corresponding GitHub REST endpoint
+- [x] Unit tests for each parse function (valid input, empty array, missing optional fields)
+- [x] `src/db/queries.rs`: update `PullRequestRow` with new fields; update `upsert_pull_request()`; add `get_pull_request(pool, repo, number)`
+- [x] `src/db/queries.rs`: add `CommentRow` struct with all fields; add `upsert_comment()`, `query_comments_for_pr(pool, pr_id)`
+- [x] `src/db/queries.rs`: add `update_last_viewed_at(pool, pr_id)` — sets timestamp when user opens a PR
+- [x] Unit tests for comment queries (insert + query round-trip, thread grouping)
+- [x] `src/api/pull_requests.rs`: handler for `GET /api/pull-requests/:owner/:repo/:number` — fetches from GitHub (with 30s throttle), caches in SQLite, updates `last_viewed_at`, returns JSON (PR metadata + comments + check runs)
+- [x] `src/api/pull_requests.rs`: handler for `GET /api/pull-requests/:owner/:repo/:number/threads` — queries comments from SQLite, groups by `thread_id`, returns JSON array of thread objects
+- [x] Wire routes in `src/server.rs`
+- [x] Integration tests: mock GitHub endpoints, assert correct JSON shape and threading
+- [x] `frontend/src/lib/PrDetail.svelte`: detail panel — PR title, author, body, CI status badges, threaded comments
+- [x] `frontend/src/lib/CommentThread.svelte`: renders a thread (file path header for inline comments, comment bodies with author/date)
+- [x] `frontend/src/App.svelte`: add `selectedPr` state; clicking a row shows `PrDetail` in a right panel
+- [x] Highlight "new" comments where `comment.created_at > pr.last_viewed_at`
+- [x] Frontend tests for PrDetail and CommentThread rendering
+- [x] Confirm: clicking a PR in the inbox shows the detail panel with real data; `cargo test` and `npm test` pass
 
 **Done when:** Clicking a PR in the inbox opens a detail panel showing metadata, CI status, and comments grouped by thread. New comments are highlighted. `cargo test` and `npm test` pass.
 
