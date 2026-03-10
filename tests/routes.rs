@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::http::StatusCode;
+use axum::http::{Method, StatusCode};
 use axum::{Router, routing::get};
 use http_body_util::BodyExt;
 use tokio::net::TcpListener;
@@ -307,4 +307,182 @@ async fn get_pr_threads_groups_comments() {
         .unwrap();
     assert_eq!(review["comments"].as_array().unwrap().len(), 2);
     assert_eq!(review["path"], "src/main.rs");
+}
+
+/// Helper: build app with mock GitHub, fetch /api/inbox to populate DB, return (pool, base_url).
+async fn setup_populated_inbox() -> (sqlx::SqlitePool, String) {
+    let mock_base_url = start_mock_github().await;
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+
+    // Fetch inbox to populate the DB with the mock notification
+    let app =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/inbox")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    (pool, mock_base_url)
+}
+
+#[tokio::test]
+async fn archive_removes_from_inbox_and_appears_in_archived() {
+    let (pool, mock_base_url) = setup_populated_inbox().await;
+
+    // Archive notification "123"
+    let app =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(Method::POST)
+                .uri("/api/inbox/123/archive")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    // Inbox should be empty (throttle prevents re-fetch, so we see cached state)
+    let app =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/inbox")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let inbox: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert!(inbox.is_empty());
+
+    // Archived should have the notification
+    let app = gh_inbox::app_with_base_url(pool, Arc::from("fake-token"), mock_base_url);
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/inbox?status=archived")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let archived: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(archived.len(), 1);
+    assert_eq!(archived[0]["id"], "123");
+}
+
+#[tokio::test]
+async fn unarchive_moves_back_to_inbox() {
+    let (pool, mock_base_url) = setup_populated_inbox().await;
+
+    // Archive then unarchive
+    let app =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let _ = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(Method::POST)
+                .uri("/api/inbox/123/archive")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let app =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(Method::POST)
+                .uri("/api/inbox/123/unarchive")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    // Should be back in inbox
+    let app = gh_inbox::app_with_base_url(pool, Arc::from("fake-token"), mock_base_url);
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/inbox")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let inbox: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(inbox.len(), 1);
+    assert_eq!(inbox[0]["id"], "123");
+}
+
+#[tokio::test]
+async fn mark_read_sets_unread_false() {
+    let (pool, mock_base_url) = setup_populated_inbox().await;
+
+    // Mark as read
+    let app =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(Method::POST)
+                .uri("/api/inbox/123/read")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    // Verify unread is false
+    let app = gh_inbox::app_with_base_url(pool, Arc::from("fake-token"), mock_base_url);
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/inbox")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let inbox: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(inbox.len(), 1);
+    assert!(!inbox[0]["unread"].as_bool().unwrap());
+}
+
+#[tokio::test]
+async fn post_to_nonexistent_notification_returns_404() {
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+    let mock_base_url = start_mock_github().await;
+    let app = gh_inbox::app_with_base_url(pool, Arc::from("fake-token"), mock_base_url);
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(Method::POST)
+                .uri("/api/inbox/nonexistent/archive")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
