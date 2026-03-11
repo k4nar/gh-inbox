@@ -131,7 +131,8 @@ pub fn app_with_base_url(
         .route(
             "/api/pull-requests/{owner}/{repo}/{number}/threads",
             get(api::pull_requests::get_threads),
-        );
+        )
+        .route("/api/events", get(api::events::get_events));
 
     #[cfg(not(debug_assertions))]
     let router = router
