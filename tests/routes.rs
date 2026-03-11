@@ -286,6 +286,51 @@ async fn get_pr_detail_returns_metadata_comments_and_checks() {
 }
 
 #[tokio::test]
+async fn get_pr_detail_returns_check_runs_from_cache() {
+    let mock_base_url = start_mock_github().await;
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+
+    // First request populates the cache
+    let (app, _state) =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/pull-requests/owner/repo/42")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Second request within throttle window — should still return check runs from DB
+    let (app, _state) =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/pull-requests/owner/repo/42")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let detail: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let check_runs = detail["check_runs"].as_array().unwrap();
+    assert_eq!(
+        check_runs.len(),
+        2,
+        "check runs should be returned from cache"
+    );
+    assert_eq!(check_runs[0]["name"], "CI");
+}
+
+#[tokio::test]
 async fn get_pr_threads_groups_comments() {
     let mock_base_url = start_mock_github().await;
     let pool = gh_inbox::db::init_with_path(":memory:").await;

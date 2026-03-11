@@ -4,7 +4,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use serde::Serialize;
 
-use crate::db::queries::{self, CommentRow, CommitRow, PullRequestRow};
+use crate::db::queries::{self, CheckRunRow, CommentRow, CommitRow, PullRequestRow};
 use crate::github;
 use crate::server::AppState;
 
@@ -192,6 +192,18 @@ pub async fn get_pr(
                 .await?;
         }
 
+        // Cache individual check runs in DB
+        for cr in &check_run_list.check_runs {
+            let row = CheckRunRow {
+                id: cr.id,
+                pr_id: number,
+                name: cr.name.clone(),
+                status: cr.status.clone(),
+                conclusion: cr.conclusion.clone(),
+            };
+            queries::upsert_check_run(&state.pool, &row).await?;
+        }
+
         queries::set_last_fetched_now(&state.pool, &resource_key).await?;
     }
 
@@ -206,35 +218,15 @@ pub async fn get_pr(
     let comments = queries::query_comments_for_pr(&state.pool, number).await?;
     let commits = queries::query_commits_for_pr(&state.pool, number).await?;
 
-    // Re-read check runs from the last fetch (we stored ci_status but not individual runs).
-    // For now, return check runs if we just fetched them. If cached, return empty.
-    // TODO: cache check runs in DB if needed.
-    let check_runs = if should_fetch {
-        let check_run_list = github::fetch_check_runs(
-            &state.token,
-            &state.client,
-            &state.github_base_url,
-            &owner,
-            &repo,
-            &pr.head_sha,
-        )
-        .await
-        .unwrap_or_else(|_| crate::models::GithubCheckRunList {
-            total_count: 0,
-            check_runs: vec![],
-        });
-        check_run_list
-            .check_runs
-            .into_iter()
-            .map(|cr| CheckRunResponse {
-                name: cr.name,
-                status: cr.status,
-                conclusion: cr.conclusion,
-            })
-            .collect()
-    } else {
-        vec![]
-    };
+    let check_runs: Vec<CheckRunResponse> = queries::query_check_runs_for_pr(&state.pool, number)
+        .await?
+        .into_iter()
+        .map(|cr| CheckRunResponse {
+            name: cr.name,
+            status: cr.status,
+            conclusion: cr.conclusion,
+        })
+        .collect();
 
     Ok(Json(PrDetailResponse {
         pull_request: pr,
