@@ -173,6 +173,27 @@ describe("PrList", () => {
 		expect(screen.getByText("Refactor auth module")).toBeInTheDocument();
 	});
 
+	it("refetches notifications when refreshKey changes", async () => {
+		globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
+
+		const { rerender } = render(PrList, { props: { refreshKey: 0 } });
+
+		await waitFor(() => {
+			expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+		});
+
+		// Reset fetch mock to track new calls
+		const fetchSpy = mockFetch(MOCK_NOTIFICATIONS);
+		globalThis.fetch = fetchSpy;
+
+		// Changing refreshKey should trigger a refetch
+		await rerender({ refreshKey: 1 });
+
+		await waitFor(() => {
+			expect(fetchSpy).toHaveBeenCalled();
+		});
+	});
+
 	it("clicking a PR marks it as read (optimistic UI)", async () => {
 		globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
 
