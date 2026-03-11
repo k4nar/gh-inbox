@@ -9,6 +9,7 @@ use axum::{
     routing::{get, post},
 };
 use sqlx::SqlitePool;
+use tokio::sync::broadcast;
 
 use crate::api;
 use crate::github;
@@ -20,6 +21,7 @@ pub struct AppState {
     pub token: Arc<str>,
     pub client: reqwest::Client,
     pub github_base_url: String,
+    pub tx: broadcast::Sender<crate::models::SyncEvent>,
 }
 
 /// In release mode, the compiled frontend is embedded in the binary.
@@ -101,11 +103,13 @@ pub fn app(pool: SqlitePool, token: Arc<str>) -> Router {
 }
 
 pub fn app_with_base_url(pool: SqlitePool, token: Arc<str>, github_base_url: String) -> Router {
+    let (tx, _rx) = broadcast::channel(64);
     let state = AppState {
         pool,
         token,
         client: reqwest::Client::new(),
         github_base_url,
+        tx,
     };
 
     let router = Router::new()
