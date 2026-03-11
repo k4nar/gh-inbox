@@ -1,3 +1,5 @@
+pub mod sync;
+
 use crate::models::{
     GithubCheckRunList, GithubIssueComment, GithubPullRequest, GithubReviewComment, Notification,
 };

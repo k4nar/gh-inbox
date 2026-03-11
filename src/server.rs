@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 #[cfg(not(debug_assertions))]
 use axum::http::{StatusCode, header};
@@ -9,6 +10,7 @@ use axum::{
     routing::{get, post},
 };
 use sqlx::SqlitePool;
+use tokio::sync::broadcast;
 
 use crate::api;
 use crate::github;
@@ -20,6 +22,8 @@ pub struct AppState {
     pub token: Arc<str>,
     pub client: reqwest::Client,
     pub github_base_url: String,
+    pub tx: broadcast::Sender<crate::models::SyncEvent>,
+    pub bootstrap_done: Arc<AtomicBool>,
 }
 
 /// In release mode, the compiled frontend is embedded in the binary.
@@ -96,16 +100,23 @@ async fn index() -> &'static str {
     "gh-inbox works"
 }
 
-pub fn app(pool: SqlitePool, token: Arc<str>) -> Router {
+pub fn app(pool: SqlitePool, token: Arc<str>) -> (Router, AppState) {
     app_with_base_url(pool, token, github::GITHUB_API_BASE.to_string())
 }
 
-pub fn app_with_base_url(pool: SqlitePool, token: Arc<str>, github_base_url: String) -> Router {
+pub fn app_with_base_url(
+    pool: SqlitePool,
+    token: Arc<str>,
+    github_base_url: String,
+) -> (Router, AppState) {
+    let (tx, _rx) = broadcast::channel(64);
     let state = AppState {
         pool,
         token,
         client: reqwest::Client::new(),
         github_base_url,
+        tx,
+        bootstrap_done: Arc::new(AtomicBool::new(false)),
     };
 
     let router = Router::new()
@@ -123,7 +134,8 @@ pub fn app_with_base_url(pool: SqlitePool, token: Arc<str>, github_base_url: Str
         .route(
             "/api/pull-requests/{owner}/{repo}/{number}/threads",
             get(api::pull_requests::get_threads),
-        );
+        )
+        .route("/api/events", get(api::events::get_events));
 
     #[cfg(not(debug_assertions))]
     let router = router
@@ -133,5 +145,5 @@ pub fn app_with_base_url(pool: SqlitePool, token: Arc<str>, github_base_url: Str
     #[cfg(debug_assertions)]
     let router = router.route("/", get(index));
 
-    router.with_state(state)
+    (router.with_state(state.clone()), state)
 }

@@ -1,3 +1,16 @@
+<script>
+/** @type {{ syncStatus?: string }} */
+let { syncStatus = "idle" } = $props();
+
+let statusText = $derived(
+	syncStatus === "syncing"
+		? "syncing…"
+		: syncStatus === "error"
+			? "sync error"
+			: "synced",
+);
+</script>
+
 <header class="topbar">
   <div class="topbar-logo">
     <svg width="20" height="20" viewBox="0 0 16 16" fill="none">
@@ -8,8 +21,8 @@
   </div>
   <div class="topbar-spacer"></div>
   <div class="topbar-sync">
-    <div class="sync-dot"></div>
-    synced just now
+    <div class="sync-dot" class:syncing={syncStatus === "syncing"} class:error={syncStatus === "error"}></div>
+    {statusText}
   </div>
 </header>
 
@@ -45,5 +58,16 @@
     height: 8px;
     border-radius: 50%;
     background: var(--success-fg);
+  }
+  .sync-dot.syncing {
+    background: var(--attention-fg);
+    animation: pulse 1s ease-in-out infinite;
+  }
+  .sync-dot.error {
+    background: var(--danger-fg);
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
   }
 </style>

@@ -47,8 +47,11 @@ pub struct CommentRow {
 }
 
 /// Insert or update a notification.
-pub async fn upsert_notification(pool: &SqlitePool, notif: &NotificationRow) -> sqlx::Result<()> {
-    sqlx::query(
+/// Returns the number of rows affected (0 if nothing changed, 1 if inserted or updated).
+/// The ON CONFLICT WHERE clause ensures the UPDATE only fires when `updated_at` or `unread`
+/// actually changed, so `rows_affected` is 0 for no-op upserts — atomically, no separate SELECT.
+pub async fn upsert_notification(pool: &SqlitePool, notif: &NotificationRow) -> sqlx::Result<u64> {
+    let result = sqlx::query(
         "INSERT INTO notifications (id, pr_id, title, repository, reason, unread, archived, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
@@ -58,7 +61,10 @@ pub async fn upsert_notification(pool: &SqlitePool, notif: &NotificationRow) -> 
            reason = excluded.reason,
            unread = excluded.unread,
            updated_at = excluded.updated_at,
-           archived = CASE WHEN excluded.unread = 1 THEN 0 ELSE notifications.archived END",
+           archived = CASE WHEN excluded.unread = 1 THEN 0 ELSE notifications.archived END
+         WHERE notifications.updated_at != excluded.updated_at
+            OR notifications.unread != excluded.unread
+            OR (notifications.archived = 1 AND excluded.unread = 1)",
     )
     .bind(&notif.id)
     .bind(notif.pr_id)
@@ -70,7 +76,8 @@ pub async fn upsert_notification(pool: &SqlitePool, notif: &NotificationRow) -> 
     .bind(&notif.updated_at)
     .execute(pool)
     .await?;
-    Ok(())
+
+    Ok(result.rows_affected())
 }
 
 /// Query all non-archived (inbox) notifications.
@@ -313,6 +320,7 @@ mod tests {
 
         upsert_notification(&pool, &notif).await.unwrap();
         notif.reason = "mention".to_string();
+        notif.updated_at = "2025-01-02T00:00:00Z".to_string();
         upsert_notification(&pool, &notif).await.unwrap();
 
         let inbox = query_inbox(&pool).await.unwrap();

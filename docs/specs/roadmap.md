@@ -176,15 +176,15 @@ Goal: Users can mark notifications as read, archive PRs, view archived PRs, and 
 
 Goal: The server syncs notifications in the background and pushes updates to the frontend via SSE. The inbox updates in real-time without page refresh.
 
-- [ ] Add `tokio::sync::broadcast` channel to `AppState`
-- [ ] `src/models/sync_event.rs`: `SyncEvent` enum — `NewNotifications { ids: Vec<String> }`, `SyncStatus { status: String }`
-- [ ] `src/github/sync.rs`: `run_sync_loop(state, tx)` — async loop (60s default, configurable via env var), fetches notifications, upserts, sends events on changes
-- [ ] `src/api/events.rs`: handler for `GET /api/events` — returns `Sse<impl Stream>` subscribing to broadcast receiver
-- [ ] Wire route and spawn sync loop in `main.rs`
-- [ ] Integration tests: SSE events received after sync; no event when nothing changed
-- [ ] `frontend/src/lib/sse.js`: `EventSource` utility with `onNewNotifications` / `onSyncStatus` callbacks
-- [ ] Frontend: refetch list on `notifications:new` event; show sync status in Topbar (spinning/idle/error)
-- [ ] Frontend tests: SSE event parsing, list refresh on new notifications
-- [ ] Confirm: new GitHub notifications appear without page refresh; `cargo test` and `npm test` pass
+- [x] Add `tokio::sync::broadcast` channel to `AppState`
+- [x] `src/models/sync_event.rs`: `SyncEvent` enum — `NewNotifications { ids: Vec<String> }`, `SyncStatus { status: String }`
+- [x] `src/github/sync.rs`: `run_sync_loop(state, tx)` — async loop (60s default, configurable via env var), fetches notifications, upserts, sends events on changes
+- [x] `src/api/events.rs`: handler for `GET /api/events` — returns `Sse<impl Stream>` subscribing to broadcast receiver
+- [x] Wire route and spawn sync loop in `main.rs`
+- [x] Integration tests: SSE events received after sync; no event when nothing changed
+- [x] `frontend/src/lib/sse.js`: `EventSource` utility with `onNewNotifications` / `onSyncStatus` callbacks
+- [x] Frontend: refetch list on `notifications:new` event; show sync status in Topbar (spinning/idle/error)
+- [x] Frontend tests: SSE event parsing, list refresh on new notifications
+- [x] Confirm: new GitHub notifications appear without page refresh; `cargo test` and `npm test` pass
 
 **Done when:** New GitHub notifications appear in the inbox without page refresh. Sync status indicator works. All tests pass.
