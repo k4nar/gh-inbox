@@ -98,11 +98,15 @@ async fn index() -> &'static str {
     "gh-inbox works"
 }
 
-pub fn app(pool: SqlitePool, token: Arc<str>) -> Router {
+pub fn app(pool: SqlitePool, token: Arc<str>) -> (Router, AppState) {
     app_with_base_url(pool, token, github::GITHUB_API_BASE.to_string())
 }
 
-pub fn app_with_base_url(pool: SqlitePool, token: Arc<str>, github_base_url: String) -> Router {
+pub fn app_with_base_url(
+    pool: SqlitePool,
+    token: Arc<str>,
+    github_base_url: String,
+) -> (Router, AppState) {
     let (tx, _rx) = broadcast::channel(64);
     let state = AppState {
         pool,
@@ -137,5 +141,5 @@ pub fn app_with_base_url(pool: SqlitePool, token: Arc<str>, github_base_url: Str
     #[cfg(debug_assertions)]
     let router = router.route("/", get(index));
 
-    router.with_state(state)
+    (router.with_state(state.clone()), state)
 }

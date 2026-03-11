@@ -49,9 +49,16 @@ async fn main() {
         }
     }
 
-    axum::serve(listener, app(pool, Arc::from(token)))
-        .await
-        .expect("server error");
+    let (router, state) = app(pool, Arc::from(token));
+
+    // Spawn the background sync loop
+    let sync_state = state.clone();
+    let sync_tx = state.tx.clone();
+    tokio::spawn(async move {
+        gh_inbox::github::sync::run_sync_loop(sync_state, sync_tx).await;
+    });
+
+    axum::serve(listener, router).await.expect("server error");
 
     // Clean up the Vite dev server when the backend shuts down
     if let Some(mut child) = vite_child {
