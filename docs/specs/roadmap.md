@@ -188,3 +188,23 @@ Goal: The server syncs notifications in the background and pushes updates to the
 - [x] Confirm: new GitHub notifications appear without page refresh; `cargo test` and `npm test` pass
 
 **Done when:** New GitHub notifications appear in the inbox without page refresh. Sync status indicator works. All tests pass.
+
+---
+
+## M9 — PR Detail View Improvements
+
+Goal: The PR detail panel gains a direct link to GitHub, shows commits with "new" highlighting, and surfaces failed/pending CI checks first while collapsing passing ones.
+
+- [x] `src/models/pull_request.rs`: add `GithubCommit`, `GithubCommitDetail`, `GithubCommitAuthor` structs
+- [x] `src/github/mod.rs`: add `fetch_commits()` and `parse_commits()` + unit tests
+- [x] `migrations/007_create_commits.sql`: create `commits` table (sha, pr_id, message, author, committed_at)
+- [x] `src/db/queries.rs`: add `CommitRow`, `upsert_commit()`, `query_commits_for_pr()` + unit tests
+- [x] `src/api/pull_requests.rs`: fetch and cache commits in `get_pr()`, add `commits` to `PrDetailResponse`
+- [x] Integration test: assert commits appear in PR detail response
+- [x] `PrDetail.svelte`: add GitHub link icon in detail header (links to `detail.pull_request.url`, `target="_blank"`)
+- [x] `PrDetail.svelte`: add commits section — SHA, message, author, date; "new" badge for commits after `last_viewed_at`
+- [x] `PrDetail.svelte`: group CI checks — failed/pending shown first, passing behind collapsible toggle, "All checks passed" summary
+- [x] Frontend tests: GitHub link, commit rendering with new-commit highlighting, CI check grouping
+- [x] Confirm: `cargo test` and `npm test` pass
+
+**Done when:** PR detail shows a GitHub link, commits with "new" highlighting, and CI checks grouped by status. All tests pass.

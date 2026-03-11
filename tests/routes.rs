@@ -108,6 +108,23 @@ const MOCK_REVIEW_COMMENTS: &str = r#"[
     }
 ]"#;
 
+const MOCK_COMMITS: &str = r#"[
+    {
+        "sha": "abc123def456",
+        "commit": {
+            "message": "Add feature X\n\nDetailed description",
+            "author": { "name": "Alice", "date": "2025-06-01T09:00:00Z" }
+        }
+    },
+    {
+        "sha": "def789ghi012",
+        "commit": {
+            "message": "Fix tests",
+            "author": { "name": "Alice", "date": "2025-06-01T10:00:00Z" }
+        }
+    }
+]"#;
+
 const MOCK_CHECK_RUNS: &str = r#"{
     "total_count": 2,
     "check_runs": [
@@ -134,6 +151,10 @@ async fn start_mock_github() -> String {
         .route(
             "/repos/{owner}/{repo}/pulls/{number}/comments",
             get(|| async { ([("content-type", "application/json")], MOCK_REVIEW_COMMENTS) }),
+        )
+        .route(
+            "/repos/{owner}/{repo}/pulls/{number}/commits",
+            get(|| async { ([("content-type", "application/json")], MOCK_COMMITS) }),
         )
         .route(
             "/repos/{owner}/{repo}/commits/{sha}/check-runs",
@@ -246,6 +267,14 @@ async fn get_pr_detail_returns_metadata_comments_and_checks() {
     let comments = detail["comments"].as_array().unwrap();
     assert_eq!(comments.len(), 3);
 
+    // Commits
+    let commits = detail["commits"].as_array().unwrap();
+    assert_eq!(commits.len(), 2);
+    assert_eq!(commits[0]["sha"], "abc123def456");
+    assert_eq!(commits[0]["message"], "Add feature X"); // first line only
+    assert_eq!(commits[0]["author"], "Alice");
+    assert_eq!(commits[1]["sha"], "def789ghi012");
+
     // Check runs
     let check_runs = detail["check_runs"].as_array().unwrap();
     assert_eq!(check_runs.len(), 2);
@@ -254,6 +283,51 @@ async fn get_pr_detail_returns_metadata_comments_and_checks() {
 
     // last_viewed_at should be set
     assert!(detail["pull_request"]["last_viewed_at"].is_string());
+}
+
+#[tokio::test]
+async fn get_pr_detail_returns_check_runs_from_cache() {
+    let mock_base_url = start_mock_github().await;
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+
+    // First request populates the cache
+    let (app, _state) =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/pull-requests/owner/repo/42")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Second request within throttle window — should still return check runs from DB
+    let (app, _state) =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/pull-requests/owner/repo/42")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let detail: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let check_runs = detail["check_runs"].as_array().unwrap();
+    assert_eq!(
+        check_runs.len(),
+        2,
+        "check runs should be returned from cache"
+    );
+    assert_eq!(check_runs[0]["name"], "CI");
 }
 
 #[tokio::test]

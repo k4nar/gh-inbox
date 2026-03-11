@@ -1,5 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/svelte";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import PrDetail from "./PrDetail.svelte";
 
 const MOCK_DETAIL = {
@@ -44,6 +44,22 @@ const MOCK_DETAIL = {
 			in_reply_to_id: null,
 		},
 	],
+	commits: [
+		{
+			sha: "abc123",
+			pr_id: 42,
+			message: "First commit",
+			author: "alice",
+			committed_at: "2025-06-01T08:00:00Z",
+		},
+		{
+			sha: "def456",
+			pr_id: 42,
+			message: "Second commit",
+			author: "alice",
+			committed_at: "2025-06-01T11:00:00Z",
+		},
+	],
 	check_runs: [
 		{ name: "CI", status: "completed", conclusion: "success" },
 		{ name: "Lint", status: "in_progress", conclusion: null },
@@ -78,33 +94,39 @@ function mockDetailFetch() {
 	});
 }
 
-describe("PrDetail", () => {
-	beforeEach(() => {
-		vi.useFakeTimers({ now: new Date("2025-06-01T12:05:00Z") });
+function renderPrDetail() {
+	globalThis.fetch = mockDetailFetch();
+	return render(PrDetail, {
+		props: {
+			notification: {
+				repository: "owner/repo",
+				pr_id: 42,
+				title: "Fix bug in parser",
+			},
+			onClose: vi.fn(),
+		},
 	});
+}
 
+describe("PrDetail", () => {
 	afterEach(() => {
-		vi.useRealTimers();
+		cleanup();
 		vi.restoreAllMocks();
 	});
 
-	it("renders PR metadata", async () => {
-		globalThis.fetch = mockDetailFetch();
-		const onClose = vi.fn();
+	it("renders loading state initially", () => {
+		renderPrDetail();
+		expect(screen.getByText("Loading...")).toBeInTheDocument();
+	});
 
-		render(PrDetail, {
-			props: {
-				notification: {
-					repository: "owner/repo",
-					pr_id: 42,
-					title: "Fix bug in parser",
-				},
-				onClose,
-			},
-		});
+	it("renders PR metadata", async () => {
+		const { container } = renderPrDetail();
 
 		await waitFor(() => {
-			expect(screen.getByText("alice")).toBeInTheDocument();
+			// Check author in the PR meta section specifically
+			const authorValue = container.querySelector(".pr-meta .meta-value");
+			expect(authorValue).toBeInTheDocument();
+			expect(authorValue.textContent).toBe("alice");
 		});
 
 		expect(screen.getByText("open")).toBeInTheDocument();
@@ -112,42 +134,32 @@ describe("PrDetail", () => {
 		expect(screen.getByText("-3")).toBeInTheDocument();
 	});
 
-	it("renders CI status badges", async () => {
-		globalThis.fetch = mockDetailFetch();
+	it("renders CI status badges with failures/pending first", async () => {
+		const { container } = renderPrDetail();
 
-		render(PrDetail, {
-			props: {
-				notification: {
-					repository: "owner/repo",
-					pr_id: 42,
-					title: "Fix bug in parser",
-				},
-				onClose: vi.fn(),
-			},
+		// Lint is in_progress (pending) — should be visible immediately
+		await waitFor(() => {
+			expect(screen.getByText("Lint")).toBeInTheDocument();
 		});
+
+		expect(screen.getByText("Running")).toBeInTheDocument();
+
+		// CI is passing — should be behind toggle, not visible yet
+		expect(screen.queryByText("CI")).not.toBeInTheDocument();
+
+		// Click toggle to expand passing checks
+		const toggle = container.querySelector(".ci-passing-toggle");
+		expect(toggle).toBeInTheDocument();
+		toggle.click();
 
 		await waitFor(() => {
 			expect(screen.getByText("CI")).toBeInTheDocument();
 		});
-
-		expect(screen.getByText("Lint")).toBeInTheDocument();
 		expect(screen.getByText("success")).toBeInTheDocument();
-		expect(screen.getByText("Running")).toBeInTheDocument();
 	});
 
 	it("renders comment threads", async () => {
-		globalThis.fetch = mockDetailFetch();
-
-		render(PrDetail, {
-			props: {
-				notification: {
-					repository: "owner/repo",
-					pr_id: 42,
-					title: "Fix bug in parser",
-				},
-				onClose: vi.fn(),
-			},
-		});
+		renderPrDetail();
 
 		await waitFor(() => {
 			expect(screen.getByText("Looks good!")).toBeInTheDocument();
@@ -160,50 +172,70 @@ describe("PrDetail", () => {
 	});
 
 	it("highlights new comments with badge", async () => {
-		globalThis.fetch = mockDetailFetch();
-
-		const { container } = render(PrDetail, {
-			props: {
-				notification: {
-					repository: "owner/repo",
-					pr_id: 42,
-					title: "Fix bug in parser",
-				},
-				onClose: vi.fn(),
-			},
-		});
+		const { container } = renderPrDetail();
 
 		await waitFor(() => {
 			expect(screen.getByText("Nit: rename this")).toBeInTheDocument();
 		});
 
-		// Carol's comment (11:00) is after last_viewed_at (10:00) — should have "new" badge
-		const newBadges = container.querySelectorAll(".new-badge");
-		expect(newBadges.length).toBeGreaterThanOrEqual(1);
-
-		// Bob's comment (09:00) is before last_viewed_at — should NOT have "new" badge
-		// The "new" text should appear exactly once (for Carol's comment)
-		expect(screen.getAllByText("new")).toHaveLength(1);
+		// Carol's comment (11:00) is after last_viewed_at (10:00) — should have "new" badge in threads
+		const threadNewBadges = container.querySelectorAll(
+			".threads-section .new-badge",
+		);
+		expect(threadNewBadges).toHaveLength(1);
 	});
 
 	it("renders description", async () => {
-		globalThis.fetch = mockDetailFetch();
-
-		render(PrDetail, {
-			props: {
-				notification: {
-					repository: "owner/repo",
-					pr_id: 42,
-					title: "Fix bug in parser",
-				},
-				onClose: vi.fn(),
-			},
-		});
+		renderPrDetail();
 
 		await waitFor(() => {
 			expect(
 				screen.getByText("This fixes the parser bug."),
 			).toBeInTheDocument();
 		});
+	});
+
+	it("renders a link to the GitHub PR", async () => {
+		renderPrDetail();
+
+		await waitFor(() => {
+			const link = screen.getByTitle("Open on GitHub");
+			expect(link).toBeInTheDocument();
+			expect(link.getAttribute("href")).toBe(
+				"https://github.com/owner/repo/pull/42",
+			);
+			expect(link.getAttribute("target")).toBe("_blank");
+		});
+	});
+
+	it("renders commits with new-commit highlighting", async () => {
+		const { container } = renderPrDetail();
+
+		await waitFor(() => {
+			expect(screen.getByText("First commit")).toBeInTheDocument();
+		});
+
+		expect(screen.getByText("Second commit")).toBeInTheDocument();
+
+		// Second commit (11:00) is after last_viewed_at (10:00) — should have "new" badge
+		// First commit (08:00) is before — should not
+		const commitNewBadges = container.querySelectorAll(
+			".commits-section .new-badge",
+		);
+		expect(commitNewBadges).toHaveLength(1);
+	});
+
+	it("groups CI checks by status with failures first", async () => {
+		const { container } = renderPrDetail();
+
+		await waitFor(() => {
+			// Lint is in_progress (pending), should be shown prominently
+			expect(screen.getByText("Lint")).toBeInTheDocument();
+		});
+
+		// CI is passing — should be behind a collapsible toggle
+		const passingToggle = container.querySelector(".ci-passing-toggle");
+		expect(passingToggle).toBeInTheDocument();
+		expect(passingToggle.textContent).toContain("1 passing");
 	});
 });
