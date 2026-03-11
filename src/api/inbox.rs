@@ -9,59 +9,62 @@ use crate::server::AppState;
 
 use super::AppError;
 
-/// Minimum seconds between GitHub API fetches for notifications.
-const FETCH_THROTTLE_SECS: i64 = 30;
-
 #[derive(Deserialize)]
 pub struct InboxQuery {
     pub status: Option<String>,
 }
 
-/// GET /api/inbox — fetch notifications from GitHub, cache in SQLite, return JSON.
+/// Fetch notifications from GitHub and upsert into the database.
+/// Returns the number of notifications whose `updated_at` changed (i.e. truly new/updated).
+pub async fn sync_notifications(state: &AppState) -> Result<usize, AppError> {
+    // Set last_fetched_at BEFORE fetching to prevent race with concurrent bootstrap requests
+    queries::set_last_fetched_now(&state.pool, "notifications").await?;
+
+    let notifications =
+        github::fetch_notifications(&state.token, &state.client, &state.github_base_url).await?;
+
+    let mut changed = 0;
+    for notif in &notifications {
+        let pr_id = notif
+            .subject
+            .url
+            .as_deref()
+            .and_then(|url| url.rsplit('/').next())
+            .and_then(|s| s.parse::<i64>().ok());
+
+        let row = queries::NotificationRow {
+            id: notif.id.clone(),
+            pr_id,
+            title: notif.subject.title.clone(),
+            repository: notif.repository.full_name.clone(),
+            reason: notif.reason.clone(),
+            unread: notif.unread,
+            archived: false,
+            updated_at: notif.updated_at.clone(),
+        };
+
+        let rows_affected = queries::upsert_notification(&state.pool, &row).await?;
+        if rows_affected > 0 {
+            changed += 1;
+        }
+    }
+
+    Ok(changed)
+}
+
+/// GET /api/inbox — return notifications from SQLite, bootstrapping from GitHub on first call.
 pub async fn get_inbox(
     State(state): State<AppState>,
     Query(query): Query<InboxQuery>,
 ) -> Result<Json<Vec<NotificationRow>>, AppError> {
-    let should_fetch = match queries::get_last_fetched_epoch(&state.pool, "notifications").await? {
-        Some(last) => {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("system clock before UNIX epoch")
-                .as_secs() as i64;
-            now - last >= FETCH_THROTTLE_SECS
-        }
-        None => true,
-    };
+    // Bootstrap: if notifications have never been fetched, do it once inline.
+    // After that, the background sync loop handles fetching.
+    let has_fetched = queries::get_last_fetched_epoch(&state.pool, "notifications")
+        .await?
+        .is_some();
 
-    if should_fetch {
-        let notifications =
-            github::fetch_notifications(&state.token, &state.client, &state.github_base_url)
-                .await?;
-
-        for notif in &notifications {
-            // Extract PR id from the subject URL (e.g. ".../pulls/42" -> 42)
-            let pr_id = notif
-                .subject
-                .url
-                .as_deref()
-                .and_then(|url| url.rsplit('/').next())
-                .and_then(|s| s.parse::<i64>().ok());
-
-            let row = NotificationRow {
-                id: notif.id.clone(),
-                pr_id,
-                title: notif.subject.title.clone(),
-                repository: notif.repository.full_name.clone(),
-                reason: notif.reason.clone(),
-                unread: notif.unread,
-                archived: false,
-                updated_at: notif.updated_at.clone(),
-            };
-
-            queries::upsert_notification(&state.pool, &row).await?;
-        }
-
-        queries::set_last_fetched_now(&state.pool, "notifications").await?;
+    if !has_fetched {
+        sync_notifications(&state).await?;
     }
 
     let results = match query.status.as_deref() {

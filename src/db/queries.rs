@@ -47,7 +47,23 @@ pub struct CommentRow {
 }
 
 /// Insert or update a notification.
-pub async fn upsert_notification(pool: &SqlitePool, notif: &NotificationRow) -> sqlx::Result<()> {
+/// Returns the number of rows affected (0 if nothing changed, 1 if inserted or updated).
+pub async fn upsert_notification(pool: &SqlitePool, notif: &NotificationRow) -> sqlx::Result<u64> {
+    // Check if the row already exists with the same updated_at and unread status.
+    // If so, skip the upsert and report 0 changes (nothing new from GitHub).
+    let existing: Option<(String, bool)> =
+        sqlx::query_as("SELECT updated_at, unread FROM notifications WHERE id = ?")
+            .bind(&notif.id)
+            .fetch_optional(pool)
+            .await?;
+
+    let is_change = match &existing {
+        Some((existing_updated_at, existing_unread)) => {
+            existing_updated_at != &notif.updated_at || *existing_unread != notif.unread
+        }
+        None => true, // new row is always a change
+    };
+
     sqlx::query(
         "INSERT INTO notifications (id, pr_id, title, repository, reason, unread, archived, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -70,7 +86,8 @@ pub async fn upsert_notification(pool: &SqlitePool, notif: &NotificationRow) -> 
     .bind(&notif.updated_at)
     .execute(pool)
     .await?;
-    Ok(())
+
+    Ok(if is_change { 1 } else { 0 })
 }
 
 /// Query all non-archived (inbox) notifications.
