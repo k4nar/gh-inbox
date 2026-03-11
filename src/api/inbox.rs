@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -17,9 +19,6 @@ pub struct InboxQuery {
 /// Fetch notifications from GitHub and upsert into the database.
 /// Returns the number of notifications whose `updated_at` changed (i.e. truly new/updated).
 pub async fn sync_notifications(state: &AppState) -> Result<usize, AppError> {
-    // Set last_fetched_at BEFORE fetching to prevent race with concurrent bootstrap requests
-    queries::set_last_fetched_now(&state.pool, "notifications").await?;
-
     let notifications =
         github::fetch_notifications(&state.token, &state.client, &state.github_base_url).await?;
 
@@ -49,6 +48,8 @@ pub async fn sync_notifications(state: &AppState) -> Result<usize, AppError> {
         }
     }
 
+    queries::set_last_fetched_now(&state.pool, "notifications").await?;
+
     Ok(changed)
 }
 
@@ -57,14 +58,20 @@ pub async fn get_inbox(
     State(state): State<AppState>,
     Query(query): Query<InboxQuery>,
 ) -> Result<Json<Vec<NotificationRow>>, AppError> {
-    // Bootstrap: if notifications have never been fetched, do it once inline.
-    // After that, the background sync loop handles fetching.
-    let has_fetched = queries::get_last_fetched_epoch(&state.pool, "notifications")
-        .await?
-        .is_some();
-
-    if !has_fetched {
-        sync_notifications(&state).await?;
+    // Bootstrap: fetch once inline on first request.
+    // AtomicBool prevents concurrent bootstrap within the same AppState.
+    // last_fetched_at (set after successful sync) prevents re-bootstrap across AppState instances.
+    if state
+        .bootstrap_done
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+    {
+        let has_fetched = queries::get_last_fetched_epoch(&state.pool, "notifications")
+            .await?
+            .is_some();
+        if !has_fetched {
+            sync_notifications(&state).await?;
+        }
     }
 
     let results = match query.status.as_deref() {

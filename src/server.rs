@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 #[cfg(not(debug_assertions))]
 use axum::http::{StatusCode, header};
@@ -22,6 +23,7 @@ pub struct AppState {
     pub client: reqwest::Client,
     pub github_base_url: String,
     pub tx: broadcast::Sender<crate::models::SyncEvent>,
+    pub bootstrap_done: Arc<AtomicBool>,
 }
 
 /// In release mode, the compiled frontend is embedded in the binary.
@@ -114,6 +116,7 @@ pub fn app_with_base_url(
         client: reqwest::Client::new(),
         github_base_url,
         tx,
+        bootstrap_done: Arc::new(AtomicBool::new(false)),
     };
 
     let router = Router::new()
