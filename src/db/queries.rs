@@ -276,8 +276,7 @@ pub async fn upsert_commit(pool: &SqlitePool, commit: &CommitRow) -> sqlx::Resul
     sqlx::query(
         "INSERT INTO commits (sha, pr_id, message, author, committed_at)
          VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(sha) DO UPDATE SET
-           message = excluded.message",
+         ON CONFLICT(sha) DO NOTHING",
     )
     .bind(&commit.sha)
     .bind(commit.pr_id)
