@@ -84,6 +84,23 @@ describe("SSE utility", () => {
 		disconnectSSE();
 	});
 
+	it("open event resets status to idle after error", async () => {
+		const { connectSSE, getSyncStatus, disconnectSSE } = await import(
+			"./sse.svelte.js"
+		);
+		connectSSE();
+
+		// Simulate error
+		MockEventSource.instance.onerror();
+		expect(getSyncStatus()).toBe("error");
+
+		// Simulate reconnection
+		MockEventSource.instance.simulateEvent("open", {});
+		expect(getSyncStatus()).toBe("idle");
+
+		disconnectSSE();
+	});
+
 	it("unsubscribe removes callback", async () => {
 		const { connectSSE, onNewNotifications, disconnectSSE } = await import(
 			"./sse.svelte.js"

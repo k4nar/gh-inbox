@@ -45,6 +45,10 @@ export function connectSSE() {
 		}
 	});
 
+	eventSource.addEventListener("open", () => {
+		syncStatus = "idle";
+	});
+
 	eventSource.onerror = () => {
 		syncStatus = "error";
 	};
