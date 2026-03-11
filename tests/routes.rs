@@ -108,6 +108,23 @@ const MOCK_REVIEW_COMMENTS: &str = r#"[
     }
 ]"#;
 
+const MOCK_COMMITS: &str = r#"[
+    {
+        "sha": "abc123def456",
+        "commit": {
+            "message": "Add feature X\n\nDetailed description",
+            "author": { "name": "Alice", "date": "2025-06-01T09:00:00Z" }
+        }
+    },
+    {
+        "sha": "def789ghi012",
+        "commit": {
+            "message": "Fix tests",
+            "author": { "name": "Alice", "date": "2025-06-01T10:00:00Z" }
+        }
+    }
+]"#;
+
 const MOCK_CHECK_RUNS: &str = r#"{
     "total_count": 2,
     "check_runs": [
@@ -134,6 +151,10 @@ async fn start_mock_github() -> String {
         .route(
             "/repos/{owner}/{repo}/pulls/{number}/comments",
             get(|| async { ([("content-type", "application/json")], MOCK_REVIEW_COMMENTS) }),
+        )
+        .route(
+            "/repos/{owner}/{repo}/pulls/{number}/commits",
+            get(|| async { ([("content-type", "application/json")], MOCK_COMMITS) }),
         )
         .route(
             "/repos/{owner}/{repo}/commits/{sha}/check-runs",
@@ -245,6 +266,14 @@ async fn get_pr_detail_returns_metadata_comments_and_checks() {
     // Comments (1 issue + 2 review = 3 total)
     let comments = detail["comments"].as_array().unwrap();
     assert_eq!(comments.len(), 3);
+
+    // Commits
+    let commits = detail["commits"].as_array().unwrap();
+    assert_eq!(commits.len(), 2);
+    assert_eq!(commits[0]["sha"], "abc123def456");
+    assert_eq!(commits[0]["message"], "Add feature X"); // first line only
+    assert_eq!(commits[0]["author"], "Alice");
+    assert_eq!(commits[1]["sha"], "def789ghi012");
 
     // Check runs
     let check_runs = detail["check_runs"].as_array().unwrap();

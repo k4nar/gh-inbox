@@ -1,5 +1,4 @@
 <script>
-import { onMount } from "svelte";
 import CommentThread from "./CommentThread.svelte";
 import { timeAgo } from "./timeago.js";
 
@@ -58,6 +57,28 @@ function ciLabel(status, conclusion) {
 	if (status !== "completed") return "Running";
 	return conclusion || "unknown";
 }
+
+function isPassing(cr) {
+	return (
+		cr.status === "completed" &&
+		(cr.conclusion === "success" ||
+			cr.conclusion === "skipped" ||
+			cr.conclusion === "neutral")
+	);
+}
+
+let failedOrPending = $derived(
+	detail?.check_runs?.filter((cr) => !isPassing(cr)) ?? [],
+);
+let passingChecks = $derived(
+	detail?.check_runs?.filter((cr) => isPassing(cr)) ?? [],
+);
+let showPassing = $state(false);
+
+function isNewCommit(commit) {
+	if (!detail?.pull_request?.last_viewed_at) return false;
+	return commit.committed_at > detail.pull_request.last_viewed_at;
+}
 </script>
 
 <div class="pr-detail">
@@ -66,6 +87,11 @@ function ciLabel(status, conclusion) {
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M7.78 12.53a.75.75 0 0 1-1.06 0L2.47 8.28a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 1.06L4.81 7h7.44a.75.75 0 0 1 0 1.5H4.81l2.97 2.97a.75.75 0 0 1 0 1.06Z"/></svg>
     </button>
     <span class="detail-title">{notification.title}</span>
+    {#if detail?.pull_request?.url}
+      <a class="gh-link" href={detail.pull_request.url} target="_blank" rel="noopener" title="Open on GitHub">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/></svg>
+      </a>
+    {/if}
   </div>
 
   {#if loading}
@@ -96,12 +122,59 @@ function ciLabel(status, conclusion) {
       {#if detail.check_runs.length > 0}
         <div class="ci-section">
           <h3 class="section-title">CI Status</h3>
-          <div class="ci-list">
-            {#each detail.check_runs as cr}
-              <div class="ci-item">
-                <span class="ci-dot {ciClass(cr.status, cr.conclusion)}"></span>
-                <span class="ci-name">{cr.name}</span>
-                <span class="ci-conclusion">{ciLabel(cr.status, cr.conclusion)}</span>
+          {#if failedOrPending.length === 0 && passingChecks.length > 0}
+            <div class="ci-all-passing">
+              <span class="ci-dot ci-success"></span>
+              All checks passed
+            </div>
+          {:else}
+            <div class="ci-list">
+              {#each failedOrPending as cr}
+                <div class="ci-item">
+                  <span class="ci-dot {ciClass(cr.status, cr.conclusion)}"></span>
+                  <span class="ci-name">{cr.name}</span>
+                  <span class="ci-conclusion">{ciLabel(cr.status, cr.conclusion)}</span>
+                </div>
+              {/each}
+            </div>
+            {#if passingChecks.length > 0}
+              <button class="ci-passing-toggle" onclick={() => showPassing = !showPassing}>
+                <span class="ci-dot ci-success"></span>
+                {passingChecks.length} passing
+                <svg class="toggle-chevron" class:open={showPassing} width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z"/></svg>
+              </button>
+              {#if showPassing}
+                <div class="ci-list">
+                  {#each passingChecks as cr}
+                    <div class="ci-item">
+                      <span class="ci-dot {ciClass(cr.status, cr.conclusion)}"></span>
+                      <span class="ci-name">{cr.name}</span>
+                      <span class="ci-conclusion">{ciLabel(cr.status, cr.conclusion)}</span>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            {/if}
+          {/if}
+        </div>
+      {/if}
+
+      {#if detail.commits && detail.commits.length > 0}
+        <div class="commits-section">
+          <h3 class="section-title">
+            Commits
+            <span class="comment-count">{detail.commits.length}</span>
+          </h3>
+          <div class="commits-list">
+            {#each detail.commits as commit (commit.sha)}
+              <div class="commit-item" class:new-commit={isNewCommit(commit)}>
+                <span class="commit-sha">{commit.sha.slice(0, 7)}</span>
+                <span class="commit-message">{commit.message}</span>
+                <span class="commit-author">{commit.author}</span>
+                <span class="commit-date">{timeAgo(commit.committed_at)}</span>
+                {#if isNewCommit(commit)}
+                  <span class="new-badge">new</span>
+                {/if}
               </div>
             {/each}
           </div>
@@ -298,5 +371,109 @@ function ciLabel(status, conclusion) {
     display: flex;
     flex-direction: column;
     gap: 12px;
+  }
+
+  .gh-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--fg-muted);
+    margin-left: auto;
+    flex-shrink: 0;
+    padding: 4px;
+    border-radius: 6px;
+  }
+  .gh-link:hover {
+    color: var(--fg-default);
+    background: var(--canvas-subtle);
+  }
+
+  .ci-all-passing {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--success-fg);
+    padding: 4px 0;
+  }
+  .ci-passing-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--fg-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px 0;
+    font-family: inherit;
+  }
+  .ci-passing-toggle:hover {
+    color: var(--fg-default);
+  }
+  .toggle-chevron {
+    transition: transform 0.15s;
+  }
+  .toggle-chevron.open {
+    transform: rotate(180deg);
+  }
+
+  .commits-list {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .commit-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border-muted);
+  }
+  .commit-item:last-child {
+    border-bottom: none;
+  }
+  .new-commit {
+    background: rgba(47, 129, 247, 0.05);
+    border-left: 3px solid var(--accent-fg);
+  }
+  .commit-sha {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    color: var(--accent-fg);
+    flex-shrink: 0;
+  }
+  .commit-message {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--fg-default);
+  }
+  .commit-author {
+    font-size: 12px;
+    color: var(--fg-muted);
+    flex-shrink: 0;
+  }
+  .commit-date {
+    font-size: 12px;
+    color: var(--fg-subtle);
+    flex-shrink: 0;
+  }
+  .new-badge {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--accent-fg);
+    background: rgba(47, 129, 247, 0.15);
+    border: 1px solid rgba(47, 129, 247, 0.4);
+    border-radius: 2em;
+    padding: 0 6px;
+    line-height: 18px;
+    flex-shrink: 0;
   }
 </style>

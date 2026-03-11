@@ -62,3 +62,22 @@ pub struct GithubCheckRunList {
     pub total_count: i64,
     pub check_runs: Vec<GithubCheckRun>,
 }
+
+/// A GitHub commit from the PR commits endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubCommit {
+    pub sha: String,
+    pub commit: GithubCommitDetail,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubCommitDetail {
+    pub message: String,
+    pub author: GithubCommitAuthor,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubCommitAuthor {
+    pub name: String,
+    pub date: String,
+}

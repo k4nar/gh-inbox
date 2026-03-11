@@ -31,6 +31,16 @@ pub struct PullRequestRow {
     pub changed_files: i64,
 }
 
+/// A commit row from the database.
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+pub struct CommitRow {
+    pub sha: String,
+    pub pr_id: i64,
+    pub message: String,
+    pub author: String,
+    pub committed_at: String,
+}
+
 /// A comment row from the database.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct CommentRow {
@@ -255,6 +265,37 @@ pub async fn query_comments_for_pr(pool: &SqlitePool, pr_id: i64) -> sqlx::Resul
          FROM comments
          WHERE pr_id = ?
          ORDER BY created_at ASC",
+    )
+    .bind(pr_id)
+    .fetch_all(pool)
+    .await
+}
+
+/// Insert or update a commit.
+pub async fn upsert_commit(pool: &SqlitePool, commit: &CommitRow) -> sqlx::Result<()> {
+    sqlx::query(
+        "INSERT INTO commits (sha, pr_id, message, author, committed_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(sha) DO UPDATE SET
+           message = excluded.message",
+    )
+    .bind(&commit.sha)
+    .bind(commit.pr_id)
+    .bind(&commit.message)
+    .bind(&commit.author)
+    .bind(&commit.committed_at)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Query all commits for a given PR, ordered by commit time.
+pub async fn query_commits_for_pr(pool: &SqlitePool, pr_id: i64) -> sqlx::Result<Vec<CommitRow>> {
+    sqlx::query_as::<_, CommitRow>(
+        "SELECT sha, pr_id, message, author, committed_at
+         FROM commits
+         WHERE pr_id = ?
+         ORDER BY committed_at ASC",
     )
     .bind(pr_id)
     .fetch_all(pool)
@@ -519,5 +560,51 @@ mod tests {
         assert_eq!(comments.len(), 2);
         assert_eq!(comments[0].thread_id, Some("thread-1".to_string()));
         assert_eq!(comments[1].thread_id, Some("thread-1".to_string()));
+    }
+
+    fn sample_commit(sha: &str, pr_id: i64) -> CommitRow {
+        CommitRow {
+            sha: sha.to_string(),
+            pr_id,
+            message: "Fix something".to_string(),
+            author: "alice".to_string(),
+            committed_at: "2025-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn upsert_and_query_commits() {
+        let pool = test_pool().await;
+        let pr = sample_pr(42);
+        upsert_pull_request(&pool, &pr).await.unwrap();
+
+        let c1 = sample_commit("aaa", 42);
+        let mut c2 = sample_commit("bbb", 42);
+        c2.committed_at = "2025-01-02T00:00:00Z".to_string();
+        c2.message = "Second commit".to_string();
+
+        upsert_commit(&pool, &c1).await.unwrap();
+        upsert_commit(&pool, &c2).await.unwrap();
+
+        let commits = query_commits_for_pr(&pool, 42).await.unwrap();
+        assert_eq!(commits.len(), 2);
+        assert_eq!(commits[0].sha, "aaa");
+        assert_eq!(commits[1].sha, "bbb");
+    }
+
+    #[tokio::test]
+    async fn upsert_commit_is_idempotent() {
+        let pool = test_pool().await;
+        let pr = sample_pr(42);
+        upsert_pull_request(&pool, &pr).await.unwrap();
+
+        let mut c = sample_commit("aaa", 42);
+        upsert_commit(&pool, &c).await.unwrap();
+        c.message = "Updated message".to_string();
+        upsert_commit(&pool, &c).await.unwrap();
+
+        let commits = query_commits_for_pr(&pool, 42).await.unwrap();
+        assert_eq!(commits.len(), 1);
+        assert_eq!(commits[0].message, "Updated message");
     }
 }
