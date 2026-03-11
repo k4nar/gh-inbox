@@ -3,11 +3,12 @@ import { reasonClass, reasonLabel } from "./reason.js";
 import { timeAgo } from "./timeago.js";
 import { showError } from "./toast.svelte.js";
 
-/** @type {{ currentView?: string, onSelect?: (notification: any) => void, selectedId?: string|null }} */
+/** @type {{ currentView?: string, onSelect?: (notification: any) => void, selectedId?: string|null, refreshKey?: number }} */
 let {
 	currentView = "inbox",
 	onSelect = () => {},
 	selectedId = null,
+	refreshKey = 0,
 } = $props();
 
 let notifications = $state([]);
@@ -20,6 +21,8 @@ async function fetchNotifications(view) {
 }
 
 $effect(() => {
+	// Re-fetch when view changes or when SSE signals new notifications
+	void refreshKey;
 	fetchNotifications(currentView);
 });
 
