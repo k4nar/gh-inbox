@@ -598,12 +598,14 @@ mod tests {
         upsert_pull_request(&pool, &pr).await.unwrap();
 
         let mut c = sample_commit("aaa", 42);
+        c.message = "aaa".to_string();
         upsert_commit(&pool, &c).await.unwrap();
-        c.message = "Updated message".to_string();
+        c.message = "bbb".to_string();
         upsert_commit(&pool, &c).await.unwrap();
 
+        // The second upsert should not overwrite the first (commits are supposed to be immutable)
         let commits = query_commits_for_pr(&pool, 42).await.unwrap();
         assert_eq!(commits.len(), 1);
-        assert_eq!(commits[0].message, "Updated message");
+        assert_eq!(commits[0].message, "aaa");
     }
 }
