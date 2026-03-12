@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { timeAgo } from "./timeago.js";
+import { timeAgo } from "./timeago.ts";
 
 describe("timeAgo", () => {
 	afterEach(() => {

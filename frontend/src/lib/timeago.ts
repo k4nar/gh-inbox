@@ -1,9 +1,4 @@
-/**
- * Formats an ISO timestamp into a human-readable relative time string.
- * @param {string} iso - ISO 8601 timestamp
- * @returns {string}
- */
-export function timeAgo(iso) {
+export function timeAgo(iso: string): string {
 	const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
 	if (seconds < 60) return "just now";
 
