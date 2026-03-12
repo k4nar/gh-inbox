@@ -1,10 +1,13 @@
-<script>
-import { timeAgo } from "./timeago.js";
+<script lang="ts">
+import { timeAgo } from "./timeago.ts";
+import type { Comment, Thread } from "./types.ts";
 
-/** @type {{ thread: { thread_id: string, path: string|null, comments: any[] }, lastViewedAt: string|null }} */
-let { thread, lastViewedAt = null } = $props();
+let {
+	thread,
+	lastViewedAt = null,
+}: { thread: Thread; lastViewedAt?: string | null } = $props();
 
-function isNew(comment) {
+function isNew(comment: Comment): boolean {
 	if (!lastViewedAt) return false;
 	return comment.created_at > lastViewedAt;
 }
