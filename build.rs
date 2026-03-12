@@ -9,21 +9,20 @@ fn main() {
 
     println!("cargo:rerun-if-changed=frontend/src");
     println!("cargo:rerun-if-changed=frontend/index.html");
-    println!("cargo:rerun-if-changed=frontend/package.json");
+    println!("cargo:rerun-if-changed=package.json");
+    println!("cargo:rerun-if-changed=package-lock.json");
 
     let ci_status = Command::new("npm")
         .args(["ci"])
-        .current_dir("frontend")
         .status()
         .expect("failed to run `npm ci` — is npm installed?");
 
     if !ci_status.success() {
-        panic!("`npm ci` failed — check frontend/package-lock.json");
+        panic!("`npm ci` failed — check package-lock.json");
     }
 
     let build_status = Command::new("npm")
         .args(["run", "build"])
-        .current_dir("frontend")
         .status()
         .expect("failed to run `npm run build`");
 

@@ -1,0 +1,29 @@
+{
+	"name": "gh-inbox",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"dev": "vite frontend",
+		"build": "vite build frontend",
+		"preview": "vite preview frontend",
+		"test": "vitest run --root frontend",
+		"lint": "biome check frontend/",
+		"lint:fix": "biome check --write frontend/",
+		"check": "svelte-check --tsconfig frontend/tsconfig.json"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.4.6",
+		"@sveltejs/vite-plugin-svelte": "^6.2.1",
+		"@testing-library/jest-dom": "^6.9.1",
+		"@testing-library/svelte": "^5.3.1",
+		"jsdom": "^28.1.0",
+		"svelte": "^5.45.2",
+		"typescript": "^5.9.3",
+		"vite": "^7.3.1",
+		"vitest": "^4.0.18"
+	},
+	"dependencies": {
+		"bits-ui": "^2.16.3"
+	}
+}

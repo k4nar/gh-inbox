@@ -18,10 +18,10 @@ types = ["rust"]
 pass_filenames = false
 
 [[repos.hooks]]
-id = "biome-check"
-name = "biome check"
+id = "npm-lint"
+name = "npm lint & fix"
 language = "system"
-entry = "bash -c 'cd frontend && npx biome check --write .'"
+entry = "npm run lint:fix"
 files = "^frontend/"
 pass_filenames = false
 
@@ -29,7 +29,7 @@ pass_filenames = false
 id = "svelte-check"
 name = "svelte check"
 language = "system"
-entry = "bash -c 'cd frontend && npx svelte-check --tsconfig tsconfig.json'"
+entry = "npx svelte-check --tsconfig frontend/tsconfig.json"
 files = "^frontend/"
 pass_filenames = false
 
@@ -37,6 +37,6 @@ pass_filenames = false
 id = "npm-test"
 name = "npm test"
 language = "system"
-entry = "npm test --prefix frontend"
+entry = "npm test"
 files = "^frontend/"
 pass_filenames = false
