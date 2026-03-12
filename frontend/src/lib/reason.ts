@@ -1,7 +1,4 @@
-/**
- * Maps a GitHub notification reason string to a human-readable label.
- */
-const REASON_LABELS = {
+const REASON_LABELS: Record<string, string> = {
 	review_requested: "Review requested",
 	mention: "Mentioned",
 	assign: "Assigned",
@@ -14,20 +11,11 @@ const REASON_LABELS = {
 	state_change: "State changed",
 };
 
-/**
- * @param {string} reason - GitHub notification reason
- * @returns {string} Human-readable label
- */
-export function reasonLabel(reason) {
+export function reasonLabel(reason: string): string {
 	return REASON_LABELS[reason] ?? reason;
 }
 
-/**
- * Maps a reason to a CSS class suffix for pill styling.
- * @param {string} reason
- * @returns {string}
- */
-export function reasonClass(reason) {
+export function reasonClass(reason: string): string {
 	switch (reason) {
 		case "review_requested":
 			return "review";

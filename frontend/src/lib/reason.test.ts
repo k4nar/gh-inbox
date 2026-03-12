@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reasonClass, reasonLabel } from "./reason.js";
+import { reasonClass, reasonLabel } from "./reason.ts";
 
 describe("reasonLabel", () => {
 	it('maps review_requested to "Review requested"', () => {
