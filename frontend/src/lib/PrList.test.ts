@@ -25,13 +25,13 @@ const MOCK_NOTIFICATIONS = [
 	},
 ];
 
-function mockFetch(data) {
+function mockFetch(data: unknown) {
 	return vi.fn(() =>
 		Promise.resolve({
 			ok: true,
 			json: () => Promise.resolve(data),
 		}),
-	);
+	) as unknown as typeof fetch;
 }
 
 describe("PrList", () => {
@@ -121,12 +121,12 @@ describe("PrList", () => {
 		});
 
 		// Header shows count with unread info
-		const listCount = container.querySelector(".list-count");
+		const listCount = container.querySelector(".list-count")!;
 		expect(listCount.textContent).toContain("2");
 		expect(listCount.textContent).toContain("1 unread");
 
 		// Statusbar shows count with unread info
-		const statusbar = container.querySelector(".statusbar");
+		const statusbar = container.querySelector(".statusbar")!;
 		expect(statusbar.textContent).toContain("2 PRs");
 		expect(statusbar.textContent).toContain("1 unread");
 	});
@@ -209,7 +209,7 @@ describe("PrList", () => {
 		expect(dots[0].classList.contains("read")).toBe(false);
 
 		// Click the first PR row
-		const firstRow = screen.getByText("Fix bug in parser").closest(".pr-item");
+		const firstRow = screen.getByText("Fix bug in parser").closest(".pr-item")!;
 		await fireEvent.click(firstRow);
 
 		// Dot should now have .read class

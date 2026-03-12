@@ -91,7 +91,7 @@ function mockDetailFetch() {
 			ok: true,
 			json: () => Promise.resolve(MOCK_DETAIL),
 		});
-	});
+	}) as unknown as typeof fetch;
 }
 
 function renderPrDetail() {
@@ -126,7 +126,7 @@ describe("PrDetail", () => {
 			// Check author in the PR meta section specifically
 			const authorValue = container.querySelector(".pr-meta .meta-value");
 			expect(authorValue).toBeInTheDocument();
-			expect(authorValue.textContent).toBe("alice");
+			expect(authorValue!.textContent).toBe("alice");
 		});
 
 		expect(screen.getByText("open")).toBeInTheDocument();
@@ -150,7 +150,7 @@ describe("PrDetail", () => {
 		// Click toggle to expand passing checks
 		const toggle = container.querySelector(".ci-passing-toggle");
 		expect(toggle).toBeInTheDocument();
-		toggle.click();
+		(toggle as HTMLElement).click();
 
 		await waitFor(() => {
 			expect(screen.getByText("CI")).toBeInTheDocument();
@@ -236,6 +236,6 @@ describe("PrDetail", () => {
 		// CI is passing — should be behind a collapsible toggle
 		const passingToggle = container.querySelector(".ci-passing-toggle");
 		expect(passingToggle).toBeInTheDocument();
-		expect(passingToggle.textContent).toContain("1 passing");
+		expect(passingToggle!.textContent).toContain("1 passing");
 	});
 });

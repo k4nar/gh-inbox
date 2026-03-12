@@ -25,16 +25,16 @@ describe("Sidebar", () => {
 
 	it("shows active class on Inbox when currentView is inbox", () => {
 		render(Sidebar, { props: { currentView: "inbox" } });
-		const inboxBtn = screen.getByText("Inbox").closest("button");
-		const archivedBtn = screen.getByText("Archived").closest("button");
+		const inboxBtn = screen.getByText("Inbox").closest("button")!;
+		const archivedBtn = screen.getByText("Archived").closest("button")!;
 		expect(inboxBtn.classList.contains("active")).toBe(true);
 		expect(archivedBtn.classList.contains("active")).toBe(false);
 	});
 
 	it("shows active class on Archived when currentView is archived", () => {
 		render(Sidebar, { props: { currentView: "archived" } });
-		const inboxBtn = screen.getByText("Inbox").closest("button");
-		const archivedBtn = screen.getByText("Archived").closest("button");
+		const inboxBtn = screen.getByText("Inbox").closest("button")!;
+		const archivedBtn = screen.getByText("Archived").closest("button")!;
 		expect(inboxBtn.classList.contains("active")).toBe(false);
 		expect(archivedBtn.classList.contains("active")).toBe(true);
 	});

@@ -10,7 +10,9 @@
 		"esModuleInterop": true,
 		"types": ["vite/client"],
 		"skipLibCheck": true,
-		"strict": true
+		"strict": true,
+		"allowImportingTsExtensions": true,
+		"noEmit": true
 	},
 	"include": ["src/**/*.d.ts", "src/**/*.ts", "src/**/*.svelte"]
 }

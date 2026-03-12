@@ -18,9 +18,15 @@ describe("CommentThread", () => {
 			comments: [
 				{
 					id: 1,
+					pr_id: 0,
+					thread_id: "conversation",
 					author: "bob",
 					body: "Looks good!",
 					created_at: "2025-06-01T11:00:00Z",
+					comment_type: "issue_comment",
+					path: null,
+					position: null,
+					in_reply_to_id: null,
 				},
 			],
 		};
@@ -39,9 +45,15 @@ describe("CommentThread", () => {
 			comments: [
 				{
 					id: 100,
+					pr_id: 0,
+					thread_id: "review:100",
 					author: "carol",
 					body: "Nit: rename this",
 					created_at: "2025-06-01T11:00:00Z",
+					comment_type: "review_comment",
+					path: "src/main.rs",
+					position: 1,
+					in_reply_to_id: null,
 				},
 			],
 		};
@@ -59,15 +71,27 @@ describe("CommentThread", () => {
 			comments: [
 				{
 					id: 1,
+					pr_id: 0,
+					thread_id: "conversation",
 					author: "bob",
 					body: "Old comment",
 					created_at: "2025-06-01T09:00:00Z",
+					comment_type: "issue_comment",
+					path: null,
+					position: null,
+					in_reply_to_id: null,
 				},
 				{
 					id: 2,
+					pr_id: 0,
+					thread_id: "conversation",
 					author: "carol",
 					body: "New comment",
 					created_at: "2025-06-01T11:00:00Z",
+					comment_type: "issue_comment",
+					path: null,
+					position: null,
+					in_reply_to_id: null,
 				},
 			],
 		};
@@ -88,9 +112,15 @@ describe("CommentThread", () => {
 			comments: [
 				{
 					id: 1,
+					pr_id: 0,
+					thread_id: "conversation",
 					author: "bob",
 					body: "A comment",
 					created_at: "2025-06-01T11:00:00Z",
+					comment_type: "issue_comment",
+					path: null,
+					position: null,
+					in_reply_to_id: null,
 				},
 			],
 		};

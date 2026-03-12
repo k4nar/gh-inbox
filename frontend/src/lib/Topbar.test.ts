@@ -22,7 +22,7 @@ describe("Topbar", () => {
 		const { container } = render(Topbar, {
 			props: { syncStatus: "syncing" },
 		});
-		const dot = container.querySelector(".sync-dot");
+		const dot = container.querySelector(".sync-dot")!;
 		expect(dot.classList.contains("syncing")).toBe(true);
 	});
 
@@ -30,7 +30,7 @@ describe("Topbar", () => {
 		const { container } = render(Topbar, {
 			props: { syncStatus: "error" },
 		});
-		const dot = container.querySelector(".sync-dot");
+		const dot = container.querySelector(".sync-dot")!;
 		expect(dot.classList.contains("error")).toBe(true);
 	});
 });

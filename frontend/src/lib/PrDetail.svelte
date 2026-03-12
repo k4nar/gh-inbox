@@ -17,7 +17,7 @@ let {
 	onClose: () => void;
 } = $props();
 
-let detail: PrDetailResponse | null = $state(null);
+let detail = $state<PrDetailResponse | null>(null);
 let threads: Thread[] = $state([]);
 let loading = $state(true);
 let error: string | null = $state(null);
@@ -51,7 +51,7 @@ async function loadDetail(): Promise<void> {
 			threads = await tRes.json();
 		}
 	} catch (e) {
-		error = (e as Error).message;
+		error = e instanceof Error ? e.message : String(e);
 	} finally {
 		loading = false;
 	}
@@ -79,11 +79,11 @@ function isPassing(cr: CheckRun): boolean {
 	);
 }
 
-let failedOrPending = $derived(
-	detail?.check_runs?.filter((cr: CheckRun) => !isPassing(cr)) ?? [],
+let failedOrPending: CheckRun[] = $derived(
+	detail != null ? detail.check_runs.filter((cr) => !isPassing(cr)) : [],
 );
-let passingChecks = $derived(
-	detail?.check_runs?.filter((cr: CheckRun) => isPassing(cr)) ?? [],
+let passingChecks: CheckRun[] = $derived(
+	detail != null ? detail.check_runs.filter((cr) => isPassing(cr)) : [],
 );
 let showPassing = $state(false);
 
