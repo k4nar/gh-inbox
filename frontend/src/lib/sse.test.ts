@@ -1,108 +1,108 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 class MockEventSource {
-	static instance: MockEventSource;
-	url: string;
-	listeners: Record<string, (event: { data: string }) => void> = {};
-	onerror: (() => void) | null = null;
-	closed = false;
+    static instance: MockEventSource;
+    url: string;
+    listeners: Record<string, (event: { data: string }) => void> = {};
+    onerror: (() => void) | null = null;
+    closed = false;
 
-	constructor(url: string) {
-		this.url = url;
-		MockEventSource.instance = this;
-	}
-	addEventListener(type: string, handler: (event: { data: string }) => void) {
-		this.listeners[type] = handler;
-	}
-	close() {
-		this.closed = true;
-	}
-	simulateEvent(type: string, data: unknown) {
-		if (this.listeners[type]) {
-			this.listeners[type]({ data: JSON.stringify(data) });
-		}
-	}
+    constructor(url: string) {
+        this.url = url;
+        MockEventSource.instance = this;
+    }
+    addEventListener(type: string, handler: (event: { data: string }) => void) {
+        this.listeners[type] = handler;
+    }
+    close() {
+        this.closed = true;
+    }
+    simulateEvent(type: string, data: unknown) {
+        if (this.listeners[type]) {
+            this.listeners[type]({ data: JSON.stringify(data) });
+        }
+    }
 }
 
 describe("SSE utility", () => {
-	beforeEach(() => {
-		(globalThis as Record<string, unknown>).EventSource = MockEventSource;
-	});
+    beforeEach(() => {
+        (globalThis as Record<string, unknown>).EventSource = MockEventSource;
+    });
 
-	afterEach(() => {
-		vi.resetModules();
-		delete (globalThis as Record<string, unknown>).EventSource;
-	});
+    afterEach(() => {
+        vi.resetModules();
+        delete (globalThis as Record<string, unknown>).EventSource;
+    });
 
-	it("connectSSE creates an EventSource to /api/events", async () => {
-		const { connectSSE, disconnectSSE } = await import("./sse.svelte.ts");
-		connectSSE();
-		expect(MockEventSource.instance.url).toBe("/api/events");
-		disconnectSSE();
-	});
+    it("connectSSE creates an EventSource to /api/events", async () => {
+        const { connectSSE, disconnectSSE } = await import("./sse.svelte.ts");
+        connectSSE();
+        expect(MockEventSource.instance.url).toBe("/api/events");
+        disconnectSSE();
+    });
 
-	it("sync:status started sets status to syncing", async () => {
-		const { connectSSE, getSyncStatus, disconnectSSE } = await import(
-			"./sse.svelte.ts"
-		);
-		connectSSE();
-		MockEventSource.instance.simulateEvent("sync:status", {
-			status: "started",
-		});
-		expect(getSyncStatus()).toBe("syncing");
-		disconnectSSE();
-	});
+    it("sync:status started sets status to syncing", async () => {
+        const { connectSSE, getSyncStatus, disconnectSSE } = await import(
+            "./sse.svelte.ts"
+        );
+        connectSSE();
+        MockEventSource.instance.simulateEvent("sync:status", {
+            status: "started",
+        });
+        expect(getSyncStatus()).toBe("syncing");
+        disconnectSSE();
+    });
 
-	it("sync:status completed sets status to idle", async () => {
-		const { connectSSE, getSyncStatus, disconnectSSE } = await import(
-			"./sse.svelte.ts"
-		);
-		connectSSE();
-		MockEventSource.instance.simulateEvent("sync:status", {
-			status: "completed",
-		});
-		expect(getSyncStatus()).toBe("idle");
-		disconnectSSE();
-	});
+    it("sync:status completed sets status to idle", async () => {
+        const { connectSSE, getSyncStatus, disconnectSSE } = await import(
+            "./sse.svelte.ts"
+        );
+        connectSSE();
+        MockEventSource.instance.simulateEvent("sync:status", {
+            status: "completed",
+        });
+        expect(getSyncStatus()).toBe("idle");
+        disconnectSSE();
+    });
 
-	it("notifications:new triggers registered callbacks", async () => {
-		const { connectSSE, onNewNotifications, disconnectSSE } = await import(
-			"./sse.svelte.ts"
-		);
-		connectSSE();
-		const callback = vi.fn();
-		onNewNotifications(callback);
-		MockEventSource.instance.simulateEvent("notifications:new", {
-			count: 5,
-		});
-		expect(callback).toHaveBeenCalledOnce();
-		disconnectSSE();
-	});
+    it("notifications:new triggers registered callbacks", async () => {
+        const { connectSSE, onNewNotifications, disconnectSSE } = await import(
+            "./sse.svelte.ts"
+        );
+        connectSSE();
+        const callback = vi.fn();
+        onNewNotifications(callback);
+        MockEventSource.instance.simulateEvent("notifications:new", {
+            count: 5,
+        });
+        expect(callback).toHaveBeenCalledOnce();
+        disconnectSSE();
+    });
 
-	it("open event resets status to idle after error", async () => {
-		const { connectSSE, getSyncStatus, disconnectSSE } = await import(
-			"./sse.svelte.ts"
-		);
-		connectSSE();
-		MockEventSource.instance.onerror!();
-		expect(getSyncStatus()).toBe("error");
-		MockEventSource.instance.simulateEvent("open", {});
-		expect(getSyncStatus()).toBe("idle");
-		disconnectSSE();
-	});
+    it("open event resets status to idle after error", async () => {
+        const { connectSSE, getSyncStatus, disconnectSSE } = await import(
+            "./sse.svelte.ts"
+        );
+        connectSSE();
+        MockEventSource.instance.onerror!();
+        expect(getSyncStatus()).toBe("error");
+        MockEventSource.instance.simulateEvent("open", {});
+        expect(getSyncStatus()).toBe("idle");
+        disconnectSSE();
+    });
 
-	it("unsubscribe removes callback", async () => {
-		const { connectSSE, onNewNotifications, disconnectSSE } = await import(
-			"./sse.svelte.ts"
-		);
-		connectSSE();
-		const callback = vi.fn();
-		const unsubscribe = onNewNotifications(callback);
-		unsubscribe();
-		MockEventSource.instance.simulateEvent("notifications:new", {
-			count: 1,
-		});
-		expect(callback).not.toHaveBeenCalled();
-		disconnectSSE();
-	});
+    it("unsubscribe removes callback", async () => {
+        const { connectSSE, onNewNotifications, disconnectSSE } = await import(
+            "./sse.svelte.ts"
+        );
+        connectSSE();
+        const callback = vi.fn();
+        const unsubscribe = onNewNotifications(callback);
+        unsubscribe();
+        MockEventSource.instance.simulateEvent("notifications:new", {
+            count: 1,
+        });
+        expect(callback).not.toHaveBeenCalled();
+        disconnectSSE();
+    });
 });

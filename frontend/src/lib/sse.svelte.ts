@@ -7,54 +7,54 @@ let newNotificationCallbacks: Array<() => void> = [];
 let eventSource: EventSource | null = null;
 
 export function getSyncStatus(): SyncStatus {
-	return syncStatus;
+    return syncStatus;
 }
 
 export function onNewNotifications(callback: () => void): () => void {
-	newNotificationCallbacks.push(callback);
-	return () => {
-		newNotificationCallbacks = newNotificationCallbacks.filter(
-			(cb) => cb !== callback,
-		);
-	};
+    newNotificationCallbacks.push(callback);
+    return () => {
+        newNotificationCallbacks = newNotificationCallbacks.filter(
+            (cb) => cb !== callback,
+        );
+    };
 }
 
 export function connectSSE(): void {
-	if (eventSource) {
-		eventSource.close();
-	}
+    if (eventSource) {
+        eventSource.close();
+    }
 
-	eventSource = new EventSource("/api/events");
+    eventSource = new EventSource("/api/events");
 
-	eventSource.addEventListener("sync:status", (e) => {
-		const { status } = JSON.parse((e as MessageEvent).data);
-		if (status === "started") {
-			syncStatus = "syncing";
-		} else if (status === "completed") {
-			syncStatus = "idle";
-		} else {
-			syncStatus = "error";
-		}
-	});
+    eventSource.addEventListener("sync:status", (e) => {
+        const { status } = JSON.parse((e as MessageEvent).data);
+        if (status === "started") {
+            syncStatus = "syncing";
+        } else if (status === "completed") {
+            syncStatus = "idle";
+        } else {
+            syncStatus = "error";
+        }
+    });
 
-	eventSource.addEventListener("notifications:new", () => {
-		for (const cb of newNotificationCallbacks) {
-			cb();
-		}
-	});
+    eventSource.addEventListener("notifications:new", () => {
+        for (const cb of newNotificationCallbacks) {
+            cb();
+        }
+    });
 
-	eventSource.addEventListener("open", () => {
-		syncStatus = "idle";
-	});
+    eventSource.addEventListener("open", () => {
+        syncStatus = "idle";
+    });
 
-	eventSource.onerror = () => {
-		syncStatus = "error";
-	};
+    eventSource.onerror = () => {
+        syncStatus = "error";
+    };
 }
 
 export function disconnectSSE(): void {
-	if (eventSource) {
-		eventSource.close();
-		eventSource = null;
-	}
+    if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+    }
 }
