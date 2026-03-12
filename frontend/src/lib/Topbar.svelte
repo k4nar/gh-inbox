@@ -1,6 +1,5 @@
-<script>
-/** @type {{ syncStatus?: string }} */
-let { syncStatus = "idle" } = $props();
+<script lang="ts">
+let { syncStatus = "idle" }: { syncStatus?: string } = $props();
 
 let statusText = $derived(
 	syncStatus === "syncing"
