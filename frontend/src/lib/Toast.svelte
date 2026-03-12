@@ -1,5 +1,5 @@
-<script>
-import { getToasts } from "./toast.svelte.js";
+<script lang="ts">
+import { getToasts } from "./toast.svelte.ts";
 
 let toasts = $derived(getToasts());
 </script>
