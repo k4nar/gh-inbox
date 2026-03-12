@@ -1,17 +1,16 @@
-/** @type {"idle" | "syncing" | "error"} */
-let syncStatus = $state("idle");
+type SyncStatus = "idle" | "syncing" | "error";
 
-/** @type {Array<() => void>} */
-let newNotificationCallbacks = [];
+let syncStatus: SyncStatus = $state("idle");
 
-/** @type {EventSource | null} */
-let eventSource = null;
+let newNotificationCallbacks: Array<() => void> = [];
 
-export function getSyncStatus() {
+let eventSource: EventSource | null = null;
+
+export function getSyncStatus(): SyncStatus {
 	return syncStatus;
 }
 
-export function onNewNotifications(callback) {
+export function onNewNotifications(callback: () => void): () => void {
 	newNotificationCallbacks.push(callback);
 	return () => {
 		newNotificationCallbacks = newNotificationCallbacks.filter(
@@ -20,7 +19,7 @@ export function onNewNotifications(callback) {
 	};
 }
 
-export function connectSSE() {
+export function connectSSE(): void {
 	if (eventSource) {
 		eventSource.close();
 	}
@@ -28,13 +27,12 @@ export function connectSSE() {
 	eventSource = new EventSource("/api/events");
 
 	eventSource.addEventListener("sync:status", (e) => {
-		const { status } = JSON.parse(e.data);
+		const { status } = JSON.parse((e as MessageEvent).data);
 		if (status === "started") {
 			syncStatus = "syncing";
 		} else if (status === "completed") {
 			syncStatus = "idle";
 		} else {
-			// "errored" variant is an object like {"errored":{"message":"..."}}
 			syncStatus = "error";
 		}
 	});
@@ -54,7 +52,7 @@ export function connectSSE() {
 	};
 }
 
-export function disconnectSSE() {
+export function disconnectSSE(): void {
 	if (eventSource) {
 		eventSource.close();
 		eventSource = null;
