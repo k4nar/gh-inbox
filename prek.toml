@@ -29,7 +29,7 @@ pass_filenames = false
 id = "svelte-check"
 name = "svelte check"
 language = "system"
-entry = "npx svelte-check --tsconfig frontend/tsconfig.json"
+entry = "npm run svelte-check"
 files = "^frontend/"
 pass_filenames = false
 
