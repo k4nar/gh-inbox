@@ -1,19 +1,24 @@
-<script>
-import { reasonClass, reasonLabel } from "./reason.js";
-import { timeAgo } from "./timeago.js";
-import { showError } from "./toast.svelte.js";
+<script lang="ts">
+import { reasonClass, reasonLabel } from "./reason.ts";
+import { timeAgo } from "./timeago.ts";
+import { showError } from "./toast.svelte.ts";
+import type { Notification } from "./types.ts";
 
-/** @type {{ currentView?: string, onSelect?: (notification: any) => void, selectedId?: string|null, refreshKey?: number }} */
 let {
 	currentView = "inbox",
-	onSelect = () => {},
+	onSelect = (_notification: Notification) => {},
 	selectedId = null,
 	refreshKey = 0,
+}: {
+	currentView?: string;
+	onSelect?: (notification: Notification) => void;
+	selectedId?: string | null;
+	refreshKey?: number;
 } = $props();
 
-let notifications = $state([]);
+let notifications: Notification[] = $state([]);
 
-async function fetchNotifications(view) {
+async function fetchNotifications(view: string): Promise<void> {
 	const res = await fetch(`/api/inbox?status=${view}`);
 	if (res.ok) {
 		notifications = await res.json();
@@ -21,7 +26,6 @@ async function fetchNotifications(view) {
 }
 
 $effect(() => {
-	// Re-fetch when view changes or when SSE signals new notifications
 	void refreshKey;
 	fetchNotifications(currentView);
 });
@@ -33,8 +37,7 @@ let emptyMessage = $derived(
 	currentView === "archived" ? "No archived notifications." : "All caught up!",
 );
 
-async function handleSelect(notif) {
-	// Optimistically mark as read
+async function handleSelect(notif: Notification): Promise<void> {
 	if (notif.unread) {
 		notif.unread = false;
 		notifications = [...notifications];
@@ -54,7 +57,10 @@ async function handleSelect(notif) {
 	onSelect(notif);
 }
 
-async function handleArchive(e, notif) {
+async function handleArchive(
+	e: MouseEvent,
+	notif: Notification,
+): Promise<void> {
 	e.stopPropagation();
 	notifications = notifications.filter((n) => n.id !== notif.id);
 	try {
@@ -73,7 +79,10 @@ async function handleArchive(e, notif) {
 	}
 }
 
-async function handleUnarchive(e, notif) {
+async function handleUnarchive(
+	e: MouseEvent,
+	notif: Notification,
+): Promise<void> {
 	e.stopPropagation();
 	notifications = notifications.filter((n) => n.id !== notif.id);
 	try {
