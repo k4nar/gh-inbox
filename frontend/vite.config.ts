@@ -3,7 +3,6 @@ import { defineConfig } from "vite";
 
 const backendPort = process.env.GH_INBOX_PORT ?? "3000";
 
-// https://vite.dev/config/
 export default defineConfig({
 	plugins: [
 		svelte({
@@ -22,7 +21,6 @@ export default defineConfig({
 		environment: "jsdom",
 		setupFiles: ["./src/test-setup.js"],
 		alias: {
-			// Ensure Svelte resolves to browser bundle in tests
 			svelte: "svelte",
 		},
 	},
