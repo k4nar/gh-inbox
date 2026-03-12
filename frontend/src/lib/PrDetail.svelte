@@ -1,14 +1,26 @@
-<script>
+<script lang="ts">
 import CommentThread from "./CommentThread.svelte";
-import { timeAgo } from "./timeago.js";
+import { timeAgo } from "./timeago.ts";
+import type {
+	CheckRun,
+	Commit,
+	Notification,
+	PrDetailResponse,
+	Thread,
+} from "./types.ts";
 
-/** @type {{ notification: { repository: string, pr_id: number|null, title: string }, onClose: () => void }} */
-let { notification, onClose } = $props();
+let {
+	notification,
+	onClose,
+}: {
+	notification: Pick<Notification, "repository" | "pr_id" | "title">;
+	onClose: () => void;
+} = $props();
 
-let detail = $state(null);
-let threads = $state([]);
+let detail: PrDetailResponse | null = $state(null);
+let threads: Thread[] = $state([]);
 let loading = $state(true);
-let error = $state(null);
+let error: string | null = $state(null);
 
 $effect(() => {
 	if (notification?.pr_id && notification?.repository) {
@@ -16,7 +28,7 @@ $effect(() => {
 	}
 });
 
-async function loadDetail() {
+async function loadDetail(): Promise<void> {
 	loading = true;
 	error = null;
 
@@ -39,13 +51,13 @@ async function loadDetail() {
 			threads = await tRes.json();
 		}
 	} catch (e) {
-		error = e.message;
+		error = (e as Error).message;
 	} finally {
 		loading = false;
 	}
 }
 
-function ciClass(status, conclusion) {
+function ciClass(status: string, conclusion: string | null): string {
 	if (status !== "completed") return "ci-pending";
 	if (conclusion === "success") return "ci-success";
 	if (conclusion === "failure" || conclusion === "timed_out")
@@ -53,12 +65,12 @@ function ciClass(status, conclusion) {
 	return "ci-neutral";
 }
 
-function ciLabel(status, conclusion) {
+function ciLabel(status: string, conclusion: string | null): string {
 	if (status !== "completed") return "Running";
 	return conclusion || "unknown";
 }
 
-function isPassing(cr) {
+function isPassing(cr: CheckRun): boolean {
 	return (
 		cr.status === "completed" &&
 		(cr.conclusion === "success" ||
@@ -68,14 +80,14 @@ function isPassing(cr) {
 }
 
 let failedOrPending = $derived(
-	detail?.check_runs?.filter((cr) => !isPassing(cr)) ?? [],
+	detail?.check_runs?.filter((cr: CheckRun) => !isPassing(cr)) ?? [],
 );
 let passingChecks = $derived(
-	detail?.check_runs?.filter((cr) => isPassing(cr)) ?? [],
+	detail?.check_runs?.filter((cr: CheckRun) => isPassing(cr)) ?? [],
 );
 let showPassing = $state(false);
 
-function isNewCommit(commit) {
+function isNewCommit(commit: Commit): boolean {
 	if (!detail?.pull_request?.last_viewed_at) return false;
 	return commit.committed_at > detail.pull_request.last_viewed_at;
 }
