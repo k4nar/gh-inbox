@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 import { onMount } from "svelte";
 import PrDetail from "./lib/PrDetail.svelte";
 import PrList from "./lib/PrList.svelte";
@@ -8,23 +8,24 @@ import {
 	disconnectSSE,
 	getSyncStatus,
 	onNewNotifications,
-} from "./lib/sse.svelte.js";
+} from "./lib/sse.svelte.ts";
 import Toast from "./lib/Toast.svelte";
 import Topbar from "./lib/Topbar.svelte";
+import type { Notification } from "./lib/types.ts";
 
 let currentView = $state("inbox");
-let selectedNotification = $state(null);
+let selectedNotification: Notification | null = $state(null);
 let refreshKey = $state(0);
 
-function handleSelect(notification) {
+function handleSelect(notification: Notification): void {
 	selectedNotification = notification;
 }
 
-function handleClose() {
+function handleClose(): void {
 	selectedNotification = null;
 }
 
-function handleViewChange(view) {
+function handleViewChange(view: string): void {
 	currentView = view;
 	selectedNotification = null;
 }
