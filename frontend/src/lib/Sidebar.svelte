@@ -1,6 +1,8 @@
-<script>
-/** @type {{ currentView?: string, onViewChange?: (view: string) => void }} */
-let { currentView = "inbox", onViewChange = () => {} } = $props();
+<script lang="ts">
+let {
+	currentView = "inbox",
+	onViewChange = (_view: string) => {},
+}: { currentView?: string; onViewChange?: (view: string) => void } = $props();
 </script>
 
 <nav class="sidebar">
