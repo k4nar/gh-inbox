@@ -26,6 +26,14 @@ files = "^frontend/"
 pass_filenames = false
 
 [[repos.hooks]]
+id = "svelte-check"
+name = "svelte check"
+language = "system"
+entry = "bash -c 'cd frontend && npx svelte-check --tsconfig tsconfig.json'"
+files = "^frontend/"
+pass_filenames = false
+
+[[repos.hooks]]
 id = "npm-test"
 name = "npm test"
 language = "system"
