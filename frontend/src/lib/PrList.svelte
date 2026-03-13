@@ -1,4 +1,5 @@
 <script lang="ts">
+import { apiFetch } from "./api.ts";
 import { reasonClass, reasonLabel } from "./reason.ts";
 import { timeAgo } from "./timeago.ts";
 import { showError } from "./toast.svelte.ts";
@@ -20,14 +21,9 @@ let notifications: Notification[] = $state([]);
 
 async function fetchNotifications(view: string): Promise<void> {
     try {
-        const res = await fetch(`/api/inbox?status=${view}`);
-        if (!res.ok) {
-            showError(
-                `Failed to load notifications: ${res.status} ${res.statusText}`,
-            );
-            return;
-        }
-        notifications = await res.json();
+        notifications = await apiFetch<Notification[]>(
+            `/api/inbox?status=${view}`,
+        );
     } catch (err) {
         console.error("Failed to fetch notifications:", err);
         showError("Failed to load notifications");
@@ -53,15 +49,7 @@ async function handleSelect(notif: Notification): Promise<void> {
         notif.unread = false;
         notifications = [...notifications];
         try {
-            const res = await fetch(`/api/inbox/${notif.id}/read`, {
-                method: "POST",
-            });
-            if (!res.ok) {
-                console.error(
-                    `Failed to mark read: ${res.status} ${res.statusText}`,
-                );
-                showError("Failed to mark notification as read");
-            }
+            await apiFetch(`/api/inbox/${notif.id}/read`, { method: "POST" });
         } catch (err) {
             console.error("Failed to mark read:", err);
             showError("Failed to mark notification as read");
@@ -77,14 +65,7 @@ async function handleArchive(
     e.stopPropagation();
     notifications = notifications.filter((n) => n.id !== notif.id);
     try {
-        const res = await fetch(`/api/inbox/${notif.id}/archive`, {
-            method: "POST",
-        });
-        if (!res.ok) {
-            console.error(`Failed to archive: ${res.status} ${res.statusText}`);
-            showError("Failed to archive notification");
-            notifications = [...notifications, notif];
-        }
+        await apiFetch(`/api/inbox/${notif.id}/archive`, { method: "POST" });
     } catch (err) {
         console.error("Failed to archive:", err);
         showError("Failed to archive notification");
@@ -99,16 +80,7 @@ async function handleUnarchive(
     e.stopPropagation();
     notifications = notifications.filter((n) => n.id !== notif.id);
     try {
-        const res = await fetch(`/api/inbox/${notif.id}/unarchive`, {
-            method: "POST",
-        });
-        if (!res.ok) {
-            console.error(
-                `Failed to unarchive: ${res.status} ${res.statusText}`,
-            );
-            showError("Failed to unarchive notification");
-            notifications = [...notifications, notif];
-        }
+        await apiFetch(`/api/inbox/${notif.id}/unarchive`, { method: "POST" });
     } catch (err) {
         console.error("Failed to unarchive:", err);
         showError("Failed to unarchive notification");

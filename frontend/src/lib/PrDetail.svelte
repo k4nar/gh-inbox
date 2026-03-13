@@ -1,4 +1,5 @@
 <script lang="ts">
+import { apiFetch } from "./api.ts";
 import CommentThread from "./CommentThread.svelte";
 import { timeAgo } from "./timeago.ts";
 import type {
@@ -36,21 +37,12 @@ async function loadDetail(): Promise<void> {
     const number = notification.pr_id;
 
     try {
-        const detailRes = await fetch(
+        detail = await apiFetch<PrDetailResponse>(
             `/api/pull-requests/${owner}/${repo}/${number}`,
         );
-        if (!detailRes.ok) {
-            throw new Error(`Failed to load PR: ${detailRes.status}`);
-        }
-        detail = await detailRes.json();
-
-        const tRes = await fetch(
+        threads = await apiFetch<Thread[]>(
             `/api/pull-requests/${owner}/${repo}/${number}/threads`,
         );
-        if (!tRes.ok) {
-            throw new Error(`Failed to load threads: ${tRes.status}`);
-        }
-        threads = await tRes.json();
     } catch (e) {
         error = e instanceof Error ? e.message : String(e);
     } finally {
