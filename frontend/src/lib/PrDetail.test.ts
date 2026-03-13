@@ -1,4 +1,10 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/svelte";
+import {
+    cleanup,
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+} from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PrDetail from "./PrDetail.svelte";
 
@@ -188,11 +194,28 @@ describe("PrDetail", () => {
     it("renders description", async () => {
         renderPrDetail();
 
+        const toggle = await waitFor(() =>
+            screen.getByRole("button", { name: /description/i }),
+        );
+        fireEvent.click(toggle);
+
         await waitFor(() => {
             expect(
                 screen.getByText("This fixes the parser bug."),
             ).toBeInTheDocument();
         });
+    });
+
+    it("description is collapsed by default when previously viewed", async () => {
+        renderPrDetail();
+
+        await waitFor(() =>
+            screen.getByRole("button", { name: /description/i }),
+        );
+
+        expect(
+            screen.queryByText("This fixes the parser bug."),
+        ).not.toBeInTheDocument();
     });
 
     it("renders a link to the GitHub PR", async () => {

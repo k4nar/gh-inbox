@@ -32,6 +32,7 @@ $effect(() => {
 async function loadDetail(): Promise<void> {
     loading = true;
     error = null;
+    descriptionExpanded = false;
 
     const [owner, repo] = notification.repository.split("/");
     const number = notification.pr_id;
@@ -79,6 +80,10 @@ let passingChecks: CheckRun[] = $derived(
     detail != null ? detail.check_runs.filter((cr) => isPassing(cr)) : [],
 );
 let showPassing = $state(false);
+
+let showDescription = $derived(detail?.pull_request?.last_viewed_at == null);
+let descriptionExpanded = $state(false);
+let isDescriptionVisible = $derived(showDescription || descriptionExpanded);
 
 function isNewCommit(commit: Commit): boolean {
     if (!detail?.pull_request?.last_viewed_at) return false;
@@ -265,10 +270,31 @@ function isNewCommit(commit: Commit): boolean {
 
             {#if detail.pull_request.body}
                 <div class="pr-description">
-                    <h3 class="section-title">Description</h3>
-                    <div class="description-body">
-                        {detail.pull_request.body}
-                    </div>
+                    <button
+                        type="button"
+                        class="section-title description-toggle"
+                        onclick={() => descriptionExpanded = !descriptionExpanded}
+                    >
+                        Description
+                        <svg
+                            aria-hidden="true"
+                            class="toggle-chevron"
+                            class:open={isDescriptionVisible}
+                            width="12"
+                            height="12"
+                            viewBox="0 0 16 16"
+                            fill="currentColor"
+                        >
+                            <path
+                                d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z"
+                            />
+                        </svg>
+                    </button>
+                    {#if isDescriptionVisible}
+                        <div class="description-body">
+                            {detail.pull_request.body}
+                        </div>
+                    {/if}
                 </div>
             {/if}
 
@@ -465,6 +491,19 @@ function isNewCommit(commit: Commit): boolean {
 .pr-description {
     display: flex;
     flex-direction: column;
+    gap: 8px;
+}
+.description-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 0;
+    text-align: left;
+    color: var(--fg-muted);
+}
+.description-toggle:hover {
+    color: var(--fg-default);
 }
 .description-body {
     font-size: 13px;

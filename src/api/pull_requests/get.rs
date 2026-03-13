@@ -196,13 +196,14 @@ pub async fn get_pr(
         queries::set_last_fetched_now(&state.pool, &resource_key).await?;
     }
 
-    // Update last_viewed_at
-    queries::update_last_viewed_at(&state.pool, number).await?;
-
-    // Read from DB
+    // Read from DB before updating last_viewed_at so the response reflects the
+    // previous view state (null = never viewed before).
     let pr = queries::get_pull_request(&state.pool, &full_repo, number)
         .await?
         .ok_or_else(|| AppError::Database(sqlx::Error::RowNotFound))?;
+
+    // Update last_viewed_at
+    queries::update_last_viewed_at(&state.pool, number).await?;
 
     let comments = queries::query_comments_for_pr(&state.pool, number).await?;
     let commits = queries::query_commits_for_pr(&state.pool, number).await?;
