@@ -5,10 +5,7 @@ use std::sync::atomic::AtomicBool;
 use axum::http::{StatusCode, header};
 #[cfg(not(debug_assertions))]
 use axum::response::{IntoResponse, Response};
-use axum::{
-    Router,
-    routing::{get, post},
-};
+use axum::{Router, routing::get};
 use sqlx::SqlitePool;
 use tokio::sync::broadcast;
 
@@ -119,23 +116,7 @@ pub fn app_with_base_url(
         bootstrap_done: Arc::new(AtomicBool::new(false)),
     };
 
-    let router = Router::new()
-        .route("/api/inbox", get(api::inbox::get_inbox))
-        .route("/api/inbox/{id}/read", post(api::inbox::post_mark_read))
-        .route("/api/inbox/{id}/archive", post(api::inbox::post_archive))
-        .route(
-            "/api/inbox/{id}/unarchive",
-            post(api::inbox::post_unarchive),
-        )
-        .route(
-            "/api/pull-requests/{owner}/{repo}/{number}",
-            get(api::pull_requests::get_pr),
-        )
-        .route(
-            "/api/pull-requests/{owner}/{repo}/{number}/threads",
-            get(api::pull_requests::get_threads),
-        )
-        .route("/api/events", get(api::events::get_events));
+    let router = api::router();
 
     #[cfg(not(debug_assertions))]
     let router = router

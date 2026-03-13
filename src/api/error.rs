@@ -24,6 +24,16 @@ impl From<sqlx::Error> for AppError {
     }
 }
 
+impl From<crate::github::sync::SyncError> for AppError {
+    fn from(err: crate::github::sync::SyncError) -> Self {
+        use crate::github::sync::SyncError;
+        match err {
+            SyncError::GitHub(e) => AppError::GitHub(e),
+            SyncError::Database(e) => AppError::Database(e),
+        }
+    }
+}
+
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
