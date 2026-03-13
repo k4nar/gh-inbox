@@ -703,7 +703,7 @@ async fn sse_no_event_when_nothing_changed() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Sync again — same data, should return 0 changes
-    use gh_inbox::api::inbox::sync_notifications;
+    use gh_inbox::github::sync::sync_notifications;
     let changed = sync_notifications(&state).await.unwrap();
     assert_eq!(
         changed, 0,
