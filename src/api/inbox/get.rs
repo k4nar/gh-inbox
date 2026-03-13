@@ -1,15 +1,13 @@
 use std::sync::atomic::Ordering;
 
 use axum::Json;
-use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::extract::{Query, State};
 use serde::Deserialize;
 
+use crate::api::AppError;
 use crate::db::queries::{self, NotificationRow};
 use crate::github::sync::sync_notifications;
 use crate::server::AppState;
-
-use super::AppError;
 
 #[derive(Deserialize)]
 pub struct InboxQuery {
@@ -42,40 +40,4 @@ pub async fn get_inbox(
         _ => queries::query_inbox(&state.pool).await?,
     };
     Ok(Json(results))
-}
-
-/// POST /api/inbox/:id/read — mark a notification as read.
-pub async fn post_mark_read(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Result<StatusCode, AppError> {
-    let rows = queries::mark_read(&state.pool, &id).await?;
-    if rows == 0 {
-        return Err(AppError::NotFound(format!("notification {id} not found")));
-    }
-    Ok(StatusCode::NO_CONTENT)
-}
-
-/// POST /api/inbox/:id/archive — archive a notification.
-pub async fn post_archive(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Result<StatusCode, AppError> {
-    let rows = queries::archive_notification(&state.pool, &id).await?;
-    if rows == 0 {
-        return Err(AppError::NotFound(format!("notification {id} not found")));
-    }
-    Ok(StatusCode::NO_CONTENT)
-}
-
-/// POST /api/inbox/:id/unarchive — unarchive a notification.
-pub async fn post_unarchive(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Result<StatusCode, AppError> {
-    let rows = queries::unarchive_notification(&state.pool, &id).await?;
-    if rows == 0 {
-        return Err(AppError::NotFound(format!("notification {id} not found")));
-    }
-    Ok(StatusCode::NO_CONTENT)
 }

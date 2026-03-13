@@ -1,13 +1,19 @@
 use std::convert::Infallible;
 
+use axum::Router;
 use axum::extract::State;
 use axum::response::sse::{Event, Sse};
+use axum::routing::get;
 use futures::stream::Stream;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 
 use crate::models::{NewNotificationsData, SyncEvent, SyncStatusData};
 use crate::server::AppState;
+
+pub fn router() -> Router<AppState> {
+    Router::new().route("/api/events", get(get_events))
+}
 
 /// GET /api/events — SSE stream of sync events.
 pub async fn get_events(
