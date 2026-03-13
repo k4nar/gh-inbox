@@ -32,7 +32,6 @@ async fn main() {
         // Dev mode: spawn the Vite dev server with hot reload
         match std::process::Command::new("npm")
             .args(["run", "dev", "--", "--open"])
-            .current_dir("frontend")
             .env("GH_INBOX_PORT", addr.port().to_string())
             .spawn()
         {
