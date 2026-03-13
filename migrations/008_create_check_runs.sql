@@ -3,5 +3,6 @@ CREATE TABLE check_runs (
     pr_id     INTEGER NOT NULL,
     name      TEXT NOT NULL,
     status    TEXT NOT NULL,
-    conclusion TEXT
+    conclusion TEXT,
+    FOREIGN KEY (pr_id) REFERENCES pull_requests(id) ON DELETE CASCADE
 );

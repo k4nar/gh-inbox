@@ -5,5 +5,5 @@ CREATE TABLE comments (
     author      TEXT NOT NULL,
     body        TEXT NOT NULL,
     created_at  TEXT NOT NULL,
-    FOREIGN KEY (pr_id) REFERENCES pull_requests(id)
+    FOREIGN KEY (pr_id) REFERENCES pull_requests(id) ON DELETE CASCADE
 );
