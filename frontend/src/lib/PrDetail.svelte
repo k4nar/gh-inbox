@@ -47,9 +47,10 @@ async function loadDetail(): Promise<void> {
         const tRes = await fetch(
             `/api/pull-requests/${owner}/${repo}/${number}/threads`,
         );
-        if (tRes.ok) {
-            threads = await tRes.json();
+        if (!tRes.ok) {
+            throw new Error(`Failed to load threads: ${tRes.status}`);
         }
+        threads = await tRes.json();
     } catch (e) {
         error = e instanceof Error ? e.message : String(e);
     } finally {

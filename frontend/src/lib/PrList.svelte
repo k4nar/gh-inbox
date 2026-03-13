@@ -19,9 +19,18 @@ let {
 let notifications: Notification[] = $state([]);
 
 async function fetchNotifications(view: string): Promise<void> {
-    const res = await fetch(`/api/inbox?status=${view}`);
-    if (res.ok) {
+    try {
+        const res = await fetch(`/api/inbox?status=${view}`);
+        if (!res.ok) {
+            showError(
+                `Failed to load notifications: ${res.status} ${res.statusText}`,
+            );
+            return;
+        }
         notifications = await res.json();
+    } catch (err) {
+        console.error("Failed to fetch notifications:", err);
+        showError("Failed to load notifications");
     }
 }
 
