@@ -41,6 +41,11 @@ pub async fn get_events(
                             .expect("serialization of SyncStatusData cannot fail"),
                     )
                 }
+                SyncEvent::PrTeamsUpdated(data) => {
+                    let payload = serde_json::to_string(data)
+                        .expect("serialization of PrTeamsUpdatedData cannot fail");
+                    ("pr:teams_updated", payload)
+                }
             };
             Some(Ok(Event::default().event(event_type).data(data)))
         }

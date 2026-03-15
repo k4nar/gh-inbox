@@ -7,6 +7,7 @@ use serde::Serialize;
 pub enum SyncEvent {
     NewNotifications { count: usize },
     SyncStatus { status: SyncStatusKind },
+    PrTeamsUpdated(PrTeamsUpdatedData),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -27,4 +28,11 @@ pub struct NewNotificationsData {
 #[derive(Serialize)]
 pub struct SyncStatusData {
     pub status: SyncStatusKind,
+}
+
+/// Payload serialized into the SSE `data:` field for PrTeamsUpdated.
+#[derive(Debug, Clone, Serialize)]
+pub struct PrTeamsUpdatedData {
+    pub pr_id: i64,
+    pub teams: Vec<String>,
 }

@@ -7,4 +7,6 @@ pub use pull_request::{
     GithubCheckRun, GithubCheckRunList, GithubCommit, GithubIssueComment, GithubPullRequest,
     GithubReviewComment,
 };
-pub use sync_event::{NewNotificationsData, SyncEvent, SyncStatusData, SyncStatusKind};
+pub use sync_event::{
+    NewNotificationsData, PrTeamsUpdatedData, SyncEvent, SyncStatusData, SyncStatusKind,
+};
