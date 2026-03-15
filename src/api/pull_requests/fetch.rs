@@ -6,7 +6,7 @@ use crate::github;
 use crate::models::GithubCheckRun;
 
 /// Minimum seconds between GitHub API fetches for a given PR.
-const FETCH_THROTTLE_SECS: i64 = 30;
+const FETCH_THROTTLE_SECS: i64 = 10;
 
 /// Summary returned after a successful fetch+cache.
 pub struct PrFetchResult {
