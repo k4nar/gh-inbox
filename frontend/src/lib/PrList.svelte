@@ -1,27 +1,40 @@
 <script lang="ts">
 import { apiFetch } from "./api.ts";
 import { reasonClass, reasonLabel } from "./reason.ts";
+import { onPrTeamsUpdated } from "./sse.svelte.ts";
 import { timeAgo } from "./timeago.ts";
 import { showError } from "./toast.svelte.ts";
-import type { Notification } from "./types.ts";
+import type { InboxItem } from "./types.ts";
 
 let {
     currentView = "inbox",
-    onSelect = (_notification: Notification) => {},
+    onSelect = (_notification: InboxItem) => {},
     selectedId = null,
     refreshKey = 0,
 }: {
     currentView?: string;
-    onSelect?: (notification: Notification) => void;
+    onSelect?: (notification: InboxItem) => void;
     selectedId?: string | null;
     refreshKey?: number;
 } = $props();
 
-let notifications: Notification[] = $state([]);
+let notifications: InboxItem[] = $state([]);
+
+const unsubTeams = onPrTeamsUpdated((pr_id, teams) => {
+    const item = notifications.find((n) => n.pr_id === pr_id);
+    if (item) {
+        item.teams = teams;
+        notifications = [...notifications];
+    }
+});
+// Svelte 5 runes cleanup — return the unsubscribe fn from $effect:
+$effect(() => {
+    return unsubTeams;
+});
 
 async function fetchNotifications(view: string): Promise<void> {
     try {
-        notifications = await apiFetch<Notification[]>(
+        notifications = await apiFetch<InboxItem[]>(
             `/api/inbox?status=${view}`,
         );
     } catch (err) {
@@ -44,7 +57,7 @@ let emptyMessage = $derived(
         : "All caught up!",
 );
 
-async function handleSelect(notif: Notification): Promise<void> {
+async function handleSelect(notif: InboxItem): Promise<void> {
     if (notif.unread) {
         notif.unread = false;
         notifications = [...notifications];
@@ -58,10 +71,7 @@ async function handleSelect(notif: Notification): Promise<void> {
     onSelect(notif);
 }
 
-async function handleArchive(
-    e: MouseEvent,
-    notif: Notification,
-): Promise<void> {
+async function handleArchive(e: MouseEvent, notif: InboxItem): Promise<void> {
     e.stopPropagation();
     notifications = notifications.filter((n) => n.id !== notif.id);
     try {
@@ -73,10 +83,7 @@ async function handleArchive(
     }
 }
 
-async function handleUnarchive(
-    e: MouseEvent,
-    notif: Notification,
-): Promise<void> {
+async function handleUnarchive(e: MouseEvent, notif: InboxItem): Promise<void> {
     e.stopPropagation();
     notifications = notifications.filter((n) => n.id !== notif.id);
     try {
@@ -86,6 +93,51 @@ async function handleUnarchive(
         showError("Failed to unarchive notification");
         notifications = [...notifications, notif];
     }
+}
+
+function prStatusIcon(status: InboxItem["pr_status"]): string {
+    switch (status) {
+        case "open":
+            return "●";
+        case "draft":
+            return "◌";
+        case "merged":
+            return "⎇";
+        case "closed":
+            return "✕";
+        default:
+            return "";
+    }
+}
+
+function activitySentence(item: InboxItem): string | null {
+    if (!item.author) return null;
+    if (item.new_commits === null) return null; // first visit — handled separately
+    const parts: string[] = [];
+    if (item.new_commits > 0) {
+        const n = item.new_commits;
+        parts.push(`${item.author} pushed ${n} commit${n === 1 ? "" : "s"}`);
+    }
+    if (item.new_comments && item.new_comments.length > 0) {
+        const actors = formatActors(item.new_comments.map((c) => c.author));
+        const total = item.new_comments.reduce((s, c) => s + c.count, 0);
+        parts.push(`${actors} left ${total} comment${total === 1 ? "" : "s"}`);
+    }
+    return parts.length > 0 ? parts.join(" · ") : "";
+}
+
+function formatActors(names: string[]): string {
+    if (names.length === 0) return "";
+    if (names.length === 1) return names[0];
+    return names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+}
+
+function avatarUrl(login: string): string {
+    return `https://github.com/${login}.png?size=64`;
+}
+
+function initials(login: string): string {
+    return login.charAt(0).toUpperCase();
 }
 </script>
 
@@ -120,6 +172,7 @@ async function handleUnarchive(
             <div class="empty-state">{emptyMessage}</div>
         {:else}
             {#each notifications as notif (notif.id)}
+                {@const sentence = activitySentence(notif)}
                 <div
                     class="pr-item"
                     class:read={!notif.unread}
@@ -130,63 +183,128 @@ async function handleUnarchive(
                     onkeydown={(e) => e.key === 'Enter' && handleSelect(notif)}
                 >
                     <div class="unread-dot" class:read={!notif.unread}></div>
+
+                    <!-- Avatar -->
+                    <div class="avatar-slot">
+                        {#if notif.author}
+                            <img
+                                class="avatar"
+                                src={avatarUrl(notif.author)}
+                                alt={notif.author}
+                                onerror={(e) => {
+                                    const el = e.currentTarget as HTMLElement;
+                                    el.outerHTML = `<div class="avatar avatar-initials">${initials(notif.author!)}</div>`;
+                                }}
+                            >
+                        {:else}
+                            <div class="avatar avatar-empty"></div>
+                        {/if}
+                    </div>
+
+                    <!-- Body -->
                     <div class="pr-body">
+                        <!-- Top meta: repo · status · teams -->
                         <div class="pr-meta-top">
                             <span class="pr-repo">{notif.repository}</span>
+                            {#if notif.pr_status}
+                                <span class="divider">·</span>
+                                <span
+                                    class="badge badge-status badge-status-{notif.pr_status}"
+                                >
+                                    {prStatusIcon(notif.pr_status)}
+                                    {notif.pr_status.charAt(0).toUpperCase() + notif.pr_status.slice(1)}
+                                </span>
+                            {/if}
+                            {#if notif.teams === null && notif.pr_id}
+                                <span class="divider">·</span>
+                                <span class="badge badge-team-shimmer"
+                                    ><span class="shimmer"></span></span
+                                >
+                            {:else if notif.teams && notif.teams.length > 0}
+                                {#each notif.teams as team}
+                                    <span class="divider">·</span>
+                                    <span class="badge badge-team"
+                                        >@{team}</span
+                                    >
+                                {/each}
+                            {/if}
                         </div>
+
+                        <!-- Title -->
                         <div class="pr-title">
                             {#if notif.pr_id}
                                 <span class="pr-num">#{notif.pr_id}</span>
                             {/if}
                             {notif.title}
                         </div>
+
+                        <!-- Activity line -->
+                        {#if notif.author}
+                            <div class="pr-activity">
+                                {#if notif.new_commits === null}
+                                    <span class="activity-new-pr"
+                                        >✦ New pull request</span
+                                    >
+                                {:else if sentence === ""}
+                                    <span class="activity-quiet"
+                                        >No new activity since your last visit</span
+                                    >
+                                {:else if sentence}
+                                    <span class="activity-text"
+                                        >{sentence}</span
+                                    >
+                                {/if}
+                            </div>
+                        {/if}
                     </div>
-                    <div class="pr-reason">
+
+                    <!-- Right column -->
+                    <div class="pr-right">
                         <span class="label label-{reasonClass(notif.reason)}"
                             >{reasonLabel(notif.reason)}</span
                         >
-                    </div>
-                    <div class="pr-date">{timeAgo(notif.updated_at)}</div>
-                    <div class="pr-actions">
-                        {#if currentView === "inbox"}
-                            <button
-                                class="action-btn"
-                                type="button"
-                                title="Archive"
-                                onclick={(e) => handleArchive(e, notif)}
-                            >
-                                <svg
-                                    aria-hidden="true"
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 16 16"
-                                    fill="currentColor"
+                        <span class="pr-date">{timeAgo(notif.updated_at)}</span>
+                        <div class="pr-actions">
+                            {#if currentView === "inbox"}
+                                <button
+                                    class="action-btn"
+                                    type="button"
+                                    title="Archive"
+                                    onclick={(e) => handleArchive(e, notif)}
                                 >
-                                    <path
-                                        d="M1.75 1h12.5c.966 0 1.75.784 1.75 1.75v2.5A1.75 1.75 0 0 1 14.25 7H1.75A1.75 1.75 0 0 1 0 5.25v-2.5C0 1.784.784 1 1.75 1Zm0 1.5a.25.25 0 0 0-.25.25v2.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25v-2.5a.25.25 0 0 0-.25-.25ZM1 8.75v5.5c0 .966.784 1.75 1.75 1.75h10.5A1.75 1.75 0 0 0 15 14.25v-5.5a.75.75 0 0 0-1.5 0v5.5a.25.25 0 0 1-.25.25H2.75a.25.25 0 0 1-.25-.25v-5.5a.75.75 0 0 0-1.5 0ZM5 10.25a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1-.75-.75Z"
-                                    />
-                                </svg>
-                            </button>
-                        {:else}
-                            <button
-                                class="action-btn"
-                                type="button"
-                                title="Unarchive"
-                                onclick={(e) => handleUnarchive(e, notif)}
-                            >
-                                <svg
-                                    aria-hidden="true"
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 16 16"
-                                    fill="currentColor"
+                                    <svg
+                                        aria-hidden="true"
+                                        width="14"
+                                        height="14"
+                                        viewBox="0 0 16 16"
+                                        fill="currentColor"
+                                    >
+                                        <path
+                                            d="M1.75 1h12.5c.966 0 1.75.784 1.75 1.75v2.5A1.75 1.75 0 0 1 14.25 7H1.75A1.75 1.75 0 0 1 0 5.25v-2.5C0 1.784.784 1 1.75 1Zm0 1.5a.25.25 0 0 0-.25.25v2.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25v-2.5a.25.25 0 0 0-.25-.25ZM1 8.75v5.5c0 .966.784 1.75 1.75 1.75h10.5A1.75 1.75 0 0 0 15 14.25v-5.5a.75.75 0 0 0-1.5 0v5.5a.25.25 0 0 1-.25.25H2.75a.25.25 0 0 1-.25-.25v-5.5a.75.75 0 0 0-1.5 0ZM5 10.25a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1-.75-.75Z"
+                                        />
+                                    </svg>
+                                </button>
+                            {:else}
+                                <button
+                                    class="action-btn"
+                                    type="button"
+                                    title="Unarchive"
+                                    onclick={(e) => handleUnarchive(e, notif)}
                                 >
-                                    <path
-                                        d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Z"
-                                    />
-                                </svg>
-                            </button>
-                        {/if}
+                                    <svg
+                                        aria-hidden="true"
+                                        width="14"
+                                        height="14"
+                                        viewBox="0 0 16 16"
+                                        fill="currentColor"
+                                    >
+                                        <path
+                                            d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Z"
+                                        />
+                                    </svg>
+                                </button>
+                            {/if}
+                        </div>
                     </div>
                 </div>
             {/each}
@@ -269,7 +387,7 @@ async function handleUnarchive(
 /* PR row */
 .pr-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     padding: 12px 16px;
     border-bottom: 1px solid var(--border-muted);
     cursor: pointer;
@@ -289,9 +407,42 @@ async function handleUnarchive(
     border-radius: 50%;
     background: var(--accent-fg);
     flex-shrink: 0;
+    margin-top: 12px;
 }
 .unread-dot.read {
     background: transparent;
+}
+
+/* Avatar */
+.avatar-slot {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    margin-top: 2px;
+}
+.avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid var(--border-default);
+    object-fit: cover;
+}
+.avatar-initials {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #21262d;
+    border: 1px solid var(--border-default);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg-muted);
+}
+.avatar-empty {
+    width: 32px;
+    height: 32px;
 }
 
 .pr-body {
@@ -331,14 +482,107 @@ async function handleUnarchive(
     margin-right: 4px;
 }
 
-/* Reason pill */
-.pr-reason {
-    flex-shrink: 0;
-    width: 152px;
-    display: flex;
-    justify-content: flex-end;
-    padding-right: 16px;
+/* Status badges */
+.badge-status {
+    display: inline-flex;
+    align-items: center;
+    font-size: 10px;
+    padding: 0 6px;
+    border-radius: 2em;
+    border: 1px solid;
+    white-space: nowrap;
+    line-height: 17px;
 }
+.badge-status-open {
+    border-color: rgba(63, 185, 80, 0.4);
+    background: rgba(63, 185, 80, 0.1);
+    color: #56d364;
+}
+.badge-status-draft {
+    border-color: rgba(110, 118, 129, 0.4);
+    background: rgba(110, 118, 129, 0.1);
+    color: var(--fg-muted);
+}
+.badge-status-merged {
+    border-color: rgba(163, 113, 247, 0.4);
+    background: rgba(163, 113, 247, 0.1);
+    color: #c9b1f7;
+}
+.badge-status-closed {
+    border-color: rgba(248, 81, 73, 0.4);
+    background: rgba(248, 81, 73, 0.1);
+    color: #f85149;
+}
+
+/* Team badges */
+.badge-team {
+    display: inline-flex;
+    align-items: center;
+    font-size: 10px;
+    padding: 0 6px;
+    border-radius: 2em;
+    border: 1px solid rgba(210, 153, 34, 0.4);
+    background: rgba(210, 153, 34, 0.1);
+    color: #e3b341;
+    white-space: nowrap;
+    line-height: 17px;
+}
+.badge-team-shimmer {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 6px;
+    border-radius: 2em;
+    border: 1px solid var(--border-default);
+    background: var(--canvas-subtle);
+    line-height: 17px;
+}
+.shimmer {
+    display: inline-block;
+    width: 60px;
+    height: 10px;
+    background: linear-gradient(
+        90deg,
+        var(--border-default) 25%,
+        var(--border-muted) 50%,
+        var(--border-default) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 3px;
+}
+@keyframes shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* Activity line */
+.pr-activity {
+    font-size: 11px;
+    color: var(--fg-muted);
+}
+.activity-new-pr {
+    color: var(--fg-default);
+    font-weight: 500;
+}
+.activity-quiet {
+    color: var(--fg-subtle);
+    font-style: italic;
+}
+.activity-text {
+    color: var(--fg-muted);
+}
+
+/* Divider between meta items */
+.divider {
+    font-size: 11px;
+    color: var(--fg-subtle);
+}
+
+/* Reason pill */
 .label {
     display: inline-flex;
     align-items: center;
@@ -371,12 +615,19 @@ async function handleUnarchive(
     color: var(--fg-muted);
 }
 
+/* Right column */
+.pr-right {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    padding-top: 2px;
+}
+
 /* Date */
 .pr-date {
     flex-shrink: 0;
-    width: 88px;
-    display: flex;
-    justify-content: flex-end;
     font-size: 12px;
     color: var(--fg-subtle);
     white-space: nowrap;
