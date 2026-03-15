@@ -179,20 +179,13 @@ async function handleUnarchive(e: MouseEvent, notif: InboxItem): Promise<void> {
     }
 }
 
-function prStatusIcon(status: InboxItem["pr_status"]): string {
-    switch (status) {
-        case "open":
-            return "●";
-        case "draft":
-            return "◌";
-        case "merged":
-            return "⎇";
-        case "closed":
-            return "✕";
-        default:
-            return "";
-    }
-}
+// SVG path data for GitHub Octicons (16px)
+const STATUS_ICONS: Record<string, string> = {
+    open: "M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z",
+    draft: "M3.25 1A2.25 2.25 0 0 1 4 5.372v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 3.25 1Zm9.5 14a2.25 2.25 0 1 1 0-4.5 2.25 2.25 0 0 1 0 4.5ZM3.25 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm9.5 0a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM8.655 5.5h-.31c-.337 0-.67-.033-.994-.097l-.28 1.476c.396.075.803.113 1.274.12h.31c.47-.007.878-.045 1.274-.12l-.28-1.476a6.21 6.21 0 0 1-.994.097Zm-4.275-2.8-.478 1.388c.34.117.696.21 1.052.275l.28-1.476a8.258 8.258 0 0 1-.854-.187ZM11.62 2.7a8.28 8.28 0 0 1-.854.187l.28 1.476c.356-.065.711-.158 1.052-.275L11.62 2.7ZM8.5 2.015V.5a.5.5 0 0 0-1 0v1.515c-.179.01-.357.03-.534.055L7.247 3.546c.248-.038.502-.063.753-.07V3.5h0Zm0 0-.003.031c.252.007.506.032.753.07l.281-1.476A8.342 8.342 0 0 0 9 2.015v.031h0V.5a.5.5 0 0 0-1 0v1.515Z",
+    merged: "M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372A2.25 2.25 0 1 1 5.45 5.154ZM4.25 13.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm8.5-4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM5 3.25a.75.75 0 1 0 0 .005V3.25Z",
+    closed: "M3.25 1A2.25 2.25 0 0 1 4 5.372v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 3.25 1Zm9.96 5.016a.75.75 0 1 0-1.06-1.06L10.5 6.61 8.84 4.94a.75.75 0 0 0-1.061 1.06l1.661 1.661-1.661 1.661a.75.75 0 1 0 1.06 1.06L10.5 8.72l1.661 1.661a.75.75 0 1 0 1.06-1.06L11.56 7.66l1.65-1.644ZM3.25 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z",
+};
 
 function activitySentence(item: InboxItem): string | null {
     if (!item.author) return null;
@@ -269,37 +262,31 @@ function initials(login: string): string {
                 >
                     <div class="unread-dot" class:read={!notif.unread}></div>
 
-                    <!-- Avatar -->
-                    <div class="avatar-slot">
-                        {#if notif.author}
-                            <img
-                                class="avatar"
-                                src={avatarUrl(notif.author)}
-                                alt={notif.author}
-                                onerror={(e) => {
-                                    const el = e.currentTarget as HTMLElement;
-                                    el.outerHTML = `<div class="avatar avatar-initials">${initials(notif.author!)}</div>`;
-                                }}
+                    <!-- Status icon -->
+                    <div class="status-icon-slot">
+                        {#if notif.pr_status && STATUS_ICONS[notif.pr_status]}
+                            <svg
+                                role="img"
+                                aria-label={notif.pr_status}
+                                class="status-icon status-icon-{notif.pr_status}"
+                                width="16"
+                                height="16"
+                                viewBox="0 0 16 16"
+                                fill="currentColor"
                             >
+                                <title>{notif.pr_status}</title>
+                                <path d={STATUS_ICONS[notif.pr_status]} />
+                            </svg>
                         {:else}
-                            <div class="avatar avatar-empty"></div>
+                            <div class="status-icon-empty"></div>
                         {/if}
                     </div>
 
                     <!-- Body -->
                     <div class="pr-body">
-                        <!-- Top meta: repo · status · teams -->
+                        <!-- Top meta: repo · teams -->
                         <div class="pr-meta-top">
                             <span class="pr-repo">{notif.repository}</span>
-                            {#if notif.pr_status}
-                                <span class="divider">·</span>
-                                <span
-                                    class="badge badge-status badge-status-{notif.pr_status}"
-                                >
-                                    {prStatusIcon(notif.pr_status)}
-                                    {notif.pr_status.charAt(0).toUpperCase() + notif.pr_status.slice(1)}
-                                </span>
-                            {/if}
                             {#if notif.teams === null && notif.pr_id}
                                 <span class="divider">·</span>
                                 <span class="badge badge-team-shimmer"
@@ -345,6 +332,22 @@ function initials(login: string): string {
 
                     <!-- Right column -->
                     <div class="pr-right">
+                        <!-- Avatar -->
+                        <div class="avatar-slot">
+                            {#if notif.author}
+                                <img
+                                    class="avatar"
+                                    src={avatarUrl(notif.author)}
+                                    alt={notif.author}
+                                    onerror={(e) => {
+                                        const el = e.currentTarget as HTMLElement;
+                                        el.outerHTML = `<div class="avatar avatar-initials">${initials(notif.author!)}</div>`;
+                                    }}
+                                >
+                            {:else}
+                                <div class="avatar avatar-empty"></div>
+                            {/if}
+                        </div>
                         <span class="label label-{reasonClass(notif.reason)}"
                             >{reasonLabel(notif.reason)}</span
                         >
@@ -471,6 +474,7 @@ function initials(login: string): string {
 
 /* PR row */
 .pr-item {
+    position: relative;
     display: flex;
     align-items: flex-start;
     padding: 12px 16px;
@@ -498,36 +502,63 @@ function initials(login: string): string {
     background: transparent;
 }
 
-/* Avatar */
+/* Status icon (left column) */
+.status-icon-slot {
+    flex-shrink: 0;
+    width: 16px;
+    display: flex;
+    align-items: flex-start;
+    padding-top: 3px;
+}
+.status-icon {
+    flex-shrink: 0;
+}
+.status-icon-empty {
+    width: 16px;
+    height: 16px;
+}
+.status-icon-open {
+    color: #3fb950;
+}
+.status-icon-draft {
+    color: var(--fg-muted);
+}
+.status-icon-merged {
+    color: #a371f7;
+}
+.status-icon-closed {
+    color: #f85149;
+}
+
+/* Avatar (right column) */
 .avatar-slot {
     flex-shrink: 0;
-    width: 32px;
-    height: 32px;
-    margin-top: 2px;
+    width: 24px;
+    height: 24px;
 }
 .avatar {
-    width: 32px;
-    height: 32px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
     border: 1px solid var(--border-default);
     object-fit: cover;
 }
 .avatar-initials {
-    width: 32px;
-    height: 32px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
     background: #21262d;
     border: 1px solid var(--border-default);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 600;
     color: var(--fg-muted);
 }
 .avatar-empty {
-    width: 32px;
-    height: 32px;
+    width: 24px;
+    height: 24px;
 }
 
 .pr-body {
@@ -565,38 +596,6 @@ function initials(login: string): string {
     font-weight: 400;
     color: var(--fg-subtle);
     margin-right: 4px;
-}
-
-/* Status badges */
-.badge-status {
-    display: inline-flex;
-    align-items: center;
-    font-size: 10px;
-    padding: 0 6px;
-    border-radius: 2em;
-    border: 1px solid;
-    white-space: nowrap;
-    line-height: 17px;
-}
-.badge-status-open {
-    border-color: rgba(63, 185, 80, 0.4);
-    background: rgba(63, 185, 80, 0.1);
-    color: #56d364;
-}
-.badge-status-draft {
-    border-color: rgba(110, 118, 129, 0.4);
-    background: rgba(110, 118, 129, 0.1);
-    color: var(--fg-muted);
-}
-.badge-status-merged {
-    border-color: rgba(163, 113, 247, 0.4);
-    background: rgba(163, 113, 247, 0.1);
-    color: #c9b1f7;
-}
-.badge-status-closed {
-    border-color: rgba(248, 81, 73, 0.4);
-    background: rgba(248, 81, 73, 0.1);
-    color: #f85149;
 }
 
 /* Team badges */
@@ -720,7 +719,9 @@ function initials(login: string): string {
 
 /* Action buttons */
 .pr-actions {
-    flex-shrink: 0;
+    position: absolute;
+    bottom: 10px;
+    right: 16px;
     display: flex;
     align-items: center;
 }

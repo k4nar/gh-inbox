@@ -258,23 +258,27 @@ describe("PrList", () => {
 
     // New enriched data tests
 
-    it("status badge shows 'Open' for pr_status: open", async () => {
+    it("status icon shows open octicon for pr_status: open", async () => {
         globalThis.fetch = mockFetch([makeItem({ pr_status: "open" })]);
 
         render(PrList);
 
         await waitFor(() => {
-            expect(screen.getByText(/● Open/)).toBeInTheDocument();
+            expect(
+                screen.getByRole("img", { name: "open" }),
+            ).toBeInTheDocument();
         });
     });
 
-    it("status badge shows 'Draft' for pr_status: draft", async () => {
+    it("status icon shows draft octicon for pr_status: draft", async () => {
         globalThis.fetch = mockFetch([makeItem({ pr_status: "draft" })]);
 
         render(PrList);
 
         await waitFor(() => {
-            expect(screen.getByText(/◌ Draft/)).toBeInTheDocument();
+            expect(
+                screen.getByRole("img", { name: "draft" }),
+            ).toBeInTheDocument();
         });
     });
 
