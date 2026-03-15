@@ -105,4 +105,20 @@ describe("SSE utility", () => {
         expect(callback).not.toHaveBeenCalled();
         disconnectSSE();
     });
+
+    it("pr:teams_updated triggers registered callbacks with pr_id and teams", async () => {
+        const { connectSSE, onPrTeamsUpdated, disconnectSSE } = await import(
+            "./sse.svelte.ts"
+        );
+        connectSSE();
+        const callback = vi.fn();
+        onPrTeamsUpdated(callback);
+        MockEventSource.instance.simulateEvent("pr:teams_updated", {
+            pr_id: 42,
+            teams: ["acme/platform"],
+        });
+        expect(callback).toHaveBeenCalledOnce();
+        expect(callback).toHaveBeenCalledWith(42, ["acme/platform"]);
+        disconnectSSE();
+    });
 });
