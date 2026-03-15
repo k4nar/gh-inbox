@@ -8,5 +8,6 @@ pub use pull_request::{
     GithubReviewComment,
 };
 pub use sync_event::{
-    NewNotificationsData, PrTeamsUpdatedData, SyncEvent, SyncStatusData, SyncStatusKind,
+    NewNotificationsData, PrInfoUpdatedData, PrNewComment, PrTeamsUpdatedData, SyncEvent,
+    SyncStatusData, SyncStatusKind,
 };

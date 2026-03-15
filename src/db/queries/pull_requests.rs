@@ -245,6 +245,35 @@ pub async fn set_teams_fetching(pool: &SqlitePool, pr_ids: &[i64]) -> sqlx::Resu
     Ok(changed)
 }
 
+/// Query new-commits and new-comments-json for a specific PR since its last_viewed_at.
+/// Returns (None, None) when last_viewed_at is NULL (first visit) or when the PR row is missing.
+pub async fn get_pr_activity(
+    pool: &SqlitePool,
+    pr_id: i64,
+    repository: &str,
+) -> sqlx::Result<(Option<i64>, Option<String>)> {
+    let row: Option<(Option<i64>, Option<String>)> = sqlx::query_as(
+        "SELECT
+            CASE WHEN pr.last_viewed_at IS NULL THEN NULL
+                 ELSE (SELECT COUNT(*) FROM commits c WHERE c.pr_id = pr.id AND c.committed_at > pr.last_viewed_at)
+            END as new_commits,
+            CASE WHEN pr.last_viewed_at IS NULL THEN NULL
+                 ELSE COALESCE((
+                     SELECT json_group_array(json_object('author', author, 'count', cnt))
+                     FROM (SELECT author, COUNT(*) as cnt FROM comments
+                           WHERE pr_id = pr.id AND created_at > pr.last_viewed_at
+                           GROUP BY author ORDER BY cnt DESC, author ASC)
+                 ), '[]')
+            END as new_comments_json
+         FROM pull_requests pr WHERE pr.id = ? AND pr.repo = ?",
+    )
+    .bind(pr_id)
+    .bind(repository)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.unwrap_or((None, None)))
+}
+
 /// Store the resolved teams JSON for a PR.
 pub async fn update_teams(pool: &SqlitePool, pr_id: i64, teams_json: &str) -> sqlx::Result<()> {
     sqlx::query("UPDATE pull_requests SET teams = ? WHERE id = ?")
@@ -547,6 +576,37 @@ mod tests {
         let item = items.iter().find(|i| i.pr_id == Some(45)).unwrap();
         assert!(item.new_commits.is_none());
         assert!(item.new_comments.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_pr_activity_returns_none_when_never_viewed() {
+        let pool = test_pool().await;
+        upsert_pull_request(&pool, &sample(10)).await.unwrap(); // last_viewed_at = None
+        let (commits, comments) = get_pr_activity(&pool, 10, "owner/repo").await.unwrap();
+        assert!(commits.is_none(), "expect None when last_viewed_at is NULL");
+        assert!(comments.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_pr_activity_returns_zero_after_viewing() {
+        let pool = test_pool().await;
+        upsert_pull_request(&pool, &sample(20)).await.unwrap();
+        update_last_viewed_at(&pool, 20).await.unwrap();
+        let (commits, comments) = get_pr_activity(&pool, 20, "owner/repo").await.unwrap();
+        assert_eq!(commits, Some(0));
+        // No comments yet, but the field should be Some (not None) now that last_viewed_at is set
+        assert!(
+            comments.is_some(),
+            "expect Some([]) when last_viewed_at is set and no new comments"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_pr_activity_returns_none_for_missing_pr() {
+        let pool = test_pool().await;
+        let (commits, comments) = get_pr_activity(&pool, 999, "owner/repo").await.unwrap();
+        assert!(commits.is_none());
+        assert!(comments.is_none());
     }
 
     #[tokio::test]

@@ -15,8 +15,8 @@ pub use notifications::{
     unarchive_notification, upsert_notification,
 };
 pub use pull_requests::{
-    CommentAuthorCount, InboxItem, PullRequestRow, get_pull_request, query_archived_enriched,
-    query_inbox_enriched, set_teams_fetching, update_last_viewed_at, update_teams,
-    upsert_pull_request,
+    CommentAuthorCount, InboxItem, PullRequestRow, get_pr_activity, get_pull_request,
+    query_archived_enriched, query_inbox_enriched, set_teams_fetching, update_last_viewed_at,
+    update_teams, upsert_pull_request,
 };
 pub use user_teams::{get_all_user_teams, replace_user_teams};

@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Events broadcast from the sync loop to SSE clients.
 /// The SSE `event:` line carries the type discriminator;
@@ -8,6 +8,7 @@ pub enum SyncEvent {
     NewNotifications { count: usize },
     SyncStatus { status: SyncStatusKind },
     PrTeamsUpdated(PrTeamsUpdatedData),
+    PrInfoUpdated(PrInfoUpdatedData),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -35,4 +36,23 @@ pub struct SyncStatusData {
 pub struct PrTeamsUpdatedData {
     pub pr_id: i64,
     pub teams: Vec<String>,
+}
+
+/// Payload serialized into the SSE `data:` field for PrInfoUpdated.
+#[derive(Debug, Clone, Serialize)]
+pub struct PrInfoUpdatedData {
+    pub pr_id: i64,
+    pub repository: String,
+    pub author: String,
+    pub pr_status: String,
+    /// None means last_viewed_at is NULL (first visit); Some(n) = n new commits since last visit.
+    pub new_commits: Option<i64>,
+    /// None means last_viewed_at is NULL; Some([]) = no new comments.
+    pub new_comments: Option<Vec<PrNewComment>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrNewComment {
+    pub author: String,
+    pub count: i64,
 }

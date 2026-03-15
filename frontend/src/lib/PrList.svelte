@@ -1,7 +1,7 @@
 <script lang="ts">
 import { apiFetch } from "./api.ts";
 import { reasonClass, reasonLabel } from "./reason.ts";
-import { onPrTeamsUpdated } from "./sse.svelte.ts";
+import { onPrInfoUpdated, onPrTeamsUpdated } from "./sse.svelte.ts";
 import { timeAgo } from "./timeago.ts";
 import { showError } from "./toast.svelte.ts";
 import type { InboxItem } from "./types.ts";
@@ -19,6 +19,13 @@ let {
 } = $props();
 
 let notifications: InboxItem[] = $state([]);
+let listEl: HTMLElement | undefined = $state(undefined);
+// Incremented only when the full list is re-fetched (not on per-item SSE updates).
+// The IntersectionObserver effect depends on this so it doesn't restart on every mutation.
+let listVersion = $state(0);
+// Tracks which notification IDs have already been sent to the prefetch endpoint.
+// Cleared when the list is re-fetched.
+const prefetchedIds = new Set<string>();
 
 const unsubTeams = onPrTeamsUpdated((pr_id, teams) => {
     const item = notifications.find((n) => n.pr_id === pr_id);
@@ -32,11 +39,88 @@ $effect(() => {
     return unsubTeams;
 });
 
+const unsubInfo = onPrInfoUpdated((data) => {
+    const item = notifications.find(
+        (n) => n.pr_id === data.pr_id && n.repository === data.repository,
+    );
+    if (item) {
+        item.author = data.author;
+        item.pr_status = data.pr_status as InboxItem["pr_status"];
+        if (data.new_commits !== null) item.new_commits = data.new_commits;
+        if (data.new_comments !== null) item.new_comments = data.new_comments;
+        notifications = [...notifications];
+    }
+});
+$effect(() => {
+    return unsubInfo;
+});
+
+// IntersectionObserver: prefetch PR data for visible inbox rows.
+// Depends on listVersion (incremented only on full re-fetch) so SSE-triggered
+// mutations to individual items do not restart the observer unnecessarily.
+$effect(() => {
+    void listVersion;
+    if (!listEl) return;
+
+    const pendingIds = new Set<string>();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    function schedulePrefetch() {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+            const items = notifications.filter(
+                (n) => pendingIds.has(n.id) && n.pr_id !== null,
+            );
+            pendingIds.clear();
+            if (items.length === 0) return;
+            void apiFetch("/api/inbox/prefetch", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    items: items.map((n) => ({
+                        repository: n.repository,
+                        pr_number: n.pr_id,
+                    })),
+                }),
+            });
+        }, 200);
+    }
+
+    const observer = new IntersectionObserver(
+        (entries) => {
+            let changed = false;
+            for (const entry of entries) {
+                if (entry.isIntersecting) {
+                    const id = (entry.target as HTMLElement).dataset.notifId;
+                    if (id && !prefetchedIds.has(id)) {
+                        pendingIds.add(id);
+                        prefetchedIds.add(id);
+                        changed = true;
+                    }
+                }
+            }
+            if (changed) schedulePrefetch();
+        },
+        { rootMargin: "200px" },
+    );
+
+    listEl.querySelectorAll("[data-notif-id]").forEach((el) => {
+        observer.observe(el);
+    });
+
+    return () => {
+        observer.disconnect();
+        if (timer) clearTimeout(timer);
+    };
+});
+
 async function fetchNotifications(view: string): Promise<void> {
     try {
         notifications = await apiFetch<InboxItem[]>(
             `/api/inbox?status=${view}`,
         );
+        prefetchedIds.clear();
+        listVersion++;
     } catch (err) {
         console.error("Failed to fetch notifications:", err);
         showError("Failed to load notifications");
@@ -129,7 +213,7 @@ function activitySentence(item: InboxItem): string | null {
 function formatActors(names: string[]): string {
     if (names.length === 0) return "";
     if (names.length === 1) return names[0];
-    return names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+    return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 function avatarUrl(login: string): string {
@@ -167,7 +251,7 @@ function initials(login: string): string {
         </button>
     </div>
 
-    <div class="pr-list">
+    <div class="pr-list" bind:this={listEl}>
         {#if count === 0}
             <div class="empty-state">{emptyMessage}</div>
         {:else}
@@ -177,6 +261,7 @@ function initials(login: string): string {
                     class="pr-item"
                     class:read={!notif.unread}
                     class:selected={notif.id === selectedId}
+                    data-notif-id={notif.id}
                     onclick={() => handleSelect(notif)}
                     role="button"
                     tabindex="0"

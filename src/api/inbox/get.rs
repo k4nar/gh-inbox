@@ -8,9 +8,10 @@ use sqlx::SqlitePool;
 use tokio::sync::broadcast::Sender;
 
 use crate::api::AppError;
+use crate::api::inbox::teams::{ensure_user_teams_fresh, fetch_teams_for_pr};
 use crate::db::queries::{self, InboxItem};
 use crate::github::sync::sync_notifications;
-use crate::models::{PrTeamsUpdatedData, SyncEvent};
+use crate::models::SyncEvent;
 use crate::server::AppState;
 
 #[derive(Deserialize)]
@@ -103,62 +104,20 @@ async fn fetch_teams_background(
 async fn do_fetch_teams(
     pool: &SqlitePool,
     client: &reqwest::Client,
-    token: &str,
+    token: &Arc<str>,
     base_url: &str,
     tx: &Sender<SyncEvent>,
     pr_ids: &[i64],
     repo_map: &std::collections::HashMap<i64, String>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use crate::github;
-
-    // Ensure user_teams is fresh (24h TTL)
-    let last_fetched = queries::get_last_fetched_epoch(pool, "user_teams")
-        .await
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)?;
-    let now_secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("clock")
-        .as_secs() as i64;
-    let needs_refresh = last_fetched.map(|t| now_secs - t > 86_400).unwrap_or(true);
-
-    if needs_refresh {
-        let user_teams = github::fetch_user_teams(client, token, base_url).await?;
-        queries::replace_user_teams(pool, &user_teams).await?;
-    }
-
-    let user_teams: std::collections::HashSet<String> = queries::get_all_user_teams(pool)
-        .await?
-        .into_iter()
-        .collect();
+    ensure_user_teams_fresh(pool, client, token, base_url).await?;
 
     for &pr_id in pr_ids {
         let repo = match repo_map.get(&pr_id) {
             Some(r) => r,
             None => continue,
         };
-        let parts: Vec<&str> = repo.splitn(2, '/').collect();
-        if parts.len() != 2 {
-            continue;
-        }
-        let (owner, repo_name) = (parts[0], parts[1]);
-
-        let reviewer_teams = github::fetch_requested_reviewer_teams(
-            client, token, base_url, owner, repo_name, pr_id,
-        )
-        .await?;
-
-        let matched: Vec<String> = reviewer_teams
-            .into_iter()
-            .filter(|t| user_teams.contains(t))
-            .collect();
-
-        let teams_json = serde_json::to_string(&matched)?;
-        queries::update_teams(pool, pr_id, &teams_json).await?;
-
-        let _ = tx.send(SyncEvent::PrTeamsUpdated(PrTeamsUpdatedData {
-            pr_id,
-            teams: matched,
-        }));
+        fetch_teams_for_pr(pool, client, token, base_url, tx, pr_id, repo).await?;
     }
     Ok(())
 }
