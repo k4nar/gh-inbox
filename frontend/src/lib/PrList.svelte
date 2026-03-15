@@ -286,9 +286,27 @@ function initials(login: string): string {
 
                     <!-- Body -->
                     <div class="pr-body">
-                        <!-- Top meta: repo · teams -->
+                        <!-- Top meta: repo · author · teams -->
                         <div class="pr-meta-top">
                             <span class="pr-repo">{notif.repository}</span>
+                            {#if notif.author}
+                                <span class="divider">·</span>
+                                <span class="pr-author">
+                                    by
+                                    <img
+                                        class="author-avatar"
+                                        src={avatarUrl(notif.author)}
+                                        alt={notif.author}
+                                        onerror={(e) => {
+                                            const el = e.currentTarget as HTMLElement;
+                                            el.outerHTML = `<div class="author-avatar author-avatar-initials">${initials(notif.author!)}</div>`;
+                                        }}
+                                    >
+                                    <span class="author-name"
+                                        >{notif.author}</span
+                                    >
+                                </span>
+                            {/if}
                             {#if notif.teams && notif.teams.length > 0}
                                 {#each notif.teams as team}
                                     <span class="divider">·</span>
@@ -329,22 +347,6 @@ function initials(login: string): string {
 
                     <!-- Right column -->
                     <div class="pr-right">
-                        <!-- Avatar -->
-                        <div class="avatar-slot">
-                            {#if notif.author}
-                                <img
-                                    class="avatar"
-                                    src={avatarUrl(notif.author)}
-                                    alt={notif.author}
-                                    onerror={(e) => {
-                                        const el = e.currentTarget as HTMLElement;
-                                        el.outerHTML = `<div class="avatar avatar-initials">${initials(notif.author!)}</div>`;
-                                    }}
-                                >
-                            {:else}
-                                <div class="avatar avatar-empty"></div>
-                            {/if}
-                        </div>
                         <span class="label label-{reasonClass(notif.reason)}"
                             >{reasonLabel(notif.reason)}</span
                         >
@@ -540,35 +542,40 @@ function initials(login: string): string {
     color: #f85149;
 }
 
-/* Avatar (right column) */
-.avatar-slot {
+/* Inline author (activity line) */
+.pr-author {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--fg-muted);
+    white-space: nowrap;
     flex-shrink: 0;
-    width: 24px;
-    height: 24px;
 }
-.avatar {
-    width: 24px;
-    height: 24px;
+.author-avatar {
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
     border: 1px solid var(--border-default);
     object-fit: cover;
+    vertical-align: middle;
 }
-.avatar-initials {
-    width: 24px;
-    height: 24px;
+.author-avatar-initials {
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
     background: #21262d;
     border: 1px solid var(--border-default);
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 10px;
+    font-size: 8px;
     font-weight: 600;
     color: var(--fg-muted);
 }
-.avatar-empty {
-    width: 24px;
-    height: 24px;
+.author-name {
+    color: var(--fg-muted);
 }
 
 .pr-body {
