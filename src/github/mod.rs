@@ -3,11 +3,13 @@ mod commits;
 mod notifications;
 mod pull_requests;
 pub mod sync;
+mod teams;
 
 pub use check_runs::fetch_check_runs;
 pub use commits::fetch_commits;
 pub use notifications::fetch_notifications;
 pub use pull_requests::{fetch_issue_comments, fetch_pull_request, fetch_review_comments};
+pub use teams::{fetch_requested_reviewer_teams, fetch_user_teams};
 
 pub const GITHUB_API_BASE: &str = "https://api.github.com";
 
