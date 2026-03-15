@@ -277,6 +277,8 @@ function initials(login: string): string {
                                 <title>{notif.pr_status}</title>
                                 <path d={STATUS_ICONS[notif.pr_status]} />
                             </svg>
+                        {:else if notif.pr_id && notif.pr_status === null}
+                            <div class="status-icon-shimmer"></div>
                         {:else}
                             <div class="status-icon-empty"></div>
                         {/if}
@@ -287,12 +289,7 @@ function initials(login: string): string {
                         <!-- Top meta: repo · teams -->
                         <div class="pr-meta-top">
                             <span class="pr-repo">{notif.repository}</span>
-                            {#if notif.teams === null && notif.pr_id}
-                                <span class="divider">·</span>
-                                <span class="badge badge-team-shimmer"
-                                    ><span class="shimmer"></span></span
-                                >
-                            {:else if notif.teams && notif.teams.length > 0}
+                            {#if notif.teams && notif.teams.length > 0}
                                 {#each notif.teams as team}
                                     <span class="divider">·</span>
                                     <span class="badge badge-team"
@@ -517,6 +514,19 @@ function initials(login: string): string {
     width: 16px;
     height: 16px;
 }
+.status-icon-shimmer {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: linear-gradient(
+        90deg,
+        var(--border-default) 25%,
+        var(--border-muted) 50%,
+        var(--border-default) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+}
 .status-icon-open {
     color: #3fb950;
 }
@@ -610,29 +620,6 @@ function initials(login: string): string {
     color: #e3b341;
     white-space: nowrap;
     line-height: 17px;
-}
-.badge-team-shimmer {
-    display: inline-flex;
-    align-items: center;
-    padding: 0 6px;
-    border-radius: 2em;
-    border: 1px solid var(--border-default);
-    background: var(--canvas-subtle);
-    line-height: 17px;
-}
-.shimmer {
-    display: inline-block;
-    width: 60px;
-    height: 10px;
-    background: linear-gradient(
-        90deg,
-        var(--border-default) 25%,
-        var(--border-muted) 50%,
-        var(--border-default) 75%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 3px;
 }
 @keyframes shimmer {
     0% {

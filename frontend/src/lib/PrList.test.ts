@@ -308,8 +308,10 @@ describe("PrList", () => {
         });
     });
 
-    it("team shimmer is rendered when teams is null and pr_id is set", async () => {
-        globalThis.fetch = mockFetch([makeItem({ teams: null, pr_id: 42 })]);
+    it("status icon shimmer is rendered when pr_status is null and pr_id is set", async () => {
+        globalThis.fetch = mockFetch([
+            makeItem({ pr_status: null, pr_id: 42 }),
+        ]);
 
         const { container } = render(PrList);
 
@@ -317,7 +319,7 @@ describe("PrList", () => {
             expect(screen.getByText("owner/repo")).toBeInTheDocument();
         });
 
-        const shimmer = container.querySelector(".badge-team-shimmer");
+        const shimmer = container.querySelector(".status-icon-shimmer");
         expect(shimmer).toBeInTheDocument();
     });
 
