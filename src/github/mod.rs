@@ -25,6 +25,7 @@ fn github_request(client: &reqwest::Client, token: &str, url: &str) -> reqwest::
 }
 
 /// Result of a conditional HTTP request using `If-None-Match`.
+#[must_use]
 pub enum ConditionalResponse<T> {
     /// Server returned 304 — resource unchanged, use cached data.
     NotModified,
