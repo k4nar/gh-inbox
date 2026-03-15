@@ -71,6 +71,9 @@ pub async fn get_pr(
             additions: gh_pr.additions.unwrap_or(0),
             deletions: gh_pr.deletions.unwrap_or(0),
             changed_files: gh_pr.changed_files.unwrap_or(0),
+            draft: gh_pr.draft,
+            merged_at: gh_pr.merged_at.clone(),
+            teams: None, // not managed here
         };
         queries::upsert_pull_request(&state.pool, &pr_row).await?;
 
