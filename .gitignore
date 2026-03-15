@@ -54,5 +54,6 @@ yarn-error.log*
 # Claude
 .claude/settings.local.json
 
-# Superpowers brainstorm sessions (local only)
+# Superpowers related files
+docs/superpowers
 .superpowers/
