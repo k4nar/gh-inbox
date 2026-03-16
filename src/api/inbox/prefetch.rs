@@ -9,7 +9,7 @@ use tokio::sync::broadcast::Sender;
 
 use crate::api::AppError;
 use crate::api::inbox::teams::{ensure_user_teams_fresh, fetch_teams_for_pr};
-use crate::api::pull_requests::fetch::{derive_pr_status_from_row, fetch_and_cache_pr};
+use crate::api::pull_requests::fetch::fetch_and_cache_pr_meta;
 use crate::db::queries;
 use crate::models::{PrInfoUpdatedData, PrNewComment, SyncEvent};
 use crate::server::AppState;
@@ -81,8 +81,8 @@ async fn fetch_one(
     }
     let (owner, repo_name) = (parts[0], parts[1]);
 
-    // fetch_and_cache_pr handles the throttle internally.
-    let fetch_result = fetch_and_cache_pr(
+    // fetch_and_cache_pr_meta uses ETags — no time-based throttle needed.
+    let fetch_result = fetch_and_cache_pr_meta(
         pool,
         client,
         token,
@@ -94,18 +94,9 @@ async fn fetch_one(
     .await
     .map_err(|e| format!("{e:?}"))?;
 
-    // Determine author and pr_status.
-    let (author, pr_status) = if let Some(r) = fetch_result {
-        (r.author, r.pr_status)
-    } else {
-        // Throttled — read current data from DB (PR row must exist if throttled).
-        match queries::get_pull_request(pool, &item.repository, item.pr_number)
-            .await
-            .map_err(|e| format!("{e:?}"))?
-        {
-            Some(pr) => (pr.author.clone(), derive_pr_status_from_row(&pr)),
-            None => return Ok(()), // No data yet and throttled — nothing to broadcast.
-        }
+    let (author, pr_status) = match fetch_result {
+        Some(r) => (r.author, r.pr_status),
+        None => return Ok(()), // PR not in DB and 304 received — nothing to broadcast.
     };
 
     // Query actual activity counts (respects last_viewed_at).
