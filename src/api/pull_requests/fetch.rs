@@ -220,13 +220,18 @@ pub async fn fetch_and_cache_pr_meta(
             let author = data.user.login.clone();
             let pr_status = derive_pr_status(data.merged_at.as_deref(), &data.state, data.draft);
 
+            // Preserve existing CI status — we don't fetch check runs in the meta path.
+            let existing_ci_status = queries::get_pull_request(pool, &full_repo, number)
+                .await?
+                .and_then(|pr| pr.ci_status);
+
             let pr_row = PullRequestRow {
                 id: data.number,
                 title: data.title,
                 repo: full_repo.clone(),
                 author: author.clone(),
                 url: data.html_url,
-                ci_status: None,
+                ci_status: existing_ci_status,
                 last_viewed_at: None,
                 body: data.body.unwrap_or_default(),
                 state: data.state,
