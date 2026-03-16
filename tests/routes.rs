@@ -403,6 +403,17 @@ async fn get_pr_threads_groups_comments() {
         .unwrap();
     assert_eq!(review["comments"].as_array().unwrap().len(), 2);
     assert_eq!(review["path"], "src/main.rs");
+
+    // Each comment in each thread should have body_html
+    if !threads.is_empty() {
+        let first_thread_comments = threads[0]["comments"].as_array().unwrap();
+        if !first_thread_comments.is_empty() {
+            assert!(
+                first_thread_comments[0]["body_html"].is_string(),
+                "thread comment body_html should be a string"
+            );
+        }
+    }
 }
 
 /// Helper: build app with mock GitHub, fetch /api/inbox to populate DB, return (pool, base_url).
