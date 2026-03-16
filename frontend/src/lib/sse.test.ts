@@ -106,6 +106,27 @@ describe("SSE utility", () => {
         disconnectSSE();
     });
 
+    it("pr:info_updated triggers registered callbacks with the full payload", async () => {
+        const { connectSSE, onPrInfoUpdated, disconnectSSE } = await import(
+            "./sse.svelte.ts"
+        );
+        connectSSE();
+        const callback = vi.fn();
+        onPrInfoUpdated(callback);
+        const payload = {
+            pr_id: 7,
+            repository: "acme/api",
+            author: "bob",
+            pr_status: "open",
+            new_commits: 2,
+            new_comments: [{ author: "alice", count: 1 }],
+        };
+        MockEventSource.instance.simulateEvent("pr:info_updated", payload);
+        expect(callback).toHaveBeenCalledOnce();
+        expect(callback).toHaveBeenCalledWith(payload);
+        disconnectSSE();
+    });
+
     it("pr:teams_updated triggers registered callbacks with pr_id and teams", async () => {
         const { connectSSE, onPrTeamsUpdated, disconnectSSE } = await import(
             "./sse.svelte.ts"
