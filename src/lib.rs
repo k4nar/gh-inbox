@@ -1,6 +1,7 @@
 pub mod api;
 pub mod db;
 pub mod github;
+pub(crate) mod markdown;
 pub mod models;
 pub(crate) mod server;
 
