@@ -9,7 +9,7 @@ use tokio::sync::broadcast::Sender;
 
 use crate::api::AppError;
 use crate::api::inbox::teams::{ensure_user_teams_fresh, fetch_teams_for_pr};
-use crate::api::pull_requests::fetch::fetch_and_cache_pr_meta;
+use crate::api::pull_requests::fetch::{fetch_and_cache_pr, fetch_and_cache_pr_meta};
 use crate::db::queries;
 use crate::models::{PrInfoUpdatedData, PrNewComment, SyncEvent};
 use crate::server::AppState;
@@ -100,6 +100,27 @@ async fn fetch_one(
     )
     .await
     .map_err(|e| format!("{e:?}"))?;
+
+    // Pre-warm the full PR detail cache (comments, commits, check runs).
+    // Uses a 60s time-based throttle — no-ops if fetched recently.
+    // Does NOT update last_viewed_at; that only happens when the user opens the PR.
+    if let Err(e) = fetch_and_cache_pr(
+        pool,
+        client,
+        token,
+        base_url,
+        owner,
+        repo_name,
+        item.pr_number,
+    )
+    .await
+    {
+        eprintln!(
+            "prefetch: detail cache warm failed for {}/#{}: {e:?}",
+            item.repository, item.pr_number
+        );
+        // Non-fatal — meta fetch succeeded; detail will be fetched on first click.
+    }
 
     let (author, pr_status) = match fetch_result {
         Some(r) => (r.author, r.pr_status),
