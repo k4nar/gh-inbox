@@ -49,6 +49,7 @@ pub async fn get_pr(
 ) -> Result<Json<PrDetailResponse>, AppError> {
     let full_repo = format!("{owner}/{repo}");
 
+    // Fetch and cache from GitHub (handles throttle internally).
     let fetch_result = fetch_and_cache_pr(
         &state.pool,
         &state.client,
@@ -60,16 +61,19 @@ pub async fn get_pr(
     )
     .await?;
 
+    // Update last_viewed_at before reading so pr.last_viewed_at is the current timestamp.
     queries::update_last_viewed_at(&state.pool, number).await?;
 
     let pr = queries::get_pull_request(&state.pool, &full_repo, number)
         .await?
         .ok_or_else(|| AppError::Database(sqlx::Error::RowNotFound))?;
 
+    // fetch_result carries fresher author/status when we just fetched; fall back to the DB row.
     let (author, pr_status) = match fetch_result {
         Some(ref r) => (r.author.clone(), r.pr_status.clone()),
         None => (pr.author.clone(), derive_pr_status_from_row(&pr)),
     };
+    // Send SSE so the inbox list immediately reflects 0 new activity and correct metadata.
     let _ = state.tx.send(SyncEvent::PrInfoUpdated(PrInfoUpdatedData {
         pr_id: number,
         repository: full_repo.clone(),
