@@ -13,43 +13,46 @@ pub struct CommentRow {
     pub path: Option<String>,
     pub position: Option<i64>,
     pub in_reply_to_id: Option<i64>,
+    pub html_url: Option<String>,
 }
 
 /// Insert or update a comment.
 pub async fn upsert_comment(pool: &SqlitePool, comment: &CommentRow) -> sqlx::Result<()> {
     sqlx::query(
-		"INSERT INTO comments (id, pr_id, thread_id, author, body, created_at, comment_type, path, position, in_reply_to_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO comments (id, pr_id, thread_id, author, body, created_at, comment_type, path, position, in_reply_to_id, html_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            body = excluded.body,
-           thread_id = excluded.thread_id",
-	)
-	.bind(comment.id)
-	.bind(comment.pr_id)
-	.bind(&comment.thread_id)
-	.bind(&comment.author)
-	.bind(&comment.body)
-	.bind(&comment.created_at)
-	.bind(&comment.comment_type)
-	.bind(&comment.path)
-	.bind(comment.position)
-	.bind(comment.in_reply_to_id)
-	.execute(pool)
-	.await?;
+           thread_id = excluded.thread_id,
+           html_url = excluded.html_url",
+    )
+    .bind(comment.id)
+    .bind(comment.pr_id)
+    .bind(&comment.thread_id)
+    .bind(&comment.author)
+    .bind(&comment.body)
+    .bind(&comment.created_at)
+    .bind(&comment.comment_type)
+    .bind(&comment.path)
+    .bind(comment.position)
+    .bind(comment.in_reply_to_id)
+    .bind(&comment.html_url)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
 /// Query all comments for a given PR, ordered by creation time.
 pub async fn query_comments_for_pr(pool: &SqlitePool, pr_id: i64) -> sqlx::Result<Vec<CommentRow>> {
     sqlx::query_as::<_, CommentRow>(
-		"SELECT id, pr_id, thread_id, author, body, created_at, comment_type, path, position, in_reply_to_id
+        "SELECT id, pr_id, thread_id, author, body, created_at, comment_type, path, position, in_reply_to_id, html_url
          FROM comments
          WHERE pr_id = ?
          ORDER BY created_at ASC",
-	)
-	.bind(pr_id)
-	.fetch_all(pool)
-	.await
+    )
+    .bind(pr_id)
+    .fetch_all(pool)
+    .await
 }
 
 #[cfg(test)]
@@ -94,6 +97,7 @@ mod tests {
             path: None,
             position: None,
             in_reply_to_id: None,
+            html_url: None,
         }
     }
 
@@ -128,6 +132,22 @@ mod tests {
         let comments = query_comments_for_pr(&pool, 42).await.unwrap();
         assert_eq!(comments.len(), 1);
         assert_eq!(comments[0].body, "Updated body");
+    }
+
+    #[tokio::test]
+    async fn html_url_round_trip() {
+        let pool = test_pool().await;
+        upsert_pull_request(&pool, &sample_pr()).await.unwrap();
+
+        let mut c = sample(1, 42);
+        c.html_url = Some("https://github.com/owner/repo/pull/42#issuecomment-1".to_string());
+        upsert_comment(&pool, &c).await.unwrap();
+
+        let comments = query_comments_for_pr(&pool, 42).await.unwrap();
+        assert_eq!(
+            comments[0].html_url,
+            Some("https://github.com/owner/repo/pull/42#issuecomment-1".to_string())
+        );
     }
 
     #[tokio::test]
