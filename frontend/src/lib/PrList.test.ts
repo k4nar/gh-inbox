@@ -1,8 +1,28 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PrList from "./PrList.svelte";
+import type { InboxItem } from "./types.ts";
 
-const MOCK_NOTIFICATIONS = [
+function makeItem(overrides: Partial<InboxItem> = {}): InboxItem {
+    return {
+        id: "n1",
+        pr_id: 42,
+        title: "Fix bug",
+        repository: "owner/repo",
+        reason: "review_requested",
+        unread: true,
+        archived: false,
+        updated_at: "2025-01-01T00:00:00Z",
+        author: "alice",
+        pr_status: "open",
+        new_commits: null,
+        new_comments: null,
+        teams: null,
+        ...overrides,
+    };
+}
+
+const MOCK_NOTIFICATIONS: InboxItem[] = [
     {
         id: "1",
         pr_id: 42,
@@ -12,6 +32,11 @@ const MOCK_NOTIFICATIONS = [
         unread: true,
         archived: false,
         updated_at: "2025-06-01T12:00:00Z",
+        author: "alice",
+        pr_status: "open",
+        new_commits: null,
+        new_comments: null,
+        teams: null,
     },
     {
         id: "2",
@@ -22,6 +47,11 @@ const MOCK_NOTIFICATIONS = [
         unread: false,
         archived: false,
         updated_at: "2025-05-30T08:00:00Z",
+        author: "bob",
+        pr_status: "draft",
+        new_commits: 0,
+        new_comments: [],
+        teams: [],
     },
 ];
 
@@ -224,5 +254,82 @@ describe("PrList", () => {
 
         // onSelect should have been called
         expect(onSelect).toHaveBeenCalled();
+    });
+
+    // New enriched data tests
+
+    it("status icon shows open octicon for pr_status: open", async () => {
+        globalThis.fetch = mockFetch([makeItem({ pr_status: "open" })]);
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(
+                screen.getByRole("img", { name: "open" }),
+            ).toBeInTheDocument();
+        });
+    });
+
+    it("status icon shows draft octicon for pr_status: draft", async () => {
+        globalThis.fetch = mockFetch([makeItem({ pr_status: "draft" })]);
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(
+                screen.getByRole("img", { name: "draft" }),
+            ).toBeInTheDocument();
+        });
+    });
+
+    it("activity shows '✦ New pull request' when new_commits is null", async () => {
+        globalThis.fetch = mockFetch([
+            makeItem({ new_commits: null, new_comments: null }),
+        ]);
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("✦ New pull request")).toBeInTheDocument();
+        });
+    });
+
+    it("activity shows quiet text when new_commits is 0 and new_comments is empty", async () => {
+        globalThis.fetch = mockFetch([
+            makeItem({ new_commits: 0, new_comments: [] }),
+        ]);
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(
+                screen.getByText("No new activity since your last visit"),
+            ).toBeInTheDocument();
+        });
+    });
+
+    it("status icon shimmer is rendered when pr_status is null and pr_id is set", async () => {
+        globalThis.fetch = mockFetch([
+            makeItem({ pr_status: null, pr_id: 42 }),
+        ]);
+
+        const { container } = render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("owner/repo")).toBeInTheDocument();
+        });
+
+        const shimmer = container.querySelector(".status-icon-shimmer");
+        expect(shimmer).toBeInTheDocument();
+    });
+
+    it("team badge renders @owner/team when teams is set", async () => {
+        globalThis.fetch = mockFetch([makeItem({ teams: ["owner/frontend"] })]);
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("@owner/frontend")).toBeInTheDocument();
+        });
     });
 });

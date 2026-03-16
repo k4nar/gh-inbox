@@ -10,6 +10,8 @@ pub enum AppError {
     Database(sqlx::Error),
     /// Resource not found.
     NotFound(String),
+    /// Internal server error.
+    Internal(String),
 }
 
 impl From<reqwest::Error> for AppError {
@@ -49,6 +51,7 @@ impl IntoResponse for AppError {
                 format!("Database error: {err}"),
             ),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
+            AppError::Internal(msg) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
         };
 
         eprintln!("{message}");

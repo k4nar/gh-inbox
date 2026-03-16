@@ -710,3 +710,124 @@ async fn sse_no_event_when_nothing_changed() {
         "No changes expected when syncing identical data"
     );
 }
+
+#[tokio::test]
+async fn post_prefetch_returns_202_and_populates_pr_data() {
+    let mock_base_url = start_mock_github().await;
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+
+    // Bootstrap inbox so the notification row exists
+    let (app, _state) =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let r = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/inbox")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+
+    // Confirm PR row doesn't exist yet
+    assert!(
+        gh_inbox::db::queries::get_pull_request(&pool, "owner/repo", 42)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // Call prefetch endpoint
+    let (app, _state) =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let body = serde_json::json!({
+        "items": [{ "repository": "owner/repo", "pr_number": 42 }]
+    });
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(Method::POST)
+                .uri("/api/inbox/prefetch")
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+    // Give the background task time to complete
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    // PR row should now be populated
+    let pr = gh_inbox::db::queries::get_pull_request(&pool, "owner/repo", 42)
+        .await
+        .unwrap()
+        .expect("PR row should exist after prefetch");
+    assert_eq!(pr.author, "alice");
+    assert_eq!(pr.state, "open");
+}
+
+#[tokio::test]
+async fn sse_receives_pr_info_updated_on_prefetch() {
+    let mock_base_url = start_mock_github().await;
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+
+    // Bind a real server for SSE streaming (we need a persistent connection)
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (router, state) =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+
+    // Connect to SSE first so a receiver is registered before we send
+    let client = reqwest::Client::new();
+    let mut sse_resp = client
+        .get(format!("http://{addr}/api/events"))
+        .send()
+        .await
+        .unwrap();
+
+    // Small delay so the SSE handler has subscribed to the channel
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    // Trigger a pr:info_updated event via the broadcast channel
+    use gh_inbox::models::{PrInfoUpdatedData, SyncEvent};
+    state
+        .tx
+        .send(SyncEvent::PrInfoUpdated(PrInfoUpdatedData {
+            pr_id: 42,
+            repository: "owner/repo".to_string(),
+            author: "alice".to_string(),
+            pr_status: gh_inbox::models::PrStatus::Open,
+            new_commits: None,
+            new_comments: None,
+        }))
+        .unwrap();
+
+    // Collect SSE chunks
+    let mut events: Vec<String> = Vec::new();
+    let timeout = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while let Some(chunk) = sse_resp.chunk().await.unwrap() {
+            let text = String::from_utf8_lossy(&chunk);
+            for line in text.lines() {
+                if line.starts_with("event:") {
+                    events.push(line.trim_start_matches("event:").trim().to_string());
+                }
+            }
+            if events.contains(&"pr:info_updated".to_string()) {
+                break;
+            }
+        }
+    })
+    .await;
+
+    assert!(
+        timeout.is_ok(),
+        "Timed out waiting for pr:info_updated event"
+    );
+    assert!(events.contains(&"pr:info_updated".to_string()));
+}

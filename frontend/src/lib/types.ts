@@ -64,3 +64,19 @@ export interface PrDetailResponse {
     commits: Commit[];
     check_runs: CheckRun[];
 }
+
+export interface InboxItem {
+    id: string;
+    pr_id: number | null;
+    title: string;
+    repository: string;
+    reason: string;
+    unread: boolean;
+    archived: boolean;
+    updated_at: string;
+    author: string | null;
+    pr_status: "open" | "draft" | "merged" | "closed" | null;
+    new_commits: number | null; // null = first visit (never opened)
+    new_comments: { author: string; count: number }[] | null; // null = first visit
+    teams: string[] | null; // null = loading (show shimmer)
+}

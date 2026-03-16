@@ -10,6 +10,9 @@ pub struct GithubPullRequest {
     pub user: GithubUser,
     pub html_url: String,
     pub head: GithubHead,
+    #[serde(default)]
+    pub draft: bool,
+    pub merged_at: Option<String>,
     pub additions: Option<i64>,
     pub deletions: Option<i64>,
     pub changed_files: Option<i64>,

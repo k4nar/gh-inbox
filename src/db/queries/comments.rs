@@ -76,6 +76,9 @@ mod tests {
             additions: 0,
             deletions: 0,
             changed_files: 0,
+            draft: false,
+            merged_at: None,
+            teams: None,
         }
     }
 

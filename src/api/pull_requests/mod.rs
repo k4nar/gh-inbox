@@ -1,3 +1,4 @@
+pub(crate) mod fetch;
 mod get;
 mod threads;
 

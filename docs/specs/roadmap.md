@@ -208,3 +208,25 @@ Goal: The PR detail panel gains a direct link to GitHub, shows commits with "new
 - [x] Confirm: `cargo test` and `npm test` pass
 
 **Done when:** PR detail shows a GitHub link, commits with "new" highlighting, and CI checks grouped by status. All tests pass.
+
+---
+
+## M10 — PR List Enrichment
+
+Goal: Each PR row in the inbox shows the author avatar, PR status (open/draft/merged/closed), activity since last visit (new commits and comments), and the user's teams that are requested reviewers.
+
+- [x] Migration 009: add `draft`, `merged_at`, `teams` columns to `pull_requests`
+- [x] Migration 010: create `user_teams` table
+- [x] `src/models/pull_request.rs`: add `draft`, `merged_at` to `GithubPullRequest`
+- [x] `src/models/sync_event.rs`: add `PrTeamsUpdated` variant and `PrTeamsUpdatedData` struct
+- [x] `src/db/queries/pull_requests.rs`: add `InboxItem`, `query_inbox_enriched`, `query_archived_enriched`, `set_teams_fetching`, `update_teams`; update `upsert_pull_request` to include `draft`/`merged_at`, exclude `teams`
+- [x] `src/db/queries/user_teams.rs`: `get_all_user_teams`, `replace_user_teams`
+- [x] `src/github/teams.rs`: `fetch_user_teams`, `fetch_requested_reviewer_teams`
+- [x] `src/api/events.rs`: add `pr:teams_updated` match arm
+- [x] `src/api/inbox/get.rs`: return `Vec<InboxItem>`, spawn async team fetch with concurrency guard
+- [x] `frontend/src/lib/types.ts`: add `InboxItem` type
+- [x] `frontend/src/lib/sse.svelte.ts`: add `onPrTeamsUpdated` callback and listener
+- [x] `frontend/src/lib/PrList.svelte`: redesign row layout
+- [x] All backend and frontend tests pass
+
+**Done when:** The inbox list shows avatar, status badge, activity sentence, and team badges for each PR. Team badges update in real-time via SSE. `cargo test` and `npm test` pass.
