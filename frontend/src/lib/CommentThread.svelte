@@ -129,6 +129,4 @@ function isNew(comment: Comment): boolean {
     padding: 0 6px;
     line-height: 18px;
 }
-.comment-body {
-}
 </style>
