@@ -71,8 +71,15 @@ function firstLine(text: string): string {
             <span class="thread-path">Conversation</span>
         {/if}
 
-        {#if newCount > 0 && !expanded}
-            <span class="new-count-badge">{newCount} new</span>
+        {#if !expanded}
+            {#if newCount > 0}
+                <span class="new-count-badge">{newCount} new</span>
+            {:else}
+                <span class="comment-count"
+                    >{thread.comments.length}
+                    comments</span
+                >
+            {/if}
         {/if}
 
         <span class="thread-chevron" class:open={expanded}>
@@ -124,8 +131,12 @@ function firstLine(text: string): string {
             {/each}
         </div>
     {:else if firstComment}
-        <!-- Collapsed: two-line preview -->
-        <div class="thread-preview">
+        <!-- Collapsed: two-line preview, click to expand -->
+        <button
+            type="button"
+            class="thread-preview"
+            onclick={() => (expanded = true)}
+        >
             <div
                 class="comment-preview"
                 class:new-comment-preview={isNew(firstComment)}
@@ -158,7 +169,7 @@ function firstLine(text: string): string {
                     >
                 </div>
             {/if}
-        </div>
+        </button>
     {/if}
 </div>
 
@@ -305,6 +316,21 @@ function firstLine(text: string): string {
 .thread-preview {
     display: flex;
     flex-direction: column;
+    width: 100%;
+    background: none;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.comment-count {
+    font-size: 11px;
+    color: var(--fg-muted);
+    flex-shrink: 0;
+    margin-left: auto;
 }
 
 .comment-preview {
@@ -321,9 +347,17 @@ function firstLine(text: string): string {
     border-bottom: none;
 }
 
+.thread-preview:hover .comment-preview {
+    background: var(--canvas-subtle);
+}
+
 .new-comment-preview {
     background: rgba(47, 129, 247, 0.04);
     border-left: 3px solid var(--accent-fg);
+}
+
+.thread-preview:hover .new-comment-preview {
+    background: rgba(47, 129, 247, 0.09);
 }
 
 .preview-avatar {
