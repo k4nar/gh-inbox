@@ -28,6 +28,7 @@ describe("CommentThread", () => {
                     path: null,
                     position: null,
                     in_reply_to_id: null,
+                    html_url: null,
                 },
             ],
         };
@@ -56,6 +57,7 @@ describe("CommentThread", () => {
                     path: "src/main.rs",
                     position: 1,
                     in_reply_to_id: null,
+                    html_url: null,
                 },
             ],
         };
@@ -83,6 +85,7 @@ describe("CommentThread", () => {
                     path: null,
                     position: null,
                     in_reply_to_id: null,
+                    html_url: null,
                 },
                 {
                     id: 2,
@@ -96,6 +99,7 @@ describe("CommentThread", () => {
                     path: null,
                     position: null,
                     in_reply_to_id: null,
+                    html_url: null,
                 },
             ],
         };
@@ -126,6 +130,7 @@ describe("CommentThread", () => {
                     path: null,
                     position: null,
                     in_reply_to_id: null,
+                    html_url: null,
                 },
             ],
         };
