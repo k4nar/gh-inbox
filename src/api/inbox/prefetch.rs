@@ -56,6 +56,13 @@ async fn do_prefetch(
     tx: &Sender<SyncEvent>,
     items: Vec<PrefetchItem>,
 ) {
+    // Ensure user teams are fresh once for the entire batch instead of once per claimed PR,
+    // avoiding N sequential DB reads when many rows are visible.
+    if let Err(e) = ensure_user_teams_fresh(pool, client, token, base_url).await {
+        eprintln!("prefetch: could not refresh user teams: {e}");
+        // Non-fatal — continue; team badges may be stale but PR info still fetches.
+    }
+
     for item in items {
         if let Err(e) = fetch_one(pool, client, token, base_url, tx, &item).await {
             eprintln!(
@@ -125,7 +132,7 @@ async fn fetch_one(
         .await
         .map_err(|e| format!("{e:?}"))?;
     if claimed.contains(&item.pr_number) {
-        ensure_user_teams_fresh(pool, client, token, base_url).await?;
+        // ensure_user_teams_fresh was already called once in do_prefetch.
         if let Err(e) = fetch_teams_for_pr(
             pool,
             client,
