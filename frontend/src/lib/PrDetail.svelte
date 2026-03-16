@@ -269,7 +269,7 @@ function isNewCommit(commit: Commit): boolean {
                 </div>
             {/if}
 
-            {#if detail.pull_request.body}
+            {#if detail.pull_request.body_html}
                 <div class="pr-description">
                     <button
                         type="button"
@@ -507,10 +507,6 @@ function isNewCommit(commit: Commit): boolean {
     color: var(--fg-default);
 }
 .description-body {
-    font-size: 13px;
-    color: var(--fg-default);
-    line-height: 1.5;
-    word-break: break-word;
     padding: 12px;
     background: var(--canvas-subtle);
     border: 1px solid var(--border-default);

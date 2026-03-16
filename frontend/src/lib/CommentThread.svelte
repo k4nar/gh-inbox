@@ -130,9 +130,5 @@ function isNew(comment: Comment): boolean {
     line-height: 18px;
 }
 .comment-body {
-    font-size: 13px;
-    color: var(--fg-default);
-    line-height: 1.5;
-    word-break: break-word;
 }
 </style>

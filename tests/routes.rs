@@ -293,8 +293,8 @@ async fn get_pr_detail_returns_metadata_comments_and_checks() {
         detail["pull_request"]["body_html"]
             .as_str()
             .unwrap()
-            .contains("<p>"),
-        "body_html should be wrapped in <p>"
+            .contains("<p>This adds feature X.</p>"),
+        "body_html should be rendered as a paragraph"
     );
     // Each comment should also have body_html
     let comments = detail["comments"].as_array().unwrap();
