@@ -1,4 +1,5 @@
 <script lang="ts">
+import "./markdown.css";
 import { timeAgo } from "./timeago.ts";
 import type { Comment, Thread } from "./types.ts";
 
@@ -58,7 +59,9 @@ function isNew(comment: Comment): boolean {
                         <span class="new-badge">new</span>
                     {/if}
                 </div>
-                <div class="comment-body">{comment.body}</div>
+                <div class="comment-body markdown-body">
+                    {@html comment.body_html}
+                </div>
             </div>
         {/each}
     </div>
@@ -125,12 +128,5 @@ function isNew(comment: Comment): boolean {
     border-radius: 2em;
     padding: 0 6px;
     line-height: 18px;
-}
-.comment-body {
-    font-size: 13px;
-    color: var(--fg-default);
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-word;
 }
 </style>

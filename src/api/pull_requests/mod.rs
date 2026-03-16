@@ -7,7 +7,7 @@ use axum::routing::get;
 
 use crate::server::AppState;
 
-pub use get::{CheckRunResponse, PrDetailResponse};
+pub use get::{CheckRunResponse, CommentResponse, PrDetailResponse, PullRequestResponse};
 pub use threads::ThreadResponse;
 
 pub fn router() -> Router<AppState> {

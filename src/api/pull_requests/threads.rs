@@ -6,14 +6,17 @@ use serde::Serialize;
 
 use crate::api::AppError;
 use crate::db::queries::{self, CommentRow};
+use crate::markdown::render_markdown;
 use crate::server::AppState;
+
+use super::CommentResponse;
 
 /// A thread of comments grouped by thread_id.
 #[derive(Debug, Serialize)]
 pub struct ThreadResponse {
     pub thread_id: String,
     pub path: Option<String>,
-    pub comments: Vec<CommentRow>,
+    pub comments: Vec<CommentResponse>,
 }
 
 /// GET /api/pull-requests/:owner/:repo/:number/threads
@@ -37,6 +40,16 @@ pub async fn get_threads(
         .into_iter()
         .map(|(thread_id, comments)| {
             let path = comments.iter().find_map(|c| c.path.clone());
+            let comments = comments
+                .into_iter()
+                .map(|c| {
+                    let body_html = render_markdown(&c.body);
+                    CommentResponse {
+                        inner: c,
+                        body_html,
+                    }
+                })
+                .collect();
             ThreadResponse {
                 thread_id,
                 path,

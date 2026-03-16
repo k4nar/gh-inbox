@@ -1,4 +1,5 @@
 <script lang="ts">
+import "./markdown.css";
 import { apiFetch } from "./api.ts";
 import CommentThread from "./CommentThread.svelte";
 import { timeAgo } from "./timeago.ts";
@@ -268,7 +269,7 @@ function isNewCommit(commit: Commit): boolean {
                 </div>
             {/if}
 
-            {#if detail.pull_request.body}
+            {#if detail.pull_request.body_html}
                 <div class="pr-description">
                     <button
                         type="button"
@@ -291,8 +292,8 @@ function isNewCommit(commit: Commit): boolean {
                         </svg>
                     </button>
                     {#if isDescriptionVisible}
-                        <div class="description-body">
-                            {detail.pull_request.body}
+                        <div class="description-body markdown-body">
+                            {@html detail.pull_request.body_html}
                         </div>
                     {/if}
                 </div>
@@ -506,11 +507,6 @@ function isNewCommit(commit: Commit): boolean {
     color: var(--fg-default);
 }
 .description-body {
-    font-size: 13px;
-    color: var(--fg-default);
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-word;
     padding: 12px;
     background: var(--canvas-subtle);
     border: 1px solid var(--border-default);

@@ -18,6 +18,7 @@ export interface PullRequest {
     ci_status: string;
     last_viewed_at: string | null;
     body: string;
+    body_html: string;
     state: string;
     head_sha: string;
     additions: number;
@@ -31,6 +32,7 @@ export interface Comment {
     thread_id: string;
     author: string;
     body: string;
+    body_html: string;
     created_at: string;
     comment_type: string;
     path: string | null;
