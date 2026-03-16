@@ -175,7 +175,6 @@ function firstLine(text: string): string {
     gap: 6px;
     padding: 7px 10px;
     background: var(--canvas-subtle);
-    border-bottom: 1px solid var(--border-default);
     font-size: 12px;
     color: var(--fg-muted);
     width: 100%;
@@ -183,6 +182,7 @@ function firstLine(text: string): string {
     cursor: pointer;
     font-family: inherit;
     border: none;
+    border-bottom: 1px solid var(--border-default);
     border-radius: 0;
 }
 
