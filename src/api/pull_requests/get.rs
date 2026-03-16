@@ -33,6 +33,7 @@ pub struct PrDetailResponse {
     pub comments: Vec<CommentResponse>,
     pub commits: Vec<CommitRow>,
     pub check_runs: Vec<CheckRunResponse>,
+    pub previous_viewed_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -61,18 +62,22 @@ pub async fn get_pr(
     )
     .await?;
 
-    // Update last_viewed_at before reading so pr.last_viewed_at is the current timestamp.
-    queries::update_last_viewed_at(&state.pool, number).await?;
-
+    // Read PR from DB first to capture the previous last_viewed_at.
     let pr = queries::get_pull_request(&state.pool, &full_repo, number)
         .await?
         .ok_or_else(|| AppError::Database(sqlx::Error::RowNotFound))?;
+
+    let previous_viewed_at = pr.last_viewed_at.clone();
+
+    // Now update last_viewed_at to mark the current visit.
+    queries::update_last_viewed_at(&state.pool, number).await?;
 
     // fetch_result carries fresher author/status when we just fetched; fall back to the DB row.
     let (author, pr_status) = match fetch_result {
         Some(ref r) => (r.author.clone(), r.pr_status.clone()),
         None => (pr.author.clone(), derive_pr_status_from_row(&pr)),
     };
+
     // Send SSE so the inbox list immediately reflects 0 new activity and correct metadata.
     let _ = state.tx.send(SyncEvent::PrInfoUpdated(PrInfoUpdatedData {
         pr_id: number,
@@ -118,5 +123,6 @@ pub async fn get_pr(
         comments,
         commits,
         check_runs,
+        previous_viewed_at,
     }))
 }

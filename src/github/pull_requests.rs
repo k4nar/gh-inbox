@@ -144,7 +144,8 @@ mod tests {
     fn parse_valid_issue_comments() {
         let json = r#"[{
             "id": 100, "user": { "login": "bob" },
-            "body": "Looks good!", "created_at": "2025-01-01T00:00:00Z"
+            "body": "Looks good!", "created_at": "2025-01-01T00:00:00Z",
+            "html_url": "https://github.com/owner/repo/pull/42#issuecomment-100"
         }]"#;
         let comments = parse_issue_comments(json).unwrap();
         assert_eq!(comments.len(), 1);
@@ -165,7 +166,8 @@ mod tests {
             "id": 200, "user": { "login": "carol" },
             "body": "Nit: rename this", "created_at": "2025-01-01T00:00:00Z",
             "path": "src/main.rs", "position": 10,
-            "in_reply_to_id": null, "pull_request_review_id": 50
+            "in_reply_to_id": null, "pull_request_review_id": 50,
+            "html_url": "https://github.com/owner/repo/pull/42#discussion_r200"
         }]"#;
         let comments = parse_review_comments(json).unwrap();
         assert_eq!(comments.len(), 1);
@@ -180,7 +182,8 @@ mod tests {
             "id": 201, "user": { "login": "dave" },
             "body": "Done!", "created_at": "2025-01-02T00:00:00Z",
             "path": "src/main.rs", "position": 10,
-            "in_reply_to_id": 200, "pull_request_review_id": 51
+            "in_reply_to_id": 200, "pull_request_review_id": 51,
+            "html_url": "https://github.com/owner/repo/pull/42#discussion_r201"
         }]"#;
         let comments = parse_review_comments(json).unwrap();
         assert_eq!(comments[0].in_reply_to_id, Some(200));

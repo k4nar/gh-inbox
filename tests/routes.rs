@@ -81,7 +81,8 @@ const MOCK_ISSUE_COMMENTS: &str = r#"[
         "id": 1001,
         "user": { "login": "bob" },
         "body": "Looks good overall!",
-        "created_at": "2025-06-01T11:00:00Z"
+        "created_at": "2025-06-01T11:00:00Z",
+        "html_url": "https://github.com/owner/repo/pull/42#issuecomment-1001"
     }
 ]"#;
 
@@ -94,7 +95,8 @@ const MOCK_REVIEW_COMMENTS: &str = r#"[
         "path": "src/main.rs",
         "position": 10,
         "in_reply_to_id": null,
-        "pull_request_review_id": 50
+        "pull_request_review_id": 50,
+        "html_url": "https://github.com/owner/repo/pull/42#discussion_r2001"
     },
     {
         "id": 2002,
@@ -104,7 +106,8 @@ const MOCK_REVIEW_COMMENTS: &str = r#"[
         "path": "src/main.rs",
         "position": 10,
         "in_reply_to_id": 2001,
-        "pull_request_review_id": 51
+        "pull_request_review_id": 51,
+        "html_url": "https://github.com/owner/repo/pull/42#discussion_r2002"
     }
 ]"#;
 
@@ -239,7 +242,8 @@ async fn get_api_inbox_empty_returns_empty_array() {
 async fn get_pr_detail_returns_metadata_comments_and_checks() {
     let mock_base_url = start_mock_github().await;
     let pool = gh_inbox::db::init_with_path(":memory:").await;
-    let (app, _state) = gh_inbox::app_with_base_url(pool, Arc::from("fake-token"), mock_base_url);
+    let (app, _state) =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
 
     let response = app
         .oneshot(
@@ -281,8 +285,16 @@ async fn get_pr_detail_returns_metadata_comments_and_checks() {
     assert_eq!(check_runs[0]["name"], "CI");
     assert_eq!(check_runs[0]["conclusion"], "success");
 
-    // last_viewed_at should be set
-    assert!(detail["pull_request"]["last_viewed_at"].is_string());
+    // On first visit, previous_viewed_at is null and last_viewed_at is null
+    // (we capture last_viewed_at before calling update_last_viewed_at).
+    assert!(
+        detail["previous_viewed_at"].is_null(),
+        "previous_viewed_at should be null on first visit"
+    );
+    assert!(
+        detail["pull_request"]["last_viewed_at"].is_null(),
+        "last_viewed_at should be null before any visit is recorded"
+    );
 
     // body_html should be rendered HTML, not raw markdown
     assert!(
@@ -304,6 +316,26 @@ async fn get_pr_detail_returns_metadata_comments_and_checks() {
             "comment body_html should be a string"
         );
     }
+
+    // Second visit: previous_viewed_at should now be a timestamp string.
+    let (app2, _state2) =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let response2 = app2
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/pull-requests/owner/repo/42")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response2.status(), StatusCode::OK);
+    let body2 = response2.into_body().collect().await.unwrap().to_bytes();
+    let detail2: serde_json::Value = serde_json::from_slice(&body2).unwrap();
+    assert!(
+        detail2["previous_viewed_at"].is_string(),
+        "previous_viewed_at should be a timestamp on second visit"
+    );
 }
 
 #[tokio::test]
