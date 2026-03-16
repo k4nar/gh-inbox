@@ -6,8 +6,9 @@ use crate::github;
 use crate::github::ConditionalResponse;
 use crate::models::GithubCheckRun;
 
-/// Minimum seconds between GitHub API fetches for a given PR.
-const FETCH_THROTTLE_SECS: i64 = 10;
+/// Minimum seconds between full PR fetches (all 5 endpoints) for the detail view.
+/// The inbox prefetch uses ETags instead and has no time-based throttle.
+const FETCH_THROTTLE_SECS: i64 = 60;
 
 /// Summary returned after a successful fetch+cache.
 pub struct PrFetchResult {
