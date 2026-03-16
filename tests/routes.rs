@@ -802,7 +802,7 @@ async fn sse_receives_pr_info_updated_on_prefetch() {
             pr_id: 42,
             repository: "owner/repo".to_string(),
             author: "alice".to_string(),
-            pr_status: "open".to_string(),
+            pr_status: gh_inbox::models::PrStatus::Open,
             new_commits: None,
             new_comments: None,
         }))

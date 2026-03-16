@@ -4,7 +4,7 @@ use crate::api::AppError;
 use crate::db::queries::{self, CheckRunRow, CommentRow, CommitRow, PullRequestRow};
 use crate::github;
 use crate::github::ConditionalResponse;
-use crate::models::GithubCheckRun;
+use crate::models::{GithubCheckRun, PrStatus};
 
 /// Minimum seconds between full PR fetches (all 5 endpoints) for the detail view.
 /// The inbox prefetch uses ETags instead and has no time-based throttle.
@@ -13,24 +13,24 @@ const FETCH_THROTTLE_SECS: i64 = 60;
 /// Summary returned after a successful fetch+cache.
 pub struct PrFetchResult {
     pub author: String,
-    pub pr_status: String,
+    pub pr_status: PrStatus,
 }
 
-/// Derive the PR status string from its fields.
-pub fn derive_pr_status(merged_at: Option<&str>, state: &str, draft: bool) -> String {
+/// Derive the PR status from its fields.
+pub fn derive_pr_status(merged_at: Option<&str>, state: &str, draft: bool) -> PrStatus {
     if merged_at.is_some() {
-        "merged".to_string()
+        PrStatus::Merged
     } else if state == "closed" {
-        "closed".to_string()
+        PrStatus::Closed
     } else if draft {
-        "draft".to_string()
+        PrStatus::Draft
     } else {
-        "open".to_string()
+        PrStatus::Open
     }
 }
 
-/// Derive a PR status string from a `PullRequestRow`.
-pub fn derive_pr_status_from_row(pr: &PullRequestRow) -> String {
+/// Derive a PR status from a `PullRequestRow`.
+pub fn derive_pr_status_from_row(pr: &PullRequestRow) -> PrStatus {
     derive_pr_status(pr.merged_at.as_deref(), &pr.state, pr.draft)
 }
 

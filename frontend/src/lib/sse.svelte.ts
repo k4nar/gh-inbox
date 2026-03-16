@@ -11,7 +11,7 @@ export interface PrInfoUpdatedPayload {
     pr_id: number;
     repository: string;
     author: string;
-    pr_status: string;
+    pr_status: "open" | "draft" | "merged" | "closed";
     new_commits: number | null;
     new_comments: { author: string; count: number }[] | null;
 }
