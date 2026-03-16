@@ -267,11 +267,7 @@ let hasNewItems = $derived(
                     {/each}
 
                     {#each newThreads as thread (thread.thread_id)}
-                        <CommentThread
-                            {thread}
-                            {previousViewedAt}
-                            initiallyExpanded={threadNewCount(thread) === thread.comments.length}
-                        />
+                        <CommentThread {thread} {previousViewedAt} />
                     {/each}
                 </div>
 
@@ -304,7 +300,11 @@ let hasNewItems = $derived(
                         {/each}
 
                         {#each oldThreads as thread (thread.thread_id)}
-                            <CommentThread {thread} {previousViewedAt} />
+                            <CommentThread
+                                {thread}
+                                {previousViewedAt}
+                                initiallyExpanded={true}
+                            />
                         {/each}
                     </div>
                 {/if}
@@ -326,7 +326,11 @@ let hasNewItems = $derived(
                         </div>
                     {/each}
                     {#each threads as thread (thread.thread_id)}
-                        <CommentThread {thread} {previousViewedAt} />
+                        <CommentThread
+                            {thread}
+                            {previousViewedAt}
+                            initiallyExpanded={true}
+                        />
                     {/each}
                 </div>
             {/if}
