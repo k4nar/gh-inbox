@@ -24,6 +24,10 @@ struct ReviewerTeam {
 
 /// Fetch the teams the authenticated user belongs to.
 /// Returns full slugs in "{org}/{team}" format.
+///
+/// Note: only the first page (up to 100 teams) is fetched. Users belonging to
+/// more than 100 teams across all organisations will silently miss the overflow.
+/// Pagination support can be added later if this becomes a real-world problem.
 pub async fn fetch_user_teams(
     client: &reqwest::Client,
     token: &str,
