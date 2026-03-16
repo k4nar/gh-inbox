@@ -1,6 +1,5 @@
 use comrak::{Options, markdown_to_html};
 
-#[allow(dead_code)]
 pub fn render_markdown(input: &str) -> String {
     if input.is_empty() {
         return String::new();

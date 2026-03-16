@@ -283,6 +283,27 @@ async fn get_pr_detail_returns_metadata_comments_and_checks() {
 
     // last_viewed_at should be set
     assert!(detail["pull_request"]["last_viewed_at"].is_string());
+
+    // body_html should be rendered HTML, not raw markdown
+    assert!(
+        detail["pull_request"]["body_html"].is_string(),
+        "body_html should be a string"
+    );
+    assert!(
+        detail["pull_request"]["body_html"]
+            .as_str()
+            .unwrap()
+            .contains("<p>"),
+        "body_html should be wrapped in <p>"
+    );
+    // Each comment should also have body_html
+    let comments = detail["comments"].as_array().unwrap();
+    if !comments.is_empty() {
+        assert!(
+            comments[0]["body_html"].is_string(),
+            "comment body_html should be a string"
+        );
+    }
 }
 
 #[tokio::test]

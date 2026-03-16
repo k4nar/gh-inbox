@@ -4,16 +4,33 @@ use serde::Serialize;
 
 use crate::api::AppError;
 use crate::db::queries::{self, CommentRow, CommitRow, PullRequestRow};
+use crate::markdown::render_markdown;
 use crate::models::{PrInfoUpdatedData, SyncEvent};
 use crate::server::AppState;
 
 use super::fetch::{derive_pr_status_from_row, fetch_and_cache_pr};
 
+/// PR data returned in the API response (DB row + rendered body).
+#[derive(Debug, Serialize)]
+pub struct PullRequestResponse {
+    #[serde(flatten)]
+    pub inner: PullRequestRow,
+    pub body_html: String,
+}
+
+/// Comment data returned in the API response (DB row + rendered body).
+#[derive(Debug, Serialize)]
+pub struct CommentResponse {
+    #[serde(flatten)]
+    pub inner: CommentRow,
+    pub body_html: String,
+}
+
 /// Response payload for GET /api/pull-requests/:owner/:repo/:number
 #[derive(Debug, Serialize)]
 pub struct PrDetailResponse {
-    pub pull_request: PullRequestRow,
-    pub comments: Vec<CommentRow>,
+    pub pull_request: PullRequestResponse,
+    pub comments: Vec<CommentResponse>,
     pub commits: Vec<CommitRow>,
     pub check_runs: Vec<CheckRunResponse>,
 }
@@ -32,7 +49,6 @@ pub async fn get_pr(
 ) -> Result<Json<PrDetailResponse>, AppError> {
     let full_repo = format!("{owner}/{repo}");
 
-    // Fetch and cache from GitHub (handles throttle internally).
     let fetch_result = fetch_and_cache_pr(
         &state.pool,
         &state.client,
@@ -44,15 +60,12 @@ pub async fn get_pr(
     )
     .await?;
 
-    // Update last_viewed_at before reading so pr.last_viewed_at is the current timestamp.
     queries::update_last_viewed_at(&state.pool, number).await?;
 
     let pr = queries::get_pull_request(&state.pool, &full_repo, number)
         .await?
         .ok_or_else(|| AppError::Database(sqlx::Error::RowNotFound))?;
 
-    // Send SSE so the inbox list immediately reflects 0 new activity and correct metadata.
-    // fetch_result carries fresher author/status when we just fetched; fall back to the DB row.
     let (author, pr_status) = match fetch_result {
         Some(ref r) => (r.author.clone(), r.pr_status.clone()),
         None => (pr.author.clone(), derive_pr_status_from_row(&pr)),
@@ -66,7 +79,24 @@ pub async fn get_pr(
         new_comments: Some(vec![]),
     }));
 
-    let comments = queries::query_comments_for_pr(&state.pool, number).await?;
+    let body_html = render_markdown(&pr.body);
+    let pull_request = PullRequestResponse {
+        inner: pr,
+        body_html,
+    };
+
+    let comments: Vec<CommentResponse> = queries::query_comments_for_pr(&state.pool, number)
+        .await?
+        .into_iter()
+        .map(|c| {
+            let body_html = render_markdown(&c.body);
+            CommentResponse {
+                inner: c,
+                body_html,
+            }
+        })
+        .collect();
+
     let commits = queries::query_commits_for_pr(&state.pool, number).await?;
 
     let check_runs: Vec<CheckRunResponse> = queries::query_check_runs_for_pr(&state.pool, number)
@@ -80,7 +110,7 @@ pub async fn get_pr(
         .collect();
 
     Ok(Json(PrDetailResponse {
-        pull_request: pr,
+        pull_request,
         comments,
         commits,
         check_runs,
