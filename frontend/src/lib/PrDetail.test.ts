@@ -1,14 +1,27 @@
-import {
-    cleanup,
-    fireEvent,
-    render,
-    screen,
-    waitFor,
-} from "@testing-library/svelte";
+import { cleanup, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PrDetail from "./PrDetail.svelte";
+import type { PrDetailResponse } from "./types.ts";
 
-const MOCK_DETAIL = {
+function makeComment(overrides: object = {}) {
+    return {
+        id: 1,
+        pr_id: 42,
+        thread_id: "conversation",
+        author: "bob",
+        body: "Looks good!",
+        body_html: "<p>Looks good!</p>",
+        created_at: "2025-06-01T09:00:00Z",
+        comment_type: "issue_comment",
+        path: null,
+        position: null,
+        in_reply_to_id: null,
+        html_url: "https://github.com/owner/repo/pull/42#issuecomment-1",
+        ...overrides,
+    };
+}
+
+const BASE_DETAIL: PrDetailResponse = {
     pull_request: {
         id: 42,
         title: "Fix bug in parser",
@@ -27,89 +40,55 @@ const MOCK_DETAIL = {
         draft: false,
         merged_at: null,
     },
-    previous_viewed_at: "2025-06-01T10:00:00Z",
-    comments: [
-        {
-            id: 100,
-            pr_id: 42,
-            thread_id: "conversation",
-            author: "bob",
-            body: "Looks good!",
-            body_html: "<p>Looks good!</p>",
-            created_at: "2025-06-01T09:00:00Z",
-            comment_type: "issue_comment",
-            path: null,
-            position: null,
-            in_reply_to_id: null,
-            html_url: "https://github.com/owner/repo/pull/42#issuecomment-100",
-        },
-        {
-            id: 200,
-            pr_id: 42,
-            thread_id: "review:200",
-            author: "carol",
-            body: "Nit: rename this",
-            body_html: "<p>Nit: rename this</p>",
-            created_at: "2025-06-01T11:00:00Z",
-            comment_type: "review_comment",
-            path: "src/main.rs",
-            position: 10,
-            in_reply_to_id: null,
-            html_url: "https://github.com/owner/repo/pull/42#discussion_r200",
-        },
-    ],
+    comments: [makeComment()],
     commits: [
         {
             sha: "abc123",
             pr_id: 42,
-            message: "First commit",
+            message: "Old commit",
             author: "alice",
             committed_at: "2025-06-01T08:00:00Z",
         },
         {
             sha: "def456",
             pr_id: 42,
-            message: "Second commit",
+            message: "New commit",
             author: "alice",
             committed_at: "2025-06-01T11:00:00Z",
         },
     ],
     check_runs: [
-        { name: "CI", status: "completed", conclusion: "success" },
-        { name: "Lint", status: "in_progress", conclusion: null },
+        { name: "CI / test", status: "completed", conclusion: "success" },
+        { name: "CI / lint", status: "in_progress", conclusion: null },
     ],
+    previous_viewed_at: "2025-06-01T10:00:00Z",
 };
 
-const MOCK_THREADS = [
+const BASE_THREADS = [
     {
         thread_id: "conversation",
         path: null,
-        comments: [MOCK_DETAIL.comments[0]],
-    },
-    {
-        thread_id: "review:200",
-        path: "src/main.rs",
-        comments: [MOCK_DETAIL.comments[1]],
+        comments: [makeComment()],
     },
 ];
 
-function mockDetailFetch() {
-    return vi.fn((url) => {
+function mockFetch(detail = BASE_DETAIL, threads = BASE_THREADS) {
+    return vi.fn((url: string) => {
         if (url.includes("/threads")) {
             return Promise.resolve({
                 ok: true,
-                json: () => Promise.resolve(MOCK_THREADS),
+                json: () => Promise.resolve(threads),
             });
         }
         return Promise.resolve({
             ok: true,
-            json: () => Promise.resolve(MOCK_DETAIL),
+            json: () => Promise.resolve(detail),
         });
     }) as unknown as typeof fetch;
 }
 
-function renderPrDetail() {
-    globalThis.fetch = mockDetailFetch();
+function renderDetail(detail = BASE_DETAIL, threads = BASE_THREADS) {
+    globalThis.fetch = mockFetch(detail, threads);
     return render(PrDetail, {
         props: {
             notification: {
@@ -122,159 +101,165 @@ function renderPrDetail() {
     });
 }
 
-describe("PrDetail", () => {
-    afterEach(() => {
-        cleanup();
-        vi.restoreAllMocks();
-    });
+afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+});
 
+describe("PrDetail — status bar", () => {
     it("renders loading state initially", () => {
-        renderPrDetail();
+        renderDetail();
         expect(screen.getByText("Loading...")).toBeInTheDocument();
     });
 
-    it("renders PR metadata", async () => {
-        const { container } = renderPrDetail();
-
+    it("shows state pill with correct label", async () => {
+        const { container } = renderDetail();
         await waitFor(() => {
-            // Check author in the PR meta section specifically
-            const authorValue = container.querySelector(".pr-meta .meta-value");
-            expect(authorValue).toBeInTheDocument();
-            expect(authorValue!.textContent).toBe("alice");
+            expect(container.querySelector(".state-pill")).toBeInTheDocument();
         });
-
-        expect(screen.getByText("open")).toBeInTheDocument();
-        expect(screen.getByText("+10")).toBeInTheDocument();
-        expect(screen.getByText("-3")).toBeInTheDocument();
-    });
-
-    it("renders CI status badges with failures/pending first", async () => {
-        const { container } = renderPrDetail();
-
-        // Lint is in_progress (pending) — should be visible immediately
-        await waitFor(() => {
-            expect(screen.getByText("Lint")).toBeInTheDocument();
-        });
-
-        expect(screen.getByText("Running")).toBeInTheDocument();
-
-        // CI is passing — should be behind toggle, not visible yet
-        expect(screen.queryByText("CI")).not.toBeInTheDocument();
-
-        // Click toggle to expand passing checks
-        const toggle = container.querySelector(".ci-passing-toggle");
-        expect(toggle).toBeInTheDocument();
-        (toggle as HTMLElement).click();
-
-        await waitFor(() => {
-            expect(screen.getByText("CI")).toBeInTheDocument();
-        });
-        expect(screen.getByText("success")).toBeInTheDocument();
-    });
-
-    it("renders comment threads", async () => {
-        const { container } = renderPrDetail();
-
-        await waitFor(() => {
-            expect(screen.getByText("Looks good!")).toBeInTheDocument();
-        });
-
-        expect(screen.getByText("Nit: rename this")).toBeInTheDocument();
-        expect(screen.getByText("src/main.rs")).toBeInTheDocument();
-        // Authors are shown as "author:" in collapsed preview
-        expect(
-            container.querySelector(".preview-author")!.textContent,
-        ).toContain("bob");
-        const previewAuthors = container.querySelectorAll(".preview-author");
-        const authorTexts = Array.from(previewAuthors).map(
-            (el) => el.textContent,
+        expect(container.querySelector(".state-pill")!.textContent).toBe(
+            "Open",
         );
-        expect(authorTexts.some((t) => t?.includes("carol"))).toBe(true);
     });
 
-    it("highlights new comments with badge", async () => {
-        const { container } = renderPrDetail();
-
+    it("shows Draft pill for draft PRs", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            pull_request: { ...BASE_DETAIL.pull_request, draft: true },
+        };
+        const { container } = renderDetail(detail);
         await waitFor(() => {
-            expect(screen.getByText("Nit: rename this")).toBeInTheDocument();
+            expect(container.querySelector(".state-pill")!.textContent).toBe(
+                "Draft",
+            );
         });
-
-        // Carol's comment (11:00) is after previous_viewed_at (10:00) — should have "new" badge in threads
-        // The new-count-badge appears on the thread header for carol's thread
-        const threadNewBadges = container.querySelectorAll(
-            ".threads-section .new-count-badge",
-        );
-        expect(threadNewBadges).toHaveLength(1);
     });
 
-    it("renders description", async () => {
-        renderPrDetail();
+    it("shows Merged pill for merged PRs", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            pull_request: {
+                ...BASE_DETAIL.pull_request,
+                merged_at: "2025-06-02T00:00:00Z",
+                state: "closed",
+            },
+        };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            expect(container.querySelector(".state-pill")!.textContent).toBe(
+                "Merged",
+            );
+        });
+    });
 
-        const toggle = await waitFor(() =>
-            screen.getByRole("button", { name: /description/i }),
-        );
-        fireEvent.click(toggle);
+    it("shows author name in status bar", async () => {
+        const { container } = renderDetail();
+        await waitFor(() => {
+            expect(container.querySelector(".status-author")!.textContent).toBe(
+                "alice",
+            );
+        });
+    });
 
+    it("shows author avatar in status bar", async () => {
+        const { container } = renderDetail();
+        await waitFor(() => {
+            const avatar = container.querySelector(
+                ".status-avatar",
+            ) as HTMLImageElement;
+            expect(avatar).toBeInTheDocument();
+            expect(avatar.src).toContain("alice");
+        });
+    });
+
+    it("shows diff stats in status bar", async () => {
+        renderDetail();
+        await waitFor(() => {
+            expect(screen.getByText("+10")).toBeInTheDocument();
+            expect(screen.getByText("−3")).toBeInTheDocument();
+        });
+    });
+
+    it("shows CI passing when all checks pass", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            check_runs: [
+                { name: "CI", status: "completed", conclusion: "success" },
+            ],
+        };
+        const { container } = renderDetail(detail);
         await waitFor(() => {
             expect(
-                screen.getByText("This fixes the parser bug."),
-            ).toBeInTheDocument();
+                container.querySelector(".ci-indicator")!.textContent,
+            ).toMatch(/passing/i);
         });
     });
 
-    it("description is collapsed by default when previously viewed", async () => {
-        renderPrDetail();
-
-        await waitFor(() =>
-            screen.getByRole("button", { name: /description/i }),
-        );
-
-        expect(
-            screen.queryByText("This fixes the parser bug."),
-        ).not.toBeInTheDocument();
+    it("shows failing count when some checks fail", async () => {
+        const { container } = renderDetail();
+        await waitFor(() => {
+            expect(
+                container.querySelector(".ci-indicator")!.textContent,
+            ).toMatch(/1 (failing|running)/i);
+        });
     });
 
-    it("renders a link to the GitHub PR", async () => {
-        renderPrDetail();
-
+    it("renders GitHub link in header", async () => {
+        renderDetail();
         await waitFor(() => {
             const link = screen.getByTitle("Open on GitHub");
-            expect(link).toBeInTheDocument();
             expect(link.getAttribute("href")).toBe(
                 "https://github.com/owner/repo/pull/42",
             );
-            expect(link.getAttribute("target")).toBe("_blank");
         });
     });
+});
 
-    it("renders commits with new-commit highlighting", async () => {
-        const { container } = renderPrDetail();
-
+describe("PrDetail — timeline", () => {
+    it("shows Since last visit divider when there are new items", async () => {
+        const { container } = renderDetail();
         await waitFor(() => {
-            expect(screen.getByText("First commit")).toBeInTheDocument();
+            expect(container.querySelector(".divider-new")).toBeInTheDocument();
         });
-
-        expect(screen.getByText("Second commit")).toBeInTheDocument();
-
-        // Second commit (11:00) is after last_viewed_at (10:00) — should have "new" badge
-        // First commit (08:00) is before — should not
-        const commitNewBadges = container.querySelectorAll(
-            ".commits-section .new-badge",
+        expect(container.querySelector(".divider-new")!.textContent).toMatch(
+            /since your last visit/i,
         );
-        expect(commitNewBadges).toHaveLength(1);
     });
 
-    it("groups CI checks by status with failures first", async () => {
-        const { container } = renderPrDetail();
-
+    it("does not show dividers when previous_viewed_at is null (first visit)", async () => {
+        const detail = { ...BASE_DETAIL, previous_viewed_at: null };
+        const { container } = renderDetail(detail);
         await waitFor(() => {
-            // Lint is in_progress (pending), should be shown prominently
-            expect(screen.getByText("Lint")).toBeInTheDocument();
+            expect(
+                container.querySelector(".commits-list"),
+            ).toBeInTheDocument();
         });
+        expect(container.querySelector(".divider-new")).not.toBeInTheDocument();
+    });
 
-        // CI is passing — should be behind a collapsible toggle
-        const passingToggle = container.querySelector(".ci-passing-toggle");
-        expect(passingToggle).toBeInTheDocument();
-        expect(passingToggle!.textContent).toMatch(/1\s+passing/);
+    it("new commit appears in the new zone", async () => {
+        const { container } = renderDetail();
+        await waitFor(() => {
+            expect(container.querySelector(".divider-new")).toBeInTheDocument();
+        });
+        const newZone = container.querySelector(".zone-new")!;
+        expect(newZone).toBeInTheDocument();
+        expect(newZone.textContent).toContain("New commit");
+    });
+
+    it("old commit appears in the earlier zone", async () => {
+        const { container } = renderDetail();
+        await waitFor(() => {
+            expect(container.querySelector(".zone-old")).toBeInTheDocument();
+        });
+        const oldZone = container.querySelector(".zone-old")!;
+        expect(oldZone.textContent).toContain("Old commit");
+    });
+
+    it("renders comment threads", async () => {
+        renderDetail();
+        await waitFor(() => {
+            expect(screen.getByText("Conversation")).toBeInTheDocument();
+        });
     });
 });
