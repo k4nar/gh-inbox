@@ -24,7 +24,10 @@ const MOCK_DETAIL = {
         additions: 10,
         deletions: 3,
         changed_files: 2,
+        draft: false,
+        merged_at: null,
     },
+    previous_viewed_at: "2025-06-01T10:00:00Z",
     comments: [
         {
             id: 100,
@@ -38,6 +41,7 @@ const MOCK_DETAIL = {
             path: null,
             position: null,
             in_reply_to_id: null,
+            html_url: "https://github.com/owner/repo/pull/42#issuecomment-100",
         },
         {
             id: 200,
@@ -51,6 +55,7 @@ const MOCK_DETAIL = {
             path: "src/main.rs",
             position: 10,
             in_reply_to_id: null,
+            html_url: "https://github.com/owner/repo/pull/42#discussion_r200",
         },
     ],
     commits: [
@@ -168,7 +173,7 @@ describe("PrDetail", () => {
     });
 
     it("renders comment threads", async () => {
-        renderPrDetail();
+        const { container } = renderPrDetail();
 
         await waitFor(() => {
             expect(screen.getByText("Looks good!")).toBeInTheDocument();
@@ -176,8 +181,15 @@ describe("PrDetail", () => {
 
         expect(screen.getByText("Nit: rename this")).toBeInTheDocument();
         expect(screen.getByText("src/main.rs")).toBeInTheDocument();
-        expect(screen.getByText("bob")).toBeInTheDocument();
-        expect(screen.getByText("carol")).toBeInTheDocument();
+        // Authors are shown as "author:" in collapsed preview
+        expect(
+            container.querySelector(".preview-author")!.textContent,
+        ).toContain("bob");
+        const previewAuthors = container.querySelectorAll(".preview-author");
+        const authorTexts = Array.from(previewAuthors).map(
+            (el) => el.textContent,
+        );
+        expect(authorTexts.some((t) => t?.includes("carol"))).toBe(true);
     });
 
     it("highlights new comments with badge", async () => {
@@ -187,9 +199,10 @@ describe("PrDetail", () => {
             expect(screen.getByText("Nit: rename this")).toBeInTheDocument();
         });
 
-        // Carol's comment (11:00) is after last_viewed_at (10:00) — should have "new" badge in threads
+        // Carol's comment (11:00) is after previous_viewed_at (10:00) — should have "new" badge in threads
+        // The new-count-badge appears on the thread header for carol's thread
         const threadNewBadges = container.querySelectorAll(
-            ".threads-section .new-badge",
+            ".threads-section .new-count-badge",
         );
         expect(threadNewBadges).toHaveLength(1);
     });

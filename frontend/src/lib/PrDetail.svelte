@@ -315,7 +315,7 @@ function isNewCommit(commit: Commit): boolean {
                         {#each threads as thread (thread.thread_id)}
                             <CommentThread
                                 {thread}
-                                lastViewedAt={detail.pull_request.last_viewed_at}
+                                previousViewedAt={detail.previous_viewed_at}
                             />
                         {/each}
                     </div>
