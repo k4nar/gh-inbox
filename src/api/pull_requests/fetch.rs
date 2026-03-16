@@ -179,7 +179,6 @@ pub async fn fetch_and_cache_pr(
 /// Fetch only PR metadata (1 GitHub API call) for inbox row enrichment.
 /// Uses ETag conditional requests — 304 responses cost no rate limit quota.
 /// No time-based throttle; ETags handle freshness naturally.
-#[allow(dead_code)]
 pub async fn fetch_and_cache_pr_meta(
     pool: &SqlitePool,
     client: &reqwest::Client,
