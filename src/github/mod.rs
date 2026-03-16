@@ -21,7 +21,7 @@ fn github_request(client: &reqwest::Client, token: &str, url: &str) -> reqwest::
         .header("Authorization", format!("Bearer {token}"))
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", "gh-inbox")
-        .header("X-GitHub-Api-Version", "2022-11-28")
+        .header("X-GitHub-Api-Version", "2026-03-10")
 }
 
 /// Result of a conditional HTTP request using `If-None-Match`.
