@@ -8,8 +8,12 @@ pub async fn fetch_commits(
     repo: &str,
     number: i64,
 ) -> Result<Vec<GithubCommit>, reqwest::Error> {
-    let path = format!("/repos/{owner}/{repo}/pulls/{number}/commits");
-    github.get(&path).await?.error_for_status()?.json().await
+    github
+        .get(&format!("/repos/{owner}/{repo}/pulls/{number}/commits"))
+        .await?
+        .error_for_status()?
+        .json()
+        .await
 }
 
 #[cfg(test)]

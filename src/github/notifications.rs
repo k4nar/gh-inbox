@@ -6,8 +6,9 @@ pub async fn mark_thread_read(
     github: &GithubClient,
     thread_id: &str,
 ) -> Result<(), reqwest::Error> {
-    let path = format!("/notifications/threads/{thread_id}");
-    let response = github.patch(&path).await?;
+    let response = github
+        .patch(&format!("/notifications/threads/{thread_id}"))
+        .await?;
     let status = response.status();
     if status == 403 || status == 404 {
         return Ok(());
@@ -20,8 +21,9 @@ pub async fn mark_thread_done(
     github: &GithubClient,
     thread_id: &str,
 ) -> Result<(), reqwest::Error> {
-    let path = format!("/notifications/threads/{thread_id}");
-    let response = github.delete(&path).await?;
+    let response = github
+        .delete(&format!("/notifications/threads/{thread_id}"))
+        .await?;
     let status = response.status();
     if status == 403 || status == 404 {
         return Ok(());

@@ -51,8 +51,14 @@ pub async fn fetch_requested_reviewer_teams(
     repo: &str,
     pr_number: i64,
 ) -> Result<Vec<String>, reqwest::Error> {
-    let path = format!("/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers");
-    let response: ReviewersResponse = github.get(&path).await?.error_for_status()?.json().await?;
+    let response: ReviewersResponse = github
+        .get(&format!(
+            "/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers"
+        ))
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
     Ok(response
         .teams
         .into_iter()
