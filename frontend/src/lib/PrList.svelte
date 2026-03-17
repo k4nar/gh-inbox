@@ -154,6 +154,7 @@ $effect(() => {
 let count = $derived(notifications.length);
 let unreadCount = $derived(notifications.filter((n) => n.unread).length);
 let viewTitle = $derived(currentView === "archived" ? "Archived" : "Inbox");
+let totalPages = $derived(Math.max(1, Math.ceil(totalCount / PER_PAGE)));
 let emptyMessage = $derived(
     currentView === "archived"
         ? "No archived notifications."
@@ -184,6 +185,10 @@ async function handleArchive(e: MouseEvent, notif: InboxItem): Promise<void> {
         showError("Failed to archive notification");
         notifications = [...notifications, notif];
     }
+}
+
+function goToPage(page: number): void {
+    fetchNotifications(currentView, page);
 }
 
 async function handleUnarchive(e: MouseEvent, notif: InboxItem): Promise<void> {
@@ -415,7 +420,49 @@ function initials(login: string): string {
     </div>
 
     <div class="statusbar">
-        <span
+        {#if totalPages > 1}
+            <button
+                type="button"
+                class="page-btn"
+                disabled={currentPage <= 1}
+                aria-label="Previous page"
+                onclick={() => goToPage(currentPage - 1)}
+            >
+                <svg
+                    aria-hidden="true"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                >
+                    <path
+                        d="M9.78 12.78a.75.75 0 0 1-1.06 0L4.47 8.53a.75.75 0 0 1 0-1.06l4.25-4.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L6.06 8l3.72 3.72a.75.75 0 0 1 0 1.06Z"
+                    />
+                </svg>
+            </button>
+            <span class="page-info">Page {currentPage} of {totalPages}</span>
+            <button
+                type="button"
+                class="page-btn"
+                disabled={currentPage >= totalPages}
+                aria-label="Next page"
+                onclick={() => goToPage(currentPage + 1)}
+            >
+                <svg
+                    aria-hidden="true"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                >
+                    <path
+                        d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"
+                    />
+                </svg>
+            </button>
+        {/if}
+        <div class="statusbar-spacer"></div>
+        <span class="statusbar-count"
             >{count}
             PRs
             {#if currentView !== "archived"}
@@ -735,5 +782,38 @@ function initials(login: string): string {
     flex-shrink: 0;
     color: var(--fg-subtle);
     font-size: 12px;
+}
+.page-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--fg-muted);
+    cursor: pointer;
+    padding: 0;
+    font-family: inherit;
+}
+.page-btn:hover:not(:disabled) {
+    background: var(--border-muted);
+    color: var(--fg-default);
+}
+.page-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+.page-info {
+    font-size: 12px;
+    color: var(--fg-muted);
+    user-select: none;
+}
+.statusbar-spacer {
+    flex: 1;
+}
+.statusbar-count {
+    color: var(--fg-subtle);
 }
 </style>

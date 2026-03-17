@@ -148,9 +148,9 @@ describe("PrList", () => {
         expect(listCount.textContent).toContain("1 unread");
 
         // Statusbar shows count with unread info
-        const statusbar = container.querySelector(".statusbar")!;
-        expect(statusbar.textContent).toMatch(/2\s+PRs/);
-        expect(statusbar.textContent).toContain("1 unread");
+        const statusbarCount = container.querySelector(".statusbar-count")!;
+        expect(statusbarCount.textContent).toMatch(/2\s+PRs/);
+        expect(statusbarCount.textContent).toContain("1 unread");
     });
 
     it("fetches with ?status= query param", async () => {
@@ -331,5 +331,74 @@ describe("PrList", () => {
         await waitFor(() => {
             expect(screen.getByText("@owner/frontend")).toBeInTheDocument();
         });
+    });
+
+    it("renders pagination bar with page info", async () => {
+        globalThis.fetch = mockFetch({
+            items: MOCK_NOTIFICATIONS,
+            total: 50,
+            page: 1,
+            per_page: 25,
+        });
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+
+        expect(screen.getByText(/Page 1 of 2/)).toBeInTheDocument();
+        expect(
+            screen.getByRole("button", { name: "Previous page" }),
+        ).toBeDisabled();
+        expect(screen.getByRole("button", { name: "Next page" })).toBeEnabled();
+    });
+
+    it("clicking Next page fetches page 2", async () => {
+        globalThis.fetch = mockFetch({
+            items: MOCK_NOTIFICATIONS,
+            total: 50,
+            page: 1,
+            per_page: 25,
+        });
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+
+        globalThis.fetch = mockFetch({
+            items: [makeItem({ id: "p2", title: "Page 2 PR" })],
+            total: 50,
+            page: 2,
+            per_page: 25,
+        });
+
+        await fireEvent.click(
+            screen.getByRole("button", { name: "Next page" }),
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText("Page 2 PR")).toBeInTheDocument();
+        });
+        expect(screen.getByText(/Page 2 of 2/)).toBeInTheDocument();
+    });
+
+    it("hides pagination controls when total fits in one page", async () => {
+        globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+
+        expect(
+            screen.queryByRole("button", { name: "Previous page" }),
+        ).not.toBeInTheDocument();
+        expect(
+            screen.queryByRole("button", { name: "Next page" }),
+        ).not.toBeInTheDocument();
     });
 });
