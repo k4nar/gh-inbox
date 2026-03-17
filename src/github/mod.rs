@@ -21,7 +21,7 @@ pub use teams::{fetch_requested_reviewer_teams, fetch_user_teams};
 pub struct GithubClient {
     client: reqwest::Client,
     token: Arc<str>,
-    pub(crate) base_url: String,
+    base_url: String,
 }
 
 impl GithubClient {
@@ -31,6 +31,11 @@ impl GithubClient {
             token,
             base_url,
         }
+    }
+
+    /// Build a full URL by joining the base URL with the given path.
+    fn url(&self, path: &str) -> String {
+        format!("{}{path}", self.base_url)
     }
 
     async fn get(&self, url: &str) -> Result<Response, reqwest::Error> {
