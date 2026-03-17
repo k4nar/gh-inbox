@@ -51,16 +51,8 @@ pub async fn get_pr(
     let full_repo = format!("{owner}/{repo}");
 
     // Fetch and cache from GitHub (handles throttle internally).
-    let fetch_result = fetch_and_cache_pr(
-        &state.pool,
-        &state.client,
-        &state.token,
-        &state.github_base_url,
-        &owner,
-        &repo,
-        number,
-    )
-    .await?;
+    let fetch_result =
+        fetch_and_cache_pr(&state.pool, &state.github, &owner, &repo, number).await?;
 
     // Read PR from DB first to capture the previous last_viewed_at.
     let pr = queries::get_pull_request(&state.pool, &full_repo, number)

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -11,6 +9,7 @@ use crate::api::AppError;
 use crate::api::inbox::teams::{ensure_user_teams_fresh, fetch_teams_for_pr};
 use crate::api::pull_requests::fetch::{derive_pr_status_from_row, fetch_and_cache_pr};
 use crate::db::queries;
+use crate::github;
 use crate::models::{PrInfoUpdatedData, PrNewComment, SyncEvent};
 use crate::server::AppState;
 
@@ -36,13 +35,11 @@ pub async fn post_prefetch(
     }
 
     let pool = state.pool.clone();
-    let client = state.client.clone();
-    let token = state.token.clone();
-    let base_url = state.github_base_url.clone();
+    let github = state.github.clone();
     let tx = state.tx.clone();
 
     tokio::spawn(async move {
-        do_prefetch(&pool, &client, &token, &base_url, &tx, req.items).await;
+        do_prefetch(&pool, &github, &tx, req.items).await;
     });
 
     Ok(StatusCode::ACCEPTED)
@@ -50,21 +47,19 @@ pub async fn post_prefetch(
 
 async fn do_prefetch(
     pool: &SqlitePool,
-    client: &reqwest::Client,
-    token: &Arc<str>,
-    base_url: &str,
+    github: &github::GithubClient,
     tx: &Sender<SyncEvent>,
     items: Vec<PrefetchItem>,
 ) {
     // Ensure user teams are fresh once for the entire batch instead of once per claimed PR,
     // avoiding N sequential DB reads when many rows are visible.
-    if let Err(e) = ensure_user_teams_fresh(pool, client, token, base_url).await {
+    if let Err(e) = ensure_user_teams_fresh(pool, github).await {
         eprintln!("prefetch: could not refresh user teams: {e}");
         // Non-fatal — continue; team badges may be stale but PR info still fetches.
     }
 
     for item in items {
-        if let Err(e) = fetch_one(pool, client, token, base_url, tx, &item).await {
+        if let Err(e) = fetch_one(pool, github, tx, &item).await {
             eprintln!(
                 "prefetch error for {}/#{}: {e}",
                 item.repository, item.pr_number
@@ -76,9 +71,7 @@ async fn do_prefetch(
 
 async fn fetch_one(
     pool: &SqlitePool,
-    client: &reqwest::Client,
-    token: &Arc<str>,
-    base_url: &str,
+    github: &github::GithubClient,
     tx: &Sender<SyncEvent>,
     item: &PrefetchItem,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -91,17 +84,9 @@ async fn fetch_one(
     // Fetch and cache the full PR detail (comments, commits, check runs).
     // Uses a 60s time-based throttle — no-ops if fetched recently.
     // Does NOT update last_viewed_at; that only happens when the user opens the PR.
-    let fetch_result = fetch_and_cache_pr(
-        pool,
-        client,
-        token,
-        base_url,
-        owner,
-        repo_name,
-        item.pr_number,
-    )
-    .await
-    .map_err(|e| format!("{e:?}"))?;
+    let fetch_result = fetch_and_cache_pr(pool, github, owner, repo_name, item.pr_number)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
 
     let (author, pr_status) = match fetch_result {
         Some(r) => (r.author, r.pr_status),
@@ -141,16 +126,7 @@ async fn fetch_one(
         .map_err(|e| format!("{e:?}"))?;
     if claimed.contains(&item.pr_number) {
         // ensure_user_teams_fresh was already called once in do_prefetch.
-        if let Err(e) = fetch_teams_for_pr(
-            pool,
-            client,
-            token,
-            base_url,
-            tx,
-            item.pr_number,
-            &item.repository,
-        )
-        .await
+        if let Err(e) = fetch_teams_for_pr(pool, github, tx, item.pr_number, &item.repository).await
         {
             eprintln!(
                 "prefetch team error for {}/#{}: {e}",

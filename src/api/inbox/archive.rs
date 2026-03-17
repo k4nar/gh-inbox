@@ -18,14 +18,11 @@ pub async fn post_archive(
     }
 
     // Fire-and-forget: push done state to GitHub.
-    let token = state.token.clone();
-    let client = state.client.clone();
-    let base_url = state.github_base_url.clone();
+    let github = state.github.clone();
     let tx = state.tx.clone();
     let notification_id = id.clone();
     tokio::spawn(async move {
-        if let Err(e) = github::mark_thread_done(&token, &client, &base_url, &notification_id).await
-        {
+        if let Err(e) = github::mark_thread_done(&github, &notification_id).await {
             let _ = tx.send(SyncEvent::GithubSyncError(GithubSyncErrorData {
                 notification_id,
                 message: e.to_string(),

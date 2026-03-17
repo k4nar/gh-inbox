@@ -38,9 +38,7 @@ pub fn derive_pr_status_from_row(pr: &PullRequestRow) -> PrStatus {
 /// Returns `None` when the PR was fetched recently (throttled) — caller may still read from DB.
 pub async fn fetch_and_cache_pr(
     pool: &SqlitePool,
-    client: &reqwest::Client,
-    token: &str,
-    base_url: &str,
+    github: &github::GithubClient,
     owner: &str,
     repo: &str,
     number: i64,
@@ -64,7 +62,7 @@ pub async fn fetch_and_cache_pr(
     }
 
     // Fetch PR metadata
-    let gh_pr = github::fetch_pull_request(token, client, base_url, owner, repo, number).await?;
+    let gh_pr = github::fetch_pull_request(github, owner, repo, number).await?;
 
     let head_sha = gh_pr.head.sha.clone();
     let author = gh_pr.user.login.clone();
@@ -91,8 +89,7 @@ pub async fn fetch_and_cache_pr(
     queries::upsert_pull_request(pool, &pr_row).await?;
 
     // Fetch issue comments (top-level conversation)
-    let issue_comments =
-        github::fetch_issue_comments(token, client, base_url, owner, repo, number).await?;
+    let issue_comments = github::fetch_issue_comments(github, owner, repo, number).await?;
     for c in &issue_comments {
         let row = CommentRow {
             id: c.id,
@@ -112,8 +109,7 @@ pub async fn fetch_and_cache_pr(
     }
 
     // Fetch review comments (inline on code)
-    let review_comments =
-        github::fetch_review_comments(token, client, base_url, owner, repo, number).await?;
+    let review_comments = github::fetch_review_comments(github, owner, repo, number).await?;
     for c in &review_comments {
         let thread_id = match c.in_reply_to_id {
             Some(parent_id) => format!("review:{parent_id}"),
@@ -137,7 +133,7 @@ pub async fn fetch_and_cache_pr(
     }
 
     // Fetch commits
-    let gh_commits = github::fetch_commits(token, client, base_url, owner, repo, number).await?;
+    let gh_commits = github::fetch_commits(github, owner, repo, number).await?;
     for c in &gh_commits {
         let first_line = c.commit.message.lines().next().unwrap_or("").to_string();
         let row = CommitRow {
@@ -151,8 +147,7 @@ pub async fn fetch_and_cache_pr(
     }
 
     // Fetch check runs for the head SHA
-    let check_run_list =
-        github::fetch_check_runs(token, client, base_url, owner, repo, &head_sha).await?;
+    let check_run_list = github::fetch_check_runs(github, owner, repo, &head_sha).await?;
 
     let ci_status = derive_ci_status(&check_run_list.check_runs);
     if ci_status.is_some() {

@@ -1,16 +1,15 @@
 use crate::models::{GithubIssueComment, GithubPullRequest, GithubReviewComment};
 
+use super::GithubClient;
+
 pub async fn fetch_pull_request(
-    token: &str,
-    client: &reqwest::Client,
-    base_url: &str,
+    github: &GithubClient,
     owner: &str,
     repo: &str,
     number: i64,
 ) -> Result<GithubPullRequest, reqwest::Error> {
-    let url = format!("{base_url}/repos/{owner}/{repo}/pulls/{number}");
-    super::github_request(client, token, &url)
-        .send()
+    github
+        .get(&format!("/repos/{owner}/{repo}/pulls/{number}"))
         .await?
         .error_for_status()?
         .json()
@@ -18,16 +17,13 @@ pub async fn fetch_pull_request(
 }
 
 pub async fn fetch_issue_comments(
-    token: &str,
-    client: &reqwest::Client,
-    base_url: &str,
+    github: &GithubClient,
     owner: &str,
     repo: &str,
     number: i64,
 ) -> Result<Vec<GithubIssueComment>, reqwest::Error> {
-    let url = format!("{base_url}/repos/{owner}/{repo}/issues/{number}/comments");
-    super::github_request(client, token, &url)
-        .send()
+    github
+        .get(&format!("/repos/{owner}/{repo}/issues/{number}/comments"))
         .await?
         .error_for_status()?
         .json()
@@ -35,16 +31,13 @@ pub async fn fetch_issue_comments(
 }
 
 pub async fn fetch_review_comments(
-    token: &str,
-    client: &reqwest::Client,
-    base_url: &str,
+    github: &GithubClient,
     owner: &str,
     repo: &str,
     number: i64,
 ) -> Result<Vec<GithubReviewComment>, reqwest::Error> {
-    let url = format!("{base_url}/repos/{owner}/{repo}/pulls/{number}/comments");
-    super::github_request(client, token, &url)
-        .send()
+    github
+        .get(&format!("/repos/{owner}/{repo}/pulls/{number}/comments"))
         .await?
         .error_for_status()?
         .json()
