@@ -1,6 +1,5 @@
 <script lang="ts">
 import { apiFetch } from "./api.ts";
-import { reasonClass, reasonLabel } from "./reason.ts";
 import { onPrInfoUpdated, onPrTeamsUpdated } from "./sse.svelte.ts";
 import { timeAgo } from "./timeago.ts";
 import { showError } from "./toast.svelte.ts";
@@ -347,9 +346,6 @@ function initials(login: string): string {
 
                     <!-- Right column -->
                     <div class="pr-right">
-                        <span class="label label-{reasonClass(notif.reason)}"
-                            >{reasonLabel(notif.reason)}</span
-                        >
                         <span class="pr-date">{timeAgo(notif.updated_at)}</span>
                         <div class="pr-actions">
                             {#if currentView === "inbox"}
@@ -658,39 +654,6 @@ function initials(login: string): string {
 .divider {
     font-size: 11px;
     color: var(--fg-subtle);
-}
-
-/* Reason pill */
-.label {
-    display: inline-flex;
-    align-items: center;
-    font-size: 12px;
-    font-weight: 500;
-    padding: 0 8px;
-    border-radius: 2em;
-    border: 1px solid;
-    white-space: nowrap;
-    line-height: 20px;
-}
-.label-review {
-    border-color: rgba(47, 129, 247, 0.4);
-    background: rgba(47, 129, 247, 0.1);
-    color: #79c0ff;
-}
-.label-mention {
-    border-color: rgba(163, 113, 247, 0.4);
-    background: rgba(163, 113, 247, 0.1);
-    color: #c9b1f7;
-}
-.label-assign {
-    border-color: rgba(210, 153, 34, 0.4);
-    background: rgba(210, 153, 34, 0.1);
-    color: #e3b341;
-}
-.label-default {
-    border-color: var(--border-default);
-    background: var(--canvas-subtle);
-    color: var(--fg-muted);
 }
 
 /* Right column */

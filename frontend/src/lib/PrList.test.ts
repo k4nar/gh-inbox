@@ -112,18 +112,6 @@ describe("PrList", () => {
         expect(screen.getByText("Refactor auth module")).toBeInTheDocument();
     });
 
-    it("renders reason pills with correct labels", async () => {
-        globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
-
-        render(PrList);
-
-        await waitFor(() => {
-            expect(screen.getByText("Review requested")).toBeInTheDocument();
-        });
-
-        expect(screen.getByText("Mentioned")).toBeInTheDocument();
-    });
-
     it("shows unread dot for unread notifications", async () => {
         globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
 
