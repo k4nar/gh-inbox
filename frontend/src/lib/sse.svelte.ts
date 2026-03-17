@@ -18,6 +18,12 @@ export interface PrInfoUpdatedPayload {
 type PrInfoUpdatedCallback = (data: PrInfoUpdatedPayload) => void;
 let prInfoUpdatedCallbacks: PrInfoUpdatedCallback[] = [];
 
+type GithubSyncErrorCallback = (
+    notificationId: string,
+    message: string,
+) => void;
+let githubSyncErrorCallbacks: GithubSyncErrorCallback[] = [];
+
 let eventSource: EventSource | null = null;
 
 export function getSyncStatus(): SyncStatus {
@@ -46,6 +52,17 @@ export function onPrInfoUpdated(callback: PrInfoUpdatedCallback): () => void {
     prInfoUpdatedCallbacks.push(callback);
     return () => {
         prInfoUpdatedCallbacks = prInfoUpdatedCallbacks.filter(
+            (cb) => cb !== callback,
+        );
+    };
+}
+
+export function onGithubSyncError(
+    callback: GithubSyncErrorCallback,
+): () => void {
+    githubSyncErrorCallbacks.push(callback);
+    return () => {
+        githubSyncErrorCallbacks = githubSyncErrorCallbacks.filter(
             (cb) => cb !== callback,
         );
     };
@@ -91,6 +108,15 @@ export function connectSSE(): void {
         ) as PrInfoUpdatedPayload;
         for (const cb of prInfoUpdatedCallbacks) {
             cb(data);
+        }
+    });
+
+    eventSource.addEventListener("github:sync_error", (e) => {
+        const { notification_id, message } = JSON.parse(
+            (e as MessageEvent).data,
+        ) as { notification_id: string; message: string };
+        for (const cb of githubSyncErrorCallbacks) {
+            cb(notification_id, message);
         }
     });
 
