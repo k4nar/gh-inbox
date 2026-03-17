@@ -14,17 +14,19 @@ pub struct CommentRow {
     pub position: Option<i64>,
     pub in_reply_to_id: Option<i64>,
     pub html_url: Option<String>,
+    pub diff_hunk: Option<String>,
 }
 
 /// Insert or update a comment.
 pub async fn upsert_comment(pool: &SqlitePool, comment: &CommentRow) -> sqlx::Result<()> {
     sqlx::query(
-        "INSERT INTO comments (id, pr_id, thread_id, author, body, created_at, comment_type, path, position, in_reply_to_id, html_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO comments (id, pr_id, thread_id, author, body, created_at, comment_type, path, position, in_reply_to_id, html_url, diff_hunk)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            body = excluded.body,
            thread_id = excluded.thread_id,
-           html_url = excluded.html_url",
+           html_url = excluded.html_url,
+           diff_hunk = excluded.diff_hunk",
     )
     .bind(comment.id)
     .bind(comment.pr_id)
@@ -37,6 +39,7 @@ pub async fn upsert_comment(pool: &SqlitePool, comment: &CommentRow) -> sqlx::Re
     .bind(comment.position)
     .bind(comment.in_reply_to_id)
     .bind(&comment.html_url)
+    .bind(&comment.diff_hunk)
     .execute(pool)
     .await?;
     Ok(())
@@ -45,7 +48,7 @@ pub async fn upsert_comment(pool: &SqlitePool, comment: &CommentRow) -> sqlx::Re
 /// Query all comments for a given PR, ordered by creation time.
 pub async fn query_comments_for_pr(pool: &SqlitePool, pr_id: i64) -> sqlx::Result<Vec<CommentRow>> {
     sqlx::query_as::<_, CommentRow>(
-        "SELECT id, pr_id, thread_id, author, body, created_at, comment_type, path, position, in_reply_to_id, html_url
+        "SELECT id, pr_id, thread_id, author, body, created_at, comment_type, path, position, in_reply_to_id, html_url, diff_hunk
          FROM comments
          WHERE pr_id = ?
          ORDER BY created_at ASC",
@@ -98,6 +101,7 @@ mod tests {
             position: None,
             in_reply_to_id: None,
             html_url: None,
+            diff_hunk: None,
         }
     }
 

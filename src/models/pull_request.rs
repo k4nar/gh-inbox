@@ -50,6 +50,7 @@ pub struct GithubReviewComment {
     pub in_reply_to_id: Option<i64>,
     pub pull_request_review_id: Option<i64>,
     pub html_url: String,
+    pub diff_hunk: Option<String>,
 }
 
 /// A GitHub check run (CI status).

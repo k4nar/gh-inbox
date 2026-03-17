@@ -203,9 +203,17 @@ let hasNewItems = $derived(
             >
             <span class="status-author">{pr.author}</span>
             <span class="status-sep">·</span>
-            <span class="additions">+{pr.additions}</span>
-            <span class="deletions">−{pr.deletions}</span>
-            <span class="status-files">in {pr.changed_files} files</span>
+            <a
+                class="diff-link"
+                href="{detail.pull_request.url}/files"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="View diff on GitHub"
+            >
+                <span class="additions">+{pr.additions}</span>
+                <span class="deletions">−{pr.deletions}</span>
+                <span class="status-files">in {pr.changed_files} files</span>
+            </a>
 
             {#if detail.check_runs.length > 0}
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -219,9 +227,18 @@ let hasNewItems = $derived(
                         {ciSummary.text}
                     </span>
                     {#if showCiTooltip}
+                        {@const activeRuns = detail.check_runs.filter(
+                            (cr) =>
+                                cr.status !== "completed" || !isPassing(cr),
+                        )}
+                        {@const succeededCount = detail.check_runs.filter(
+                            (cr) =>
+                                cr.status === "completed" &&
+                                cr.conclusion === "success",
+                        ).length}
                         <div class="ci-tooltip">
                             <div class="ci-tooltip-title">CI Checks</div>
-                            {#each detail.check_runs as cr}
+                            {#each activeRuns as cr}
                                 <div class="ci-tooltip-row">
                                     <span
                                         class="ci-dot {ciDotClass(cr)}"
@@ -234,6 +251,15 @@ let hasNewItems = $derived(
                                     >
                                 </div>
                             {/each}
+                            {#if succeededCount > 0}
+                                <div class="ci-tooltip-row ci-tooltip-summary">
+                                    <span class="ci-dot ci-success"></span>
+                                    <span class="ci-tooltip-name"
+                                        >{succeededCount}
+                                        succeeded</span
+                                    >
+                                </div>
+                            {/if}
                         </div>
                     {/if}
                 </div>
@@ -477,6 +503,21 @@ let hasNewItems = $derived(
     color: var(--fg-muted);
 }
 
+.diff-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-decoration: none;
+    border-radius: 4px;
+    padding: 1px 3px;
+    margin: -1px -3px;
+}
+
+.diff-link:hover {
+    background: var(--canvas-subtle);
+    text-decoration: underline;
+}
+
 /* CI indicator */
 .ci-wrapper {
     position: relative;
@@ -585,6 +626,13 @@ let hasNewItems = $derived(
     color: var(--fg-muted);
     font-size: 11px;
     flex-shrink: 0;
+}
+
+.ci-tooltip-summary {
+    border-top: 1px solid var(--border-muted);
+    margin-top: 2px;
+    padding-top: 4px;
+    color: var(--fg-muted);
 }
 
 /* Timeline */

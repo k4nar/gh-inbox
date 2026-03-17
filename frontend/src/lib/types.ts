@@ -41,6 +41,7 @@ export interface Comment {
     position: number | null;
     in_reply_to_id: number | null;
     html_url: string | null;
+    diff_hunk: string | null;
 }
 
 export interface CheckRun {

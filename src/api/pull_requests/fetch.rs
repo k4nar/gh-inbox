@@ -106,6 +106,7 @@ pub async fn fetch_and_cache_pr(
             position: None,
             in_reply_to_id: None,
             html_url: Some(c.html_url.clone()),
+            diff_hunk: None,
         };
         queries::upsert_comment(pool, &row).await?;
     }
@@ -130,6 +131,7 @@ pub async fn fetch_and_cache_pr(
             position: c.position,
             in_reply_to_id: c.in_reply_to_id,
             html_url: Some(c.html_url.clone()),
+            diff_hunk: c.diff_hunk.clone(),
         };
         queries::upsert_comment(pool, &row).await?;
     }

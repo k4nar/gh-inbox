@@ -17,6 +17,7 @@ function makeComment(overrides: object = {}) {
         position: null,
         in_reply_to_id: null,
         html_url: "https://github.com/owner/repo/pull/42#issuecomment-1",
+        diff_hunk: null,
         ...overrides,
     };
 }

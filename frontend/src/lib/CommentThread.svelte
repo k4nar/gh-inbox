@@ -22,9 +22,27 @@ function isNew(comment: Comment): boolean {
     return comment.created_at > previousViewedAt;
 }
 
-let newCount = $derived(thread.comments.filter(isNew).length);
+let newComments = $derived(thread.comments.filter(isNew));
+let oldComments = $derived(thread.comments.filter((c) => !isNew(c)));
+let newCount = $derived(newComments.length);
+let hasNewComments = $derived(newCount > 0);
 let firstComment = $derived(thread.comments[0] ?? null);
 let lastComment = $derived(thread.comments[thread.comments.length - 1] ?? null);
+let diffHunk = $derived(firstComment?.diff_hunk ?? null);
+
+function parseDiffLines(
+    hunk: string,
+): { type: "header" | "add" | "del" | "ctx"; text: string }[] {
+    const all = hunk.split("\n").map((line) => {
+        if (line.startsWith("@@"))
+            return { type: "header" as const, text: line };
+        if (line.startsWith("+")) return { type: "add" as const, text: line };
+        if (line.startsWith("-")) return { type: "del" as const, text: line };
+        return { type: "ctx" as const, text: line };
+    });
+    const body = all.filter((l) => l.type !== "header");
+    return body.slice(-4);
+}
 
 function avatarUrl(login: string): string {
     return `https://github.com/${login}.png?size=40`;
@@ -97,6 +115,15 @@ function firstLine(text: string): string {
         </span>
     </button>
 
+    <!-- Diff hunk context (inline review threads only, always visible) -->
+    {#if diffHunk}
+        <div class="diff-hunk" aria-label="Code context">
+            {#each parseDiffLines(diffHunk) as line}
+                <div class="diff-line diff-line--{line.type}">{line.text}</div>
+            {/each}
+        </div>
+    {/if}
+
     {#if expanded}
         <!-- Expanded: all comments as clickable links -->
         <div class="thread-comments">
@@ -130,17 +157,58 @@ function firstLine(text: string): string {
                 </a>
             {/each}
         </div>
+    {:else if hasNewComments}
+        <!-- Has new comments: show old ones collapsed + new ones always visible -->
+        {#if oldComments.length > 0}
+            <button
+                type="button"
+                class="older-comments-toggle"
+                onclick={() => (expanded = true)}
+            >
+                {oldComments.length}
+                older
+                {oldComments.length === 1 ? "comment" : "comments"}
+                — click to expand
+            </button>
+        {/if}
+        <div class="thread-comments">
+            {#each newComments as comment (comment.id)}
+                <a
+                    class="comment new-comment"
+                    href={comment.html_url ?? "#"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    <div class="comment-header">
+                        <img
+                            class="comment-avatar"
+                            src={avatarUrl(comment.author)}
+                            alt={comment.author}
+                            width="18"
+                            height="18"
+                        >
+                        <span class="comment-author">{comment.author}</span>
+                        <span class="comment-date"
+                            >· {timeAgo(comment.created_at)}</span
+                        >
+                        <span class="comment-link-icon" aria-hidden="true"
+                            >↗</span
+                        >
+                    </div>
+                    <div class="comment-body markdown-body">
+                        {@html comment.body_html}
+                    </div>
+                </a>
+            {/each}
+        </div>
     {:else if firstComment}
-        <!-- Collapsed: two-line preview, click to expand -->
+        <!-- No new comments, collapsed: two-line preview, click to expand -->
         <button
             type="button"
             class="thread-preview"
             onclick={() => (expanded = true)}
         >
-            <div
-                class="comment-preview"
-                class:new-comment-preview={isNew(firstComment)}
-            >
+            <div class="comment-preview">
                 <img
                     class="preview-avatar"
                     src={avatarUrl(firstComment.author)}
@@ -152,10 +220,7 @@ function firstLine(text: string): string {
                 <span class="preview-text">{firstLine(firstComment.body)}</span>
             </div>
             {#if lastComment && lastComment.id !== firstComment.id}
-                <div
-                    class="comment-preview"
-                    class:new-comment-preview={isNew(lastComment)}
-                >
+                <div class="comment-preview">
                     <img
                         class="preview-avatar"
                         src={avatarUrl(lastComment.author)}
@@ -240,6 +305,41 @@ function firstLine(text: string): string {
     margin-left: auto;
 }
 
+/* Diff hunk */
+.diff-hunk {
+    font-family:
+        ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    overflow-x: auto;
+    background: var(--canvas-default);
+    border-bottom: 1px solid var(--border-default);
+}
+
+.diff-line {
+    padding: 0 10px;
+    white-space: pre;
+}
+
+.diff-line--header {
+    background: rgba(47, 129, 247, 0.08);
+    color: var(--accent-fg);
+}
+
+.diff-line--add {
+    background: rgba(46, 160, 67, 0.1);
+    color: var(--color-success-fg, #3fb950);
+}
+
+.diff-line--del {
+    background: rgba(248, 81, 73, 0.1);
+    color: var(--color-danger-fg, #f85149);
+}
+
+.diff-line--ctx {
+    color: var(--fg-muted);
+}
+
 /* Expanded: comments */
 .thread-comments {
     display: flex;
@@ -312,6 +412,26 @@ function firstLine(text: string): string {
     font-size: 13px;
 }
 
+/* Older comments toggle (when thread has new comments) */
+.older-comments-toggle {
+    display: block;
+    width: 100%;
+    padding: 5px 10px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid var(--border-muted);
+    font-size: 11px;
+    color: var(--fg-muted);
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.older-comments-toggle:hover {
+    background: var(--canvas-subtle);
+    color: var(--fg-default);
+}
+
 /* Collapsed: preview */
 .thread-preview {
     display: flex;
@@ -351,23 +471,10 @@ function firstLine(text: string): string {
     background: var(--canvas-subtle);
 }
 
-.new-comment-preview {
-    background: rgba(47, 129, 247, 0.04);
-    border-left: 3px solid var(--accent-fg);
-}
-
-.thread-preview:hover .new-comment-preview {
-    background: rgba(47, 129, 247, 0.09);
-}
-
 .preview-avatar {
     border-radius: 50%;
     flex-shrink: 0;
     opacity: 0.7;
-}
-
-.new-comment-preview .preview-avatar {
-    opacity: 1;
 }
 
 .preview-author {
@@ -383,9 +490,5 @@ function firstLine(text: string): string {
     white-space: nowrap;
     flex: 1;
     min-width: 0;
-}
-
-.new-comment-preview .preview-text {
-    color: var(--fg-default);
 }
 </style>
