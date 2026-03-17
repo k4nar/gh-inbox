@@ -36,7 +36,7 @@ pub async fn fetch_notifications(
     github: &GithubClient,
 ) -> Result<Vec<Notification>, reqwest::Error> {
     github
-        .get("/notifications")
+        .get("/notifications?all=true")
         .await?
         .error_for_status()?
         .json()
