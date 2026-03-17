@@ -7,6 +7,12 @@ use http_body_util::BodyExt;
 use tokio::net::TcpListener;
 use tower::util::ServiceExt;
 
+/// Extract the "items" array from a paginated inbox response body.
+fn parse_inbox_items(body: &[u8]) -> Vec<serde_json::Value> {
+    let result: serde_json::Value = serde_json::from_slice(body).unwrap();
+    result["items"].as_array().unwrap().clone()
+}
+
 #[tokio::test]
 async fn get_root_returns_200() {
     let pool = gh_inbox::db::init_with_path(":memory:").await;
@@ -338,7 +344,7 @@ async fn get_api_inbox_returns_notifications() {
     assert_eq!(response.status(), StatusCode::OK);
 
     let body = response.into_body().collect().await.unwrap().to_bytes();
-    let notifications: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    let notifications = parse_inbox_items(&body);
 
     assert_eq!(notifications.len(), 1);
     assert_eq!(notifications[0]["id"], "123");
@@ -378,8 +384,10 @@ async fn get_api_inbox_empty_returns_empty_array() {
     assert_eq!(response.status(), StatusCode::OK);
 
     let body = response.into_body().collect().await.unwrap().to_bytes();
-    let notifications: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    let notifications = parse_inbox_items(&body);
     assert!(notifications.is_empty());
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(result["total"], 0);
 }
 
 #[tokio::test]
@@ -646,7 +654,7 @@ async fn archive_removes_from_inbox_and_appears_in_archived() {
         .await
         .unwrap();
     let body = response.into_body().collect().await.unwrap().to_bytes();
-    let inbox: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    let inbox = parse_inbox_items(&body);
     assert!(inbox.is_empty());
 
     // Archived should have the notification
@@ -661,7 +669,7 @@ async fn archive_removes_from_inbox_and_appears_in_archived() {
         .await
         .unwrap();
     let body = response.into_body().collect().await.unwrap().to_bytes();
-    let archived: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    let archived = parse_inbox_items(&body);
     assert_eq!(archived.len(), 1);
     assert_eq!(archived[0]["id"], "123");
 }
@@ -710,7 +718,7 @@ async fn unarchive_moves_back_to_inbox() {
         .await
         .unwrap();
     let body = response.into_body().collect().await.unwrap().to_bytes();
-    let inbox: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    let inbox = parse_inbox_items(&body);
     assert_eq!(inbox.len(), 1);
     assert_eq!(inbox[0]["id"], "123");
 }
@@ -746,7 +754,7 @@ async fn mark_read_sets_unread_false() {
         .await
         .unwrap();
     let body = response.into_body().collect().await.unwrap().to_bytes();
-    let inbox: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    let inbox = parse_inbox_items(&body);
     assert_eq!(inbox.len(), 1);
     assert!(!inbox[0]["unread"].as_bool().unwrap());
 }
@@ -1038,4 +1046,106 @@ async fn sse_receives_pr_info_updated_on_prefetch() {
         "Timed out waiting for pr:info_updated event"
     );
     assert!(events.contains(&"pr:info_updated".to_string()));
+}
+
+#[tokio::test]
+async fn get_api_inbox_paginates_results() {
+    let mock_base_url = start_mock_github().await;
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+
+    // Insert 5 notifications directly into DB
+    for i in 1i64..=5 {
+        gh_inbox::db::queries::upsert_notification(
+            &pool,
+            &gh_inbox::db::queries::NotificationRow {
+                id: format!("n{i}"),
+                pr_id: Some(i),
+                title: format!("PR {i}"),
+                repository: "owner/repo".to_string(),
+                reason: "review_requested".to_string(),
+                unread: true,
+                archived: false,
+                updated_at: format!("2025-01-0{i}T00:00:00Z"),
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    // Mark bootstrap as done (store epoch seconds, matching the INTEGER column schema)
+    sqlx::query("INSERT INTO last_fetched_at (resource, fetched_at) VALUES ('notifications', strftime('%s', 'now'))")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Page 1 with per_page=2
+    let (app, _state) =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/inbox?page=1&per_page=2")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(result["items"].as_array().unwrap().len(), 2);
+    assert_eq!(result["total"], 5);
+    assert_eq!(result["page"], 1);
+    assert_eq!(result["per_page"], 2);
+
+    // Page 3 with per_page=2: 1 item
+    let (app, _state) =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/inbox?page=3&per_page=2")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(result["items"].as_array().unwrap().len(), 1);
+    assert_eq!(result["total"], 5);
+
+    // Page beyond range
+    let (app, _state) =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/inbox?page=10&per_page=2")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(result["items"].as_array().unwrap().is_empty());
+    assert_eq!(result["total"], 5);
+
+    // Default params
+    let (app, _state) = gh_inbox::app_with_base_url(pool, Arc::from("fake-token"), mock_base_url);
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/inbox")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(result["items"].as_array().unwrap().len(), 5);
+    assert_eq!(result["page"], 1);
+    assert_eq!(result["per_page"], 25);
 }

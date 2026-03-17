@@ -226,7 +226,6 @@ pub async fn query_archived_enriched(
 
 /// Query inbox (unarchived) notifications with enrichment — paginated.
 /// Returns (items, total_count).
-#[allow(dead_code)]
 pub async fn query_inbox_enriched_paginated(
     pool: &SqlitePool,
     limit: u32,
@@ -257,7 +256,6 @@ pub async fn query_inbox_enriched_paginated(
 
 /// Query archived notifications with enrichment — paginated.
 /// Returns (items, total_count).
-#[allow(dead_code)]
 pub async fn query_archived_enriched_paginated(
     pool: &SqlitePool,
     limit: u32,
