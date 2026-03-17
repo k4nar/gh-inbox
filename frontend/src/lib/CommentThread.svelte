@@ -46,6 +46,8 @@ function parseDiffLines(
     return body.slice(-4);
 }
 
+let diffLines = $derived(diffHunk ? parseDiffLines(diffHunk) : []);
+
 function avatarUrl(login: string): string {
     return `https://github.com/${login}.png?size=40`;
 }
@@ -130,9 +132,9 @@ function firstLine(text: string): string {
     </button>
 
     <!-- Diff hunk context (inline review threads only, always visible) -->
-    {#if diffHunk}
+    {#if diffLines.length > 0}
         <div class="diff-hunk" aria-label="Code context">
-            {#each parseDiffLines(diffHunk) as line}
+            {#each diffLines as line}
                 <div class="diff-line diff-line--{line.type}">{line.text}</div>
             {/each}
         </div>

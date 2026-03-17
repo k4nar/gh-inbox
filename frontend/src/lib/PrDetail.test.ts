@@ -231,9 +231,7 @@ describe("PrDetail — timeline", () => {
         const detail = { ...BASE_DETAIL, previous_viewed_at: null };
         const { container } = renderDetail(detail);
         await waitFor(() => {
-            expect(
-                container.querySelector(".commits-list"),
-            ).toBeInTheDocument();
+            expect(container.querySelector(".zone")).toBeInTheDocument();
         });
         expect(container.querySelector(".divider-new")).not.toBeInTheDocument();
     });

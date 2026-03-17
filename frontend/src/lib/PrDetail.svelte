@@ -129,16 +129,36 @@ let oldCommits = $derived(
     detail?.commits.filter((c) => !isNew(c.committed_at)) ?? [],
 );
 
-function threadNewCount(thread: Thread): number {
-    return thread.comments.filter((c) => isNew(c.created_at)).length;
-}
+let threadNewCounts = $derived(
+    new Map(
+        threads.map((t) => [
+            t.thread_id,
+            t.comments.filter((c) => isNew(c.created_at)).length,
+        ]),
+    ),
+);
 
-let newThreads = $derived(threads.filter((t) => threadNewCount(t) > 0));
-let oldThreads = $derived(threads.filter((t) => threadNewCount(t) === 0));
+let newThreads = $derived(
+    threads.filter((t) => (threadNewCounts.get(t.thread_id) ?? 0) > 0),
+);
+let oldThreads = $derived(
+    threads.filter((t) => (threadNewCounts.get(t.thread_id) ?? 0) === 0),
+);
 
 let hasNewItems = $derived(
     previousViewedAt !== null &&
         (newCommits.length > 0 || newThreads.length > 0),
+);
+
+let ciActiveRuns = $derived(
+    detail?.check_runs.filter(
+        (cr) => cr.status !== "completed" || !isPassing(cr),
+    ) ?? [],
+);
+let ciSucceededCount = $derived(
+    detail?.check_runs.filter(
+        (cr) => cr.status === "completed" && cr.conclusion === "success",
+    ).length ?? 0,
 );
 
 let diffSinceBase = $derived(oldCommits[oldCommits.length - 1]?.sha ?? null);
@@ -252,18 +272,9 @@ let diffSinceUrl = $derived(
                         {ciSummary.text}
                     </span>
                     {#if showCiTooltip}
-                        {@const activeRuns = detail.check_runs.filter(
-                            (cr) =>
-                                cr.status !== "completed" || !isPassing(cr),
-                        )}
-                        {@const succeededCount = detail.check_runs.filter(
-                            (cr) =>
-                                cr.status === "completed" &&
-                                cr.conclusion === "success",
-                        ).length}
                         <div class="ci-tooltip">
                             <div class="ci-tooltip-title">CI Checks</div>
-                            {#each activeRuns as cr}
+                            {#each ciActiveRuns as cr}
                                 <div class="ci-tooltip-row">
                                     <span
                                         class="ci-dot {ciDotClass(cr)}"
@@ -276,11 +287,11 @@ let diffSinceUrl = $derived(
                                     >
                                 </div>
                             {/each}
-                            {#if succeededCount > 0}
+                            {#if ciSucceededCount > 0}
                                 <div class="ci-tooltip-row ci-tooltip-summary">
                                     <span class="ci-dot ci-success"></span>
                                     <span class="ci-tooltip-name"
-                                        >{succeededCount}
+                                        >{ciSucceededCount}
                                         succeeded</span
                                     >
                                 </div>
@@ -335,7 +346,7 @@ let diffSinceUrl = $derived(
                         <CommentThread
                             {thread}
                             {previousViewedAt}
-                            initiallyExpanded={threadNewCount(thread) === thread.comments.length}
+                            initiallyExpanded={(threadNewCounts.get(thread.thread_id) ?? 0) === thread.comments.length}
                         />
                     {/each}
                 </div>
@@ -380,7 +391,7 @@ let diffSinceUrl = $derived(
                 {/if}
             {:else}
                 <!-- No dividers: first visit or nothing new -->
-                <div class="zone commits-list">
+                <div class="zone">
                     {#each detail.commits as commit (commit.sha)}
                         <a
                             class="commit-row commit-row-old"
