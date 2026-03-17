@@ -118,7 +118,7 @@ let ciSummary = $derived.by((): { text: string; cls: string } => {
 let previousViewedAt = $derived(detail?.previous_viewed_at ?? null);
 
 function isNew(timestamp: string): boolean {
-    if (!previousViewedAt) return false;
+    if (!previousViewedAt) return true;
     return timestamp > previousViewedAt;
 }
 

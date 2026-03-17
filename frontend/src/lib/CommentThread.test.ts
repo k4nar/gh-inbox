@@ -51,7 +51,37 @@ describe("CommentThread — collapsed (default)", () => {
         expect(screen.getByText("src/main.rs")).toBeInTheDocument();
     });
 
-    it("shows preview of first and last comment", () => {
+    it("shows preview of first and last comment when no new comments", () => {
+        const thread = {
+            thread_id: "conversation",
+            path: null,
+            comments: [
+                makeComment({
+                    id: 1,
+                    author: "alice",
+                    body: "First comment here",
+                    created_at: "2025-05-01T09:00:00Z",
+                }),
+                makeComment({
+                    id: 2,
+                    author: "bob",
+                    body: "Last comment here",
+                    created_at: "2025-05-01T10:00:00Z",
+                }),
+            ],
+        };
+        const { container } = render(CommentThread, {
+            props: { thread, previousViewedAt: "2025-06-01T00:00:00Z" },
+        });
+        const previews = container.querySelectorAll(".comment-preview");
+        expect(previews).toHaveLength(2);
+        // First preview shows truncated first comment
+        expect(previews[0].textContent).toContain("alice");
+        // Last preview shows truncated last comment
+        expect(previews[1].textContent).toContain("bob");
+    });
+
+    it("shows first comment preview + last new comment inline when PR is new (no previousViewedAt)", () => {
         const thread = {
             thread_id: "conversation",
             path: null,
@@ -70,12 +100,13 @@ describe("CommentThread — collapsed (default)", () => {
             ],
         };
         const { container } = render(CommentThread, { props: { thread } });
+        // One preview for first comment, last new comment shown inline
         const previews = container.querySelectorAll(".comment-preview");
-        expect(previews).toHaveLength(2);
-        // First preview shows truncated first comment
+        expect(previews).toHaveLength(1);
         expect(previews[0].textContent).toContain("alice");
-        // Last preview shows truncated last comment
-        expect(previews[1].textContent).toContain("bob");
+        // Last new comment is shown inline
+        expect(container.querySelector(".thread-comments")).toBeInTheDocument();
+        expect(container.querySelector(".new-comment")).toBeInTheDocument();
     });
 
     it("shows 'new' badge on thread header when there are new comments", () => {
@@ -131,9 +162,17 @@ describe("CommentThread — expanded", () => {
         const thread = {
             thread_id: "conversation",
             path: null,
-            comments: [makeComment({ body: "Expandable comment" })],
+            comments: [
+                makeComment({
+                    body: "Expandable comment",
+                    created_at: "2025-05-01T09:00:00Z",
+                }),
+            ],
         };
-        const { container } = render(CommentThread, { props: { thread } });
+        // Use a previousViewedAt after the comment so it has no new comments (collapsed state)
+        const { container } = render(CommentThread, {
+            props: { thread, previousViewedAt: "2025-06-01T00:00:00Z" },
+        });
 
         // Not expanded initially: .thread-comments container should be absent
         expect(

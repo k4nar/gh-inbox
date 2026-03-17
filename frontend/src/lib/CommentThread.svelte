@@ -18,7 +18,7 @@ let {
 let expanded = $state(initiallyExpanded);
 
 function isNew(comment: Comment): boolean {
-    if (!previousViewedAt) return false;
+    if (!previousViewedAt) return true;
     return comment.created_at > previousViewedAt;
 }
 
