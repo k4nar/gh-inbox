@@ -37,8 +37,9 @@ onMount(() => {
     const unsubNotifications = onNewNotifications(() => {
         refreshKey++;
     });
-    const unsubGithubError = onGithubSyncError((_notificationId, _message) => {
+    const unsubGithubError = onGithubSyncError((_notificationId, message) => {
         showError("Failed to sync with GitHub");
+        console.error("GitHub sync error:", message);
     });
     return () => {
         unsubNotifications();
