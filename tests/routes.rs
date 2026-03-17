@@ -253,6 +253,10 @@ async fn archive_broadcasts_github_sync_error_on_github_failure() {
         .unwrap();
     assert_eq!(response.status(), axum::http::StatusCode::NO_CONTENT);
 
+    // DB should be updated regardless of GitHub failure
+    let archived = gh_inbox::db::queries::query_archived(&pool).await.unwrap();
+    assert!(archived.iter().any(|n| n.id == "123"));
+
     // SSE error event should arrive within 500ms
     let event = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
         .await
