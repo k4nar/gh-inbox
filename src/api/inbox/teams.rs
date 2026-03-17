@@ -18,7 +18,7 @@ pub async fn ensure_user_teams_fresh(
         .expect("clock")
         .as_secs() as i64;
     if last_fetched.map(|t| now_secs - t > 86_400).unwrap_or(true) {
-        let user_teams = crate::github::fetch_user_teams(github).await?;
+        let user_teams = github::fetch_user_teams(github).await?;
         queries::replace_user_teams(pool, &user_teams).await?;
     }
     Ok(())
@@ -45,7 +45,7 @@ pub async fn fetch_teams_for_pr(
         .collect();
 
     let reviewer_teams =
-        crate::github::fetch_requested_reviewer_teams(github, owner, repo_name, pr_id).await?;
+        github::fetch_requested_reviewer_teams(github, owner, repo_name, pr_id).await?;
 
     let matched: Vec<String> = reviewer_teams
         .into_iter()

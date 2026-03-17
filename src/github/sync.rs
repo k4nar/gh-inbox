@@ -37,7 +37,7 @@ impl From<sqlx::Error> for SyncError {
 /// Fetch notifications from GitHub and upsert into the database.
 /// Returns the number of notifications whose `updated_at` changed (i.e. truly new/updated).
 pub async fn sync_notifications(state: &AppState) -> Result<usize, SyncError> {
-    let notifications = crate::github::fetch_notifications(&state.github).await?;
+    let notifications = super::fetch_notifications(&state.github).await?;
 
     let mut changed = 0;
     for notif in &notifications {

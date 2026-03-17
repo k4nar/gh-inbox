@@ -9,6 +9,7 @@ use tokio::sync::broadcast::Sender;
 use crate::api::AppError;
 use crate::api::inbox::teams::{ensure_user_teams_fresh, fetch_teams_for_pr};
 use crate::db::queries::{self, InboxItem};
+use crate::github;
 use crate::github::sync::sync_notifications;
 use crate::models::SyncEvent;
 use crate::server::AppState;
@@ -74,7 +75,7 @@ pub async fn get_inbox(
 
 async fn fetch_teams_background(
     pool: SqlitePool,
-    github: crate::github::GithubClient,
+    github: github::GithubClient,
     tx: Sender<SyncEvent>,
     pr_ids: Vec<i64>,
     repo_map: std::collections::HashMap<i64, String>,
@@ -95,7 +96,7 @@ async fn fetch_teams_background(
 
 async fn do_fetch_teams(
     pool: &SqlitePool,
-    github: &crate::github::GithubClient,
+    github: &github::GithubClient,
     tx: &Sender<SyncEvent>,
     pr_ids: &[i64],
     repo_map: &std::collections::HashMap<i64, String>,

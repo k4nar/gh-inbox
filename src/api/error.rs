@@ -1,6 +1,8 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 
+use crate::github;
+
 /// Typed error for API handlers. Maps to appropriate HTTP status codes.
 #[derive(Debug)]
 pub enum AppError {
@@ -26,9 +28,9 @@ impl From<sqlx::Error> for AppError {
     }
 }
 
-impl From<crate::github::sync::SyncError> for AppError {
-    fn from(err: crate::github::sync::SyncError) -> Self {
-        use crate::github::sync::SyncError;
+impl From<github::sync::SyncError> for AppError {
+    fn from(err: github::sync::SyncError) -> Self {
+        use github::sync::SyncError;
         match err {
             SyncError::GitHub(e) => AppError::GitHub(e),
             SyncError::Database(e) => AppError::Database(e),

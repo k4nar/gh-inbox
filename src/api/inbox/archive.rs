@@ -3,6 +3,7 @@ use axum::http::StatusCode;
 
 use crate::api::AppError;
 use crate::db::queries;
+use crate::github;
 use crate::models::{GithubSyncErrorData, SyncEvent};
 use crate::server::AppState;
 
@@ -21,7 +22,7 @@ pub async fn post_archive(
     let tx = state.tx.clone();
     let notification_id = id.clone();
     tokio::spawn(async move {
-        if let Err(e) = crate::github::mark_thread_done(&github, &notification_id).await {
+        if let Err(e) = github::mark_thread_done(&github, &notification_id).await {
             let _ = tx.send(SyncEvent::GithubSyncError(GithubSyncErrorData {
                 notification_id,
                 message: e.to_string(),

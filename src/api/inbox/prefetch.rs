@@ -9,6 +9,7 @@ use crate::api::AppError;
 use crate::api::inbox::teams::{ensure_user_teams_fresh, fetch_teams_for_pr};
 use crate::api::pull_requests::fetch::{derive_pr_status_from_row, fetch_and_cache_pr};
 use crate::db::queries;
+use crate::github;
 use crate::models::{PrInfoUpdatedData, PrNewComment, SyncEvent};
 use crate::server::AppState;
 
@@ -46,7 +47,7 @@ pub async fn post_prefetch(
 
 async fn do_prefetch(
     pool: &SqlitePool,
-    github: &crate::github::GithubClient,
+    github: &github::GithubClient,
     tx: &Sender<SyncEvent>,
     items: Vec<PrefetchItem>,
 ) {
@@ -70,7 +71,7 @@ async fn do_prefetch(
 
 async fn fetch_one(
     pool: &SqlitePool,
-    github: &crate::github::GithubClient,
+    github: &github::GithubClient,
     tx: &Sender<SyncEvent>,
     item: &PrefetchItem,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
