@@ -8,8 +8,8 @@ pub async fn fetch_check_runs(
     repo: &str,
     sha: &str,
 ) -> Result<GithubCheckRunList, reqwest::Error> {
-    let url = github.url(&format!("/repos/{owner}/{repo}/commits/{sha}/check-runs"));
-    github.get(&url).await?.error_for_status()?.json().await
+    let path = format!("/repos/{owner}/{repo}/commits/{sha}/check-runs");
+    github.get(&path).await?.error_for_status()?.json().await
 }
 
 #[cfg(test)]

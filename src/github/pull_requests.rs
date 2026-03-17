@@ -8,8 +8,8 @@ pub async fn fetch_pull_request(
     repo: &str,
     number: i64,
 ) -> Result<GithubPullRequest, reqwest::Error> {
-    let url = github.url(&format!("/repos/{owner}/{repo}/pulls/{number}"));
-    github.get(&url).await?.error_for_status()?.json().await
+    let path = format!("/repos/{owner}/{repo}/pulls/{number}");
+    github.get(&path).await?.error_for_status()?.json().await
 }
 
 pub async fn fetch_issue_comments(
@@ -18,8 +18,8 @@ pub async fn fetch_issue_comments(
     repo: &str,
     number: i64,
 ) -> Result<Vec<GithubIssueComment>, reqwest::Error> {
-    let url = github.url(&format!("/repos/{owner}/{repo}/issues/{number}/comments"));
-    github.get(&url).await?.error_for_status()?.json().await
+    let path = format!("/repos/{owner}/{repo}/issues/{number}/comments");
+    github.get(&path).await?.error_for_status()?.json().await
 }
 
 pub async fn fetch_review_comments(
@@ -28,8 +28,8 @@ pub async fn fetch_review_comments(
     repo: &str,
     number: i64,
 ) -> Result<Vec<GithubReviewComment>, reqwest::Error> {
-    let url = github.url(&format!("/repos/{owner}/{repo}/pulls/{number}/comments"));
-    github.get(&url).await?.error_for_status()?.json().await
+    let path = format!("/repos/{owner}/{repo}/pulls/{number}/comments");
+    github.get(&path).await?.error_for_status()?.json().await
 }
 
 #[cfg(test)]

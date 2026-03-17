@@ -31,8 +31,12 @@ struct ReviewerTeam {
 /// more than 100 teams across all organisations will silently miss the overflow.
 /// Pagination support can be added later if this becomes a real-world problem.
 pub async fn fetch_user_teams(github: &GithubClient) -> Result<Vec<String>, reqwest::Error> {
-    let url = github.url("/user/teams?per_page=100");
-    let teams: Vec<GithubTeam> = github.get(&url).await?.error_for_status()?.json().await?;
+    let teams: Vec<GithubTeam> = github
+        .get("/user/teams?per_page=100")
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
     Ok(teams
         .into_iter()
         .map(|t| format!("{}/{}", t.organization.login, t.slug))
@@ -47,10 +51,8 @@ pub async fn fetch_requested_reviewer_teams(
     repo: &str,
     pr_number: i64,
 ) -> Result<Vec<String>, reqwest::Error> {
-    let url = github.url(&format!(
-        "/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers",
-    ));
-    let response: ReviewersResponse = github.get(&url).await?.error_for_status()?.json().await?;
+    let path = format!("/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers");
+    let response: ReviewersResponse = github.get(&path).await?.error_for_status()?.json().await?;
     Ok(response
         .teams
         .into_iter()

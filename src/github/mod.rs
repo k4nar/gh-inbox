@@ -33,31 +33,28 @@ impl GithubClient {
         }
     }
 
-    /// Build a full URL by joining the base URL with the given path.
-    fn url(&self, path: &str) -> String {
-        format!("{}{path}", self.base_url)
+    async fn get(&self, path: &str) -> Result<Response, reqwest::Error> {
+        self.send(Method::GET, path).await
     }
 
-    async fn get(&self, url: &str) -> Result<Response, reqwest::Error> {
-        self.send(Method::GET, url).await
+    async fn patch(&self, path: &str) -> Result<Response, reqwest::Error> {
+        self.send(Method::PATCH, path).await
     }
 
-    async fn patch(&self, url: &str) -> Result<Response, reqwest::Error> {
-        self.send(Method::PATCH, url).await
+    async fn delete(&self, path: &str) -> Result<Response, reqwest::Error> {
+        self.send(Method::DELETE, path).await
     }
 
-    async fn delete(&self, url: &str) -> Result<Response, reqwest::Error> {
-        self.send(Method::DELETE, url).await
-    }
+    async fn send(&self, method: Method, path: &str) -> Result<Response, reqwest::Error> {
+        let url = format!("{}{path}", self.base_url);
 
-    async fn send(&self, method: Method, url: &str) -> Result<Response, reqwest::Error> {
         if cfg!(debug_assertions) {
             eprintln!("[debug] GitHub {method} {url}");
         }
 
         let request = self
             .client
-            .request(method.clone(), url)
+            .request(method.clone(), &url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "gh-inbox")
