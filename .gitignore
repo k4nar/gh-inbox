@@ -57,3 +57,6 @@ yarn-error.log*
 # Superpowers related files
 docs/superpowers
 .superpowers/
+
+# Local only files
+IDEAS.md
