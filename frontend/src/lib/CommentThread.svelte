@@ -51,7 +51,8 @@ function avatarUrl(login: string): string {
 }
 
 function firstLine(text: string): string {
-    return text.split("\n")[0].slice(0, 120);
+    const line = text.split("\n")[0];
+    return line.length > 120 ? line.slice(0, 120) + "…" : line;
 }
 </script>
 
