@@ -23,15 +23,15 @@ pub async fn post_mark_read(
     let base_url = state.github_base_url.clone();
     let tx = state.tx.clone();
     let notification_id = id.clone();
-    drop(tokio::spawn(async move {
+    tokio::spawn(async move {
         if let Err(e) = github::mark_thread_read(&token, &client, &base_url, &notification_id).await
         {
             let _ = tx.send(SyncEvent::GithubSyncError(GithubSyncErrorData {
-                notification_id: notification_id.clone(),
+                notification_id,
                 message: e.to_string(),
             }));
         }
-    }));
+    });
 
     Ok(StatusCode::NO_CONTENT)
 }
