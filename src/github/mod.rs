@@ -7,7 +7,7 @@ mod teams;
 
 pub use check_runs::fetch_check_runs;
 pub use commits::fetch_commits;
-pub use notifications::fetch_notifications;
+pub use notifications::{fetch_notifications, mark_thread_done, mark_thread_read};
 pub use pull_requests::{fetch_issue_comments, fetch_pull_request, fetch_review_comments};
 pub use teams::{fetch_requested_reviewer_teams, fetch_user_teams};
 
@@ -22,7 +22,6 @@ fn github_request(client: &reqwest::Client, token: &str, url: &str) -> reqwest::
         .header("X-GitHub-Api-Version", "2026-03-10")
 }
 
-#[allow(dead_code)]
 fn github_patch(client: &reqwest::Client, token: &str, url: &str) -> reqwest::RequestBuilder {
     client
         .patch(url)
@@ -32,7 +31,6 @@ fn github_patch(client: &reqwest::Client, token: &str, url: &str) -> reqwest::Re
         .header("X-GitHub-Api-Version", "2026-03-10")
 }
 
-#[allow(dead_code)]
 fn github_delete(client: &reqwest::Client, token: &str, url: &str) -> reqwest::RequestBuilder {
     client
         .delete(url)
