@@ -1,14 +1,13 @@
 use crate::models::Notification;
 
+use super::GithubClient;
+
 pub async fn mark_thread_read(
-    token: &str,
-    client: &reqwest::Client,
-    base_url: &str,
+    github: &GithubClient,
     thread_id: &str,
 ) -> Result<(), reqwest::Error> {
-    let url = format!("{base_url}/notifications/threads/{thread_id}");
-    let response =
-        super::send_github_request(super::github_patch(client, token, &url), "PATCH", &url).await?;
+    let url = format!("{}/notifications/threads/{thread_id}", github.base_url);
+    let response = github.patch(&url).await?;
     let status = response.status();
     if status == 403 || status == 404 {
         return Ok(());
@@ -18,15 +17,11 @@ pub async fn mark_thread_read(
 }
 
 pub async fn mark_thread_done(
-    token: &str,
-    client: &reqwest::Client,
-    base_url: &str,
+    github: &GithubClient,
     thread_id: &str,
 ) -> Result<(), reqwest::Error> {
-    let url = format!("{base_url}/notifications/threads/{thread_id}");
-    let response =
-        super::send_github_request(super::github_delete(client, token, &url), "DELETE", &url)
-            .await?;
+    let url = format!("{}/notifications/threads/{thread_id}", github.base_url);
+    let response = github.delete(&url).await?;
     let status = response.status();
     if status == 403 || status == 404 {
         return Ok(());
@@ -36,16 +31,10 @@ pub async fn mark_thread_done(
 }
 
 pub async fn fetch_notifications(
-    token: &str,
-    client: &reqwest::Client,
-    base_url: &str,
+    github: &GithubClient,
 ) -> Result<Vec<Notification>, reqwest::Error> {
-    let url = format!("{base_url}/notifications");
-    super::send_github_request(super::github_request(client, token, &url), "GET", &url)
-        .await?
-        .error_for_status()?
-        .json()
-        .await
+    let url = format!("{}/notifications", github.base_url);
+    github.get(&url).await?.error_for_status()?.json().await
 }
 
 #[cfg(test)]
@@ -210,10 +199,8 @@ mod action_tests {
     #[tokio::test]
     async fn mark_thread_read_uses_patch_with_correct_headers() {
         let (base, recorded) = start_mock_recording(205, "PATCH").await;
-        let client = reqwest::Client::new();
-        mark_thread_read("test-token", &client, &base, "42")
-            .await
-            .unwrap();
+        let github = GithubClient::new(std::sync::Arc::from("test-token"), base);
+        mark_thread_read(&github, "42").await.unwrap();
         let (method, path, headers) = recorded.lock().unwrap().clone().unwrap();
         assert_eq!(method, "PATCH");
         assert_eq!(path, "/notifications/threads/42");
@@ -226,10 +213,8 @@ mod action_tests {
     #[tokio::test]
     async fn mark_thread_done_uses_delete_with_correct_headers() {
         let (base, recorded) = start_mock_recording(205, "DELETE").await;
-        let client = reqwest::Client::new();
-        mark_thread_done("test-token", &client, &base, "42")
-            .await
-            .unwrap();
+        let github = GithubClient::new(std::sync::Arc::from("test-token"), base);
+        mark_thread_done(&github, "42").await.unwrap();
         let (method, path, headers) = recorded.lock().unwrap().clone().unwrap();
         assert_eq!(method, "DELETE");
         assert_eq!(path, "/notifications/threads/42");
@@ -242,64 +227,64 @@ mod action_tests {
     #[tokio::test]
     async fn mark_thread_read_succeeds_on_205() {
         let (base, _) = start_mock_recording(205, "PATCH").await;
-        let client = reqwest::Client::new();
-        let result = mark_thread_read("tok", &client, &base, "42").await;
+        let github = GithubClient::new(std::sync::Arc::from("tok"), base);
+        let result = mark_thread_read(&github, "42").await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn mark_thread_read_noops_on_404() {
         let (base, _) = start_mock_recording(404, "PATCH").await;
-        let client = reqwest::Client::new();
-        let result = mark_thread_read("tok", &client, &base, "42").await;
+        let github = GithubClient::new(std::sync::Arc::from("tok"), base);
+        let result = mark_thread_read(&github, "42").await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn mark_thread_read_noops_on_403() {
         let (base, _) = start_mock_recording(403, "PATCH").await;
-        let client = reqwest::Client::new();
-        let result = mark_thread_read("tok", &client, &base, "42").await;
+        let github = GithubClient::new(std::sync::Arc::from("tok"), base);
+        let result = mark_thread_read(&github, "42").await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn mark_thread_read_errors_on_500() {
         let (base, _) = start_mock_recording(500, "PATCH").await;
-        let client = reqwest::Client::new();
-        let result = mark_thread_read("tok", &client, &base, "42").await;
+        let github = GithubClient::new(std::sync::Arc::from("tok"), base);
+        let result = mark_thread_read(&github, "42").await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn mark_thread_done_succeeds_on_205() {
         let (base, _) = start_mock_recording(205, "DELETE").await;
-        let client = reqwest::Client::new();
-        let result = mark_thread_done("tok", &client, &base, "42").await;
+        let github = GithubClient::new(std::sync::Arc::from("tok"), base);
+        let result = mark_thread_done(&github, "42").await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn mark_thread_done_noops_on_404() {
         let (base, _) = start_mock_recording(404, "DELETE").await;
-        let client = reqwest::Client::new();
-        let result = mark_thread_done("tok", &client, &base, "42").await;
+        let github = GithubClient::new(std::sync::Arc::from("tok"), base);
+        let result = mark_thread_done(&github, "42").await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn mark_thread_done_noops_on_403() {
         let (base, _) = start_mock_recording(403, "DELETE").await;
-        let client = reqwest::Client::new();
-        let result = mark_thread_done("tok", &client, &base, "42").await;
+        let github = GithubClient::new(std::sync::Arc::from("tok"), base);
+        let result = mark_thread_done(&github, "42").await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn mark_thread_done_errors_on_500() {
         let (base, _) = start_mock_recording(500, "DELETE").await;
-        let client = reqwest::Client::new();
-        let result = mark_thread_done("tok", &client, &base, "42").await;
+        let github = GithubClient::new(std::sync::Arc::from("tok"), base);
+        let result = mark_thread_done(&github, "42").await;
         assert!(result.is_err());
     }
 }

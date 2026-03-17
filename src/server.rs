@@ -16,9 +16,7 @@ use crate::github;
 #[derive(Clone)]
 pub struct AppState {
     pub pool: SqlitePool,
-    pub token: Arc<str>,
-    pub client: reqwest::Client,
-    pub github_base_url: String,
+    pub github: github::GithubClient,
     pub tx: broadcast::Sender<crate::models::SyncEvent>,
     pub bootstrap_done: Arc<AtomicBool>,
 }
@@ -109,9 +107,7 @@ pub fn app_with_base_url(
     let (tx, _rx) = broadcast::channel(64);
     let state = AppState {
         pool,
-        token,
-        client: reqwest::Client::new(),
-        github_base_url,
+        github: github::GithubClient::new(token, github_base_url),
         tx,
         bootstrap_done: Arc::new(AtomicBool::new(false)),
     };

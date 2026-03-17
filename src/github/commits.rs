@@ -1,19 +1,18 @@
 use crate::models::GithubCommit;
 
+use super::GithubClient;
+
 pub async fn fetch_commits(
-    token: &str,
-    client: &reqwest::Client,
-    base_url: &str,
+    github: &GithubClient,
     owner: &str,
     repo: &str,
     number: i64,
 ) -> Result<Vec<GithubCommit>, reqwest::Error> {
-    let url = format!("{base_url}/repos/{owner}/{repo}/pulls/{number}/commits");
-    super::send_github_request(super::github_request(client, token, &url), "GET", &url)
-        .await?
-        .error_for_status()?
-        .json()
-        .await
+    let url = format!(
+        "{}/repos/{owner}/{repo}/pulls/{number}/commits",
+        github.base_url
+    );
+    github.get(&url).await?.error_for_status()?.json().await
 }
 
 #[cfg(test)]

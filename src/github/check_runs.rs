@@ -1,19 +1,18 @@
 use crate::models::GithubCheckRunList;
 
+use super::GithubClient;
+
 pub async fn fetch_check_runs(
-    token: &str,
-    client: &reqwest::Client,
-    base_url: &str,
+    github: &GithubClient,
     owner: &str,
     repo: &str,
     sha: &str,
 ) -> Result<GithubCheckRunList, reqwest::Error> {
-    let url = format!("{base_url}/repos/{owner}/{repo}/commits/{sha}/check-runs");
-    super::send_github_request(super::github_request(client, token, &url), "GET", &url)
-        .await?
-        .error_for_status()?
-        .json()
-        .await
+    let url = format!(
+        "{}/repos/{owner}/{repo}/commits/{sha}/check-runs",
+        github.base_url
+    );
+    github.get(&url).await?.error_for_status()?.json().await
 }
 
 #[cfg(test)]

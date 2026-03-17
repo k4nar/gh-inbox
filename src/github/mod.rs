@@ -5,7 +5,11 @@ mod pull_requests;
 pub mod sync;
 mod teams;
 
-use reqwest::{RequestBuilder, Response};
+use std::sync::Arc;
+
+use reqwest::{Method, RequestBuilder, Response};
+
+pub const GITHUB_API_BASE: &str = "https://api.github.com";
 
 pub use check_runs::fetch_check_runs;
 pub use commits::fetch_commits;
@@ -13,50 +17,66 @@ pub use notifications::{fetch_notifications, mark_thread_done, mark_thread_read}
 pub use pull_requests::{fetch_issue_comments, fetch_pull_request, fetch_review_comments};
 pub use teams::{fetch_requested_reviewer_teams, fetch_user_teams};
 
-pub const GITHUB_API_BASE: &str = "https://api.github.com";
-
-fn github_request(client: &reqwest::Client, token: &str, url: &str) -> reqwest::RequestBuilder {
-    client
-        .get(url)
-        .header("Authorization", format!("Bearer {token}"))
-        .header("Accept", "application/vnd.github+json")
-        .header("User-Agent", "gh-inbox")
-        .header("X-GitHub-Api-Version", "2026-03-10")
+#[derive(Clone)]
+pub struct GithubClient {
+    client: reqwest::Client,
+    token: Arc<str>,
+    base_url: String,
 }
 
-fn github_patch(client: &reqwest::Client, token: &str, url: &str) -> reqwest::RequestBuilder {
-    client
-        .patch(url)
-        .header("Authorization", format!("Bearer {token}"))
-        .header("Accept", "application/vnd.github+json")
-        .header("User-Agent", "gh-inbox")
-        .header("X-GitHub-Api-Version", "2026-03-10")
-}
-
-fn github_delete(client: &reqwest::Client, token: &str, url: &str) -> reqwest::RequestBuilder {
-    client
-        .delete(url)
-        .header("Authorization", format!("Bearer {token}"))
-        .header("Accept", "application/vnd.github+json")
-        .header("User-Agent", "gh-inbox")
-        .header("X-GitHub-Api-Version", "2026-03-10")
-}
-
-async fn send_github_request(
-    request: RequestBuilder,
-    method: &str,
-    url: &str,
-) -> Result<Response, reqwest::Error> {
-    eprintln!("[debug] GitHub {method} {url}");
-
-    match request.send().await {
-        Ok(response) => {
-            eprintln!("[debug] GitHub {method} {url} -> {}", response.status());
-            Ok(response)
+impl GithubClient {
+    pub fn new(token: Arc<str>, base_url: String) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            token,
+            base_url,
         }
-        Err(err) => {
-            eprintln!("[debug] GitHub {method} {url} -> error: {err}");
-            Err(err)
+    }
+
+    async fn get(&self, url: &str) -> Result<Response, reqwest::Error> {
+        self.send(self.request(Method::GET, url)).await
+    }
+
+    async fn patch(&self, url: &str) -> Result<Response, reqwest::Error> {
+        self.send(self.request(Method::PATCH, url)).await
+    }
+
+    async fn delete(&self, url: &str) -> Result<Response, reqwest::Error> {
+        self.send(self.request(Method::DELETE, url)).await
+    }
+
+    fn request(&self, method: Method, url: &str) -> RequestBuilder {
+        self.client
+            .request(method, url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "gh-inbox")
+            .header("X-GitHub-Api-Version", "2026-03-10")
+    }
+
+    async fn send(&self, request: RequestBuilder) -> Result<Response, reqwest::Error> {
+        let meta = request
+            .try_clone()
+            .and_then(|cloned| cloned.build().ok())
+            .map(|built| (built.method().clone(), built.url().to_string()));
+
+        if let Some((method, url)) = &meta {
+            eprintln!("[debug] GitHub {method} {url}");
+        }
+
+        match request.send().await {
+            Ok(response) => {
+                if let Some((method, url)) = &meta {
+                    eprintln!("[debug] GitHub {method} {url} -> {}", response.status());
+                }
+                Ok(response)
+            }
+            Err(err) => {
+                if let Some((method, url)) = &meta {
+                    eprintln!("[debug] GitHub {method} {url} -> error: {err}");
+                }
+                Err(err)
+            }
         }
     }
 }

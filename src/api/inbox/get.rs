@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use axum::Json;
@@ -64,13 +63,9 @@ pub async fn get_inbox(
                 .filter_map(|item| item.pr_id.map(|id| (id, item.repository.clone())))
                 .collect();
             let pool = state.pool.clone();
-            let client = state.client.clone();
-            let token = state.token.clone();
-            let base_url = state.github_base_url.clone();
+            let github = state.github.clone();
             let tx = state.tx.clone();
-            tokio::spawn(fetch_teams_background(
-                pool, client, token, base_url, tx, claimed, repo_map,
-            ));
+            tokio::spawn(fetch_teams_background(pool, github, tx, claimed, repo_map));
         }
     }
 
@@ -79,15 +74,12 @@ pub async fn get_inbox(
 
 async fn fetch_teams_background(
     pool: SqlitePool,
-    client: reqwest::Client,
-    token: Arc<str>,
-    base_url: String,
+    github: crate::github::GithubClient,
     tx: Sender<SyncEvent>,
     pr_ids: Vec<i64>,
     repo_map: std::collections::HashMap<i64, String>,
 ) {
-    if let Err(e) = do_fetch_teams(&pool, &client, &token, &base_url, &tx, &pr_ids, &repo_map).await
-    {
+    if let Err(e) = do_fetch_teams(&pool, &github, &tx, &pr_ids, &repo_map).await {
         eprintln!("team fetch error: {e}");
         // Reset 'fetching' rows back to NULL so the next inbox load retries
         for id in &pr_ids {
@@ -103,21 +95,19 @@ async fn fetch_teams_background(
 
 async fn do_fetch_teams(
     pool: &SqlitePool,
-    client: &reqwest::Client,
-    token: &Arc<str>,
-    base_url: &str,
+    github: &crate::github::GithubClient,
     tx: &Sender<SyncEvent>,
     pr_ids: &[i64],
     repo_map: &std::collections::HashMap<i64, String>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    ensure_user_teams_fresh(pool, client, token, base_url).await?;
+    ensure_user_teams_fresh(pool, github).await?;
 
     for &pr_id in pr_ids {
         let repo = match repo_map.get(&pr_id) {
             Some(r) => r,
             None => continue,
         };
-        fetch_teams_for_pr(pool, client, token, base_url, tx, pr_id, repo).await?;
+        fetch_teams_for_pr(pool, github, tx, pr_id, repo).await?;
     }
     Ok(())
 }

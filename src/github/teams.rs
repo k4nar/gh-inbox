@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+use super::GithubClient;
+
 #[derive(Debug, Deserialize)]
 struct GithubTeam {
     slug: String,
@@ -28,18 +30,9 @@ struct ReviewerTeam {
 /// Note: only the first page (up to 100 teams) is fetched. Users belonging to
 /// more than 100 teams across all organisations will silently miss the overflow.
 /// Pagination support can be added later if this becomes a real-world problem.
-pub async fn fetch_user_teams(
-    client: &reqwest::Client,
-    token: &str,
-    base_url: &str,
-) -> Result<Vec<String>, reqwest::Error> {
-    let url = format!("{base_url}/user/teams?per_page=100");
-    let teams: Vec<GithubTeam> =
-        super::send_github_request(super::github_request(client, token, &url), "GET", &url)
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
+pub async fn fetch_user_teams(github: &GithubClient) -> Result<Vec<String>, reqwest::Error> {
+    let url = format!("{}/user/teams?per_page=100", github.base_url);
+    let teams: Vec<GithubTeam> = github.get(&url).await?.error_for_status()?.json().await?;
     Ok(teams
         .into_iter()
         .map(|t| format!("{}/{}", t.organization.login, t.slug))
@@ -49,20 +42,16 @@ pub async fn fetch_user_teams(
 /// Fetch the teams requested to review a specific PR.
 /// Returns team slugs as "{owner}/{team}" (owner = repo org login).
 pub async fn fetch_requested_reviewer_teams(
-    client: &reqwest::Client,
-    token: &str,
-    base_url: &str,
+    github: &GithubClient,
     owner: &str,
     repo: &str,
     pr_number: i64,
 ) -> Result<Vec<String>, reqwest::Error> {
-    let url = format!("{base_url}/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers");
-    let response: ReviewersResponse =
-        super::send_github_request(super::github_request(client, token, &url), "GET", &url)
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
+    let url = format!(
+        "{}/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers",
+        github.base_url
+    );
+    let response: ReviewersResponse = github.get(&url).await?.error_for_status()?.json().await?;
     Ok(response
         .teams
         .into_iter()

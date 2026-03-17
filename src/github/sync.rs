@@ -3,7 +3,6 @@ use std::time::Duration;
 use tokio::sync::broadcast;
 
 use crate::db::queries;
-use crate::github;
 use crate::models::{SyncEvent, SyncStatusKind};
 use crate::server::AppState;
 
@@ -38,8 +37,7 @@ impl From<sqlx::Error> for SyncError {
 /// Fetch notifications from GitHub and upsert into the database.
 /// Returns the number of notifications whose `updated_at` changed (i.e. truly new/updated).
 pub async fn sync_notifications(state: &AppState) -> Result<usize, SyncError> {
-    let notifications =
-        github::fetch_notifications(&state.token, &state.client, &state.github_base_url).await?;
+    let notifications = crate::github::fetch_notifications(&state.github).await?;
 
     let mut changed = 0;
     for notif in &notifications {
@@ -82,15 +80,14 @@ mod tests {
 
     use super::*;
     use crate::db::queries;
+    use crate::github::GithubClient;
 
     async fn make_state(base_url: String) -> AppState {
         let pool = crate::db::init_with_path(":memory:").await;
         let (tx, _rx) = broadcast::channel(8);
         AppState {
             pool,
-            token: Arc::from("fake-token"),
-            client: reqwest::Client::new(),
-            github_base_url: base_url,
+            github: GithubClient::new(Arc::from("fake-token"), base_url),
             tx,
             bootstrap_done: Arc::new(AtomicBool::new(false)),
         }
