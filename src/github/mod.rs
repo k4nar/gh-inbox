@@ -46,7 +46,9 @@ impl GithubClient {
     }
 
     async fn send(&self, method: Method, url: &str) -> Result<Response, reqwest::Error> {
-        eprintln!("[debug] GitHub {method} {url}");
+        if cfg!(debug_assertions) {
+            eprintln!("[debug] GitHub {method} {url}");
+        }
 
         let request = self
             .client
@@ -58,11 +60,15 @@ impl GithubClient {
 
         match request.send().await {
             Ok(response) => {
-                eprintln!("[debug] GitHub {method} {url} -> {}", response.status());
+                if cfg!(debug_assertions) {
+                    eprintln!("[debug] GitHub {method} {url} -> {}", response.status());
+                }
                 Ok(response)
             }
             Err(err) => {
-                eprintln!("[debug] GitHub {method} {url} -> error: {err}");
+                if cfg!(debug_assertions) {
+                    eprintln!("[debug] GitHub {method} {url} -> error: {err}");
+                }
                 Err(err)
             }
         }
