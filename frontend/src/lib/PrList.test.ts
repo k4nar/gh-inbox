@@ -385,6 +385,64 @@ describe("PrList", () => {
         expect(screen.getByText(/Page 2 of 2/)).toBeInTheDocument();
     });
 
+    it("archive on last item of page navigates back", async () => {
+        // Page 1 response
+        globalThis.fetch = mockFetch({
+            items: MOCK_NOTIFICATIONS,
+            total: 27,
+            page: 1,
+            per_page: 25,
+        });
+
+        const { container } = render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+
+        // Navigate to page 2 (1 item)
+        globalThis.fetch = mockFetch({
+            items: [makeItem({ id: "last", title: "Last item" })],
+            total: 27,
+            page: 2,
+            per_page: 25,
+        });
+        await fireEvent.click(
+            screen.getByRole("button", { name: "Next page" }),
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText("Last item")).toBeInTheDocument();
+        });
+
+        // Archive the last item — after API call, refetch should go to page 1
+        const archiveFetch = vi
+            .fn()
+            .mockResolvedValueOnce({
+                ok: true,
+                status: 204,
+                json: () => Promise.resolve(undefined),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () =>
+                    Promise.resolve({
+                        items: MOCK_NOTIFICATIONS,
+                        total: 26,
+                        page: 1,
+                        per_page: 25,
+                    }),
+            });
+        globalThis.fetch = archiveFetch as unknown as typeof fetch;
+
+        const archiveBtn = container.querySelector('button[title="Archive"]')!;
+        await fireEvent.click(archiveBtn);
+
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+    });
+
     it("hides pagination controls when total fits in one page", async () => {
         globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
 

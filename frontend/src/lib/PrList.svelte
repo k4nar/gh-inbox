@@ -177,13 +177,20 @@ async function handleSelect(notif: InboxItem): Promise<void> {
 
 async function handleArchive(e: MouseEvent, notif: InboxItem): Promise<void> {
     e.stopPropagation();
+    const prevNotifications = [...notifications];
     notifications = notifications.filter((n) => n.id !== notif.id);
     try {
         await apiFetch(`/api/inbox/${notif.id}/archive`, { method: "POST" });
+        // Refetch; if page is now empty and not page 1, go back
+        const page =
+            notifications.length === 0 && currentPage > 1
+                ? currentPage - 1
+                : currentPage;
+        await fetchNotifications(currentView, page);
     } catch (err) {
         console.error("Failed to archive:", err);
         showError("Failed to archive notification");
-        notifications = [...notifications, notif];
+        notifications = prevNotifications;
     }
 }
 
@@ -193,13 +200,19 @@ function goToPage(page: number): void {
 
 async function handleUnarchive(e: MouseEvent, notif: InboxItem): Promise<void> {
     e.stopPropagation();
+    const prevNotifications = [...notifications];
     notifications = notifications.filter((n) => n.id !== notif.id);
     try {
         await apiFetch(`/api/inbox/${notif.id}/unarchive`, { method: "POST" });
+        const page =
+            notifications.length === 0 && currentPage > 1
+                ? currentPage - 1
+                : currentPage;
+        await fetchNotifications(currentView, page);
     } catch (err) {
         console.error("Failed to unarchive:", err);
         showError("Failed to unarchive notification");
-        notifications = [...notifications, notif];
+        notifications = prevNotifications;
     }
 }
 
