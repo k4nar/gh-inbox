@@ -1149,3 +1149,51 @@ async fn get_api_inbox_paginates_results() {
     assert_eq!(result["page"], 1);
     assert_eq!(result["per_page"], 25);
 }
+
+#[tokio::test]
+async fn get_api_inbox_archived_paginates() {
+    let mock_base_url = start_mock_github().await;
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+
+    // Insert 3 archived notifications
+    for i in 1..=3 {
+        sqlx::query(
+            "INSERT INTO notifications (id, pr_id, title, repository, reason, unread, archived, updated_at)
+             VALUES (?, ?, ?, 'owner/repo', 'mention', 0, 1, ?)",
+        )
+        .bind(format!("a{i}"))
+        .bind(i as i64)
+        .bind(format!("Archived PR {i}"))
+        .bind(format!("2025-02-0{i}T00:00:00Z"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    // Mark bootstrap as done
+    sqlx::query(
+        "INSERT INTO last_fetched_at (resource, fetched_at) VALUES ('notifications', strftime('%s', 'now'))",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (app, _state) = gh_inbox::app_with_base_url(pool, Arc::from("fake-token"), mock_base_url);
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/inbox?status=archived&page=1&per_page=2")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(result["items"].as_array().unwrap().len(), 2);
+    assert_eq!(result["total"], 3);
+    assert_eq!(result["page"], 1);
+    assert_eq!(result["per_page"], 2);
+}

@@ -443,6 +443,59 @@ describe("PrList", () => {
         });
     });
 
+    it("SSE refresh preserves current page", async () => {
+        // Start on page 1
+        globalThis.fetch = mockFetch({
+            items: MOCK_NOTIFICATIONS,
+            total: 50,
+            page: 1,
+            per_page: 25,
+        });
+
+        const { rerender } = render(PrList, {
+            props: { refreshKey: 0 },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+
+        // Navigate to page 2
+        globalThis.fetch = mockFetch({
+            items: [makeItem({ id: "p2", title: "Page 2 PR" })],
+            total: 50,
+            page: 2,
+            per_page: 25,
+        });
+        await fireEvent.click(
+            screen.getByRole("button", { name: "Next page" }),
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText("Page 2 PR")).toBeInTheDocument();
+        });
+
+        // SSE refresh (refreshKey changes) — should refetch page 2, not reset to 1
+        const fetchSpy = mockFetch({
+            items: [makeItem({ id: "p2-refreshed", title: "Refreshed P2" })],
+            total: 50,
+            page: 2,
+            per_page: 25,
+        });
+        globalThis.fetch = fetchSpy;
+
+        await rerender({ refreshKey: 1 });
+
+        await waitFor(() => {
+            expect(fetchSpy).toHaveBeenCalled();
+        });
+
+        // Verify the fetch URL included page=2
+        const fetchUrl = (fetchSpy as ReturnType<typeof vi.fn>).mock
+            .calls[0][0] as string;
+        expect(fetchUrl).toContain("page=2");
+    });
+
     it("hides pagination controls when total fits in one page", async () => {
         globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
 

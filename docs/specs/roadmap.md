@@ -283,5 +283,3 @@ Goal: The inbox list is paginated with Previous/Next navigation. Users can see t
 - [x] Confirm: `cargo test` and `npm test` pass
 
 **Done when:** Inbox and archived views are paginated with Previous/Next controls. Pagination hides when all items fit on one page. SSE refreshes the current page. Archive/unarchive handles page boundaries. All tests pass.
-
-**Done when:** Marking a notification as read or archiving it pushes the state to GitHub in the background. Failures show a toast and log to console. `cargo test` and `npm test` pass.
