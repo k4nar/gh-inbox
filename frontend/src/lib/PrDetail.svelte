@@ -140,6 +140,15 @@ let hasNewItems = $derived(
     previousViewedAt !== null &&
         (newCommits.length > 0 || newThreads.length > 0),
 );
+
+let diffSinceBase = $derived(oldCommits[oldCommits.length - 1]?.sha ?? null);
+let diffSinceUrl = $derived(
+    detail && newCommits.length > 0
+        ? diffSinceBase
+            ? `${detail.pull_request.url}/files/${diffSinceBase}..${detail.pull_request.head_sha}`
+            : `${detail.pull_request.url}/files`
+        : null,
+);
 </script>
 
 <div class="pr-detail">
@@ -289,6 +298,15 @@ let hasNewItems = $derived(
                     <span class="divider-label divider-label-new"
                         >Since your last visit</span
                     >
+                    {#if diffSinceUrl}
+                        <a
+                            class="diff-since-link"
+                            href={diffSinceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >View changes ↗</a
+                        >
+                    {/if}
                     <div class="divider-line divider-line-new"></div>
                 </div>
 
@@ -706,6 +724,19 @@ let hasNewItems = $derived(
 
 .divider-label-new {
     color: var(--accent-fg);
+}
+
+.diff-since-link {
+    font-size: 11px;
+    white-space: nowrap;
+    color: var(--accent-fg);
+    text-decoration: none;
+    opacity: 0.7;
+}
+
+.diff-since-link:hover {
+    opacity: 1;
+    text-decoration: underline;
 }
 .divider-label-old {
     color: var(--fg-subtle);
