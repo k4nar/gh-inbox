@@ -239,11 +239,13 @@ let diffSinceUrl = $derived(
             </a>
 
             {#if detail.check_runs.length > 0}
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div
+                <button
+                    type="button"
                     class="ci-wrapper"
                     onmouseenter={() => (showCiTooltip = true)}
                     onmouseleave={() => (showCiTooltip = false)}
+                    onfocus={() => (showCiTooltip = true)}
+                    onblur={() => (showCiTooltip = false)}
                 >
                     <span class="ci-indicator {ciSummary.cls}">
                         <span class="ci-dot-indicator"></span>
@@ -285,7 +287,7 @@ let diffSinceUrl = $derived(
                             {/if}
                         </div>
                     {/if}
-                </div>
+                </button>
             {/if}
         </div>
 
@@ -575,6 +577,11 @@ let diffSinceUrl = $derived(
 .ci-wrapper {
     position: relative;
     margin-left: auto;
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: inherit;
+    cursor: default;
 }
 
 .ci-indicator {
