@@ -513,7 +513,7 @@ let diffSinceUrl = $derived(
 }
 
 .pill-open {
-    background: #1a7f37;
+    background: var(--color-success-emphasis, #1a7f37);
     color: #fff;
 }
 .pill-draft {
@@ -522,7 +522,7 @@ let diffSinceUrl = $derived(
     border: 1px solid var(--border-default);
 }
 .pill-merged {
-    background: #6e40c9;
+    background: var(--color-done-emphasis, #6e40c9);
     color: #fff;
 }
 .pill-closed {
