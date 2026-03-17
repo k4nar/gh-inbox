@@ -3,7 +3,6 @@ use sqlx::SqlitePool;
 use crate::api::AppError;
 use crate::db::queries::{self, CheckRunRow, CommentRow, CommitRow, PullRequestRow};
 use crate::github;
-use crate::github::ConditionalResponse;
 use crate::models::{GithubCheckRun, PrStatus};
 
 /// Minimum seconds between full PR fetches (all 5 endpoints) for the detail view.
@@ -177,80 +176,6 @@ pub async fn fetch_and_cache_pr(
     queries::set_last_fetched_now(pool, &resource_key).await?;
 
     Ok(Some(PrFetchResult { author, pr_status }))
-}
-
-/// Fetch only PR metadata (1 GitHub API call) for inbox row enrichment.
-/// Uses ETag conditional requests — 304 responses cost no rate limit quota.
-/// No time-based throttle; ETags handle freshness naturally.
-pub async fn fetch_and_cache_pr_meta(
-    pool: &SqlitePool,
-    client: &reqwest::Client,
-    token: &str,
-    base_url: &str,
-    owner: &str,
-    repo: &str,
-    number: i64,
-) -> Result<Option<PrFetchResult>, AppError> {
-    let full_repo = format!("{owner}/{repo}");
-    let etag_key = format!("pr-meta:{full_repo}#{number}");
-
-    let stored_etag = queries::get_etag(pool, &etag_key).await?;
-
-    let response = github::fetch_pull_request_conditional(
-        token,
-        client,
-        base_url,
-        owner,
-        repo,
-        number,
-        stored_etag.as_deref(),
-    )
-    .await?;
-
-    match response {
-        ConditionalResponse::NotModified => {
-            // Nothing changed — read current data from DB cache.
-            match queries::get_pull_request(pool, &full_repo, number).await? {
-                Some(pr) => Ok(Some(PrFetchResult {
-                    author: pr.author.clone(),
-                    pr_status: derive_pr_status_from_row(&pr),
-                })),
-                None => Ok(None),
-            }
-        }
-        ConditionalResponse::Modified { data, etag } => {
-            let author = data.user.login.clone();
-            let pr_status = derive_pr_status(data.merged_at.as_deref(), &data.state, data.draft);
-
-            // Preserve existing CI status — we don't fetch check runs in the meta path.
-            let existing_ci_status = queries::get_pull_request(pool, &full_repo, number)
-                .await?
-                .and_then(|pr| pr.ci_status);
-
-            let pr_row = PullRequestRow {
-                id: data.number,
-                title: data.title,
-                repo: full_repo.clone(),
-                author: author.clone(),
-                url: data.html_url,
-                ci_status: existing_ci_status,
-                last_viewed_at: None,
-                body: data.body.unwrap_or_default(),
-                state: data.state,
-                head_sha: data.head.sha,
-                additions: data.additions.unwrap_or(0),
-                deletions: data.deletions.unwrap_or(0),
-                changed_files: data.changed_files.unwrap_or(0),
-                draft: data.draft,
-                merged_at: data.merged_at,
-                teams: None,
-            };
-            queries::upsert_pull_request(pool, &pr_row).await?;
-            queries::set_fetch_state(pool, &etag_key, etag.as_deref()).await?;
-
-            Ok(Some(PrFetchResult { author, pr_status }))
-        }
-    }
 }
 
 pub fn derive_ci_status(check_runs: &[GithubCheckRun]) -> Option<String> {
