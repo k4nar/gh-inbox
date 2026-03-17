@@ -170,7 +170,8 @@ async fn mark_read_broadcasts_github_sync_error_on_github_failure() {
     let mock_base_url = start_mock_github_with_sync_error().await;
     let pool = gh_inbox::db::init_with_path(":memory:").await;
 
-    // Populate DB
+    // First app instance: populate the DB by fetching /api/inbox.
+    // We discard its AppState — we don't need to subscribe to its broadcast channel.
     let (app, _) =
         gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
     let _ = app
@@ -183,7 +184,9 @@ async fn mark_read_broadcasts_github_sync_error_on_github_failure() {
         .await
         .unwrap();
 
-    // Subscribe to broadcast BEFORE triggering action
+    // Second app instance: subscribe to its broadcast channel BEFORE triggering the action.
+    // The fire-and-forget task spawned inside this app broadcasts to this same channel,
+    // so we must subscribe here — not to the first instance's channel — to receive the event.
     let (app, state) =
         gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
     let mut rx = state.tx.subscribe();
@@ -223,7 +226,8 @@ async fn archive_broadcasts_github_sync_error_on_github_failure() {
     let mock_base_url = start_mock_github_with_sync_error().await;
     let pool = gh_inbox::db::init_with_path(":memory:").await;
 
-    // Populate DB
+    // First app instance: populate the DB by fetching /api/inbox.
+    // We discard its AppState — we don't need to subscribe to its broadcast channel.
     let (app, _) =
         gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
     let _ = app
@@ -236,7 +240,9 @@ async fn archive_broadcasts_github_sync_error_on_github_failure() {
         .await
         .unwrap();
 
-    // Subscribe to broadcast BEFORE triggering action
+    // Second app instance: subscribe to its broadcast channel BEFORE triggering the action.
+    // The fire-and-forget task spawned inside this app broadcasts to this same channel,
+    // so we must subscribe here — not to the first instance's channel — to receive the event.
     let (app, state) =
         gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
     let mut rx = state.tx.subscribe();
