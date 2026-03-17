@@ -136,7 +136,7 @@ async function fetchNotifications(
 }
 
 // Reset to page 1 when view changes
-let lastView = $state(currentView);
+let lastView = $state("inbox");
 $effect(() => {
     if (currentView !== lastView) {
         lastView = currentView;
