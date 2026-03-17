@@ -21,3 +21,23 @@ fn github_request(client: &reqwest::Client, token: &str, url: &str) -> reqwest::
         .header("User-Agent", "gh-inbox")
         .header("X-GitHub-Api-Version", "2026-03-10")
 }
+
+#[allow(dead_code)]
+fn github_patch(client: &reqwest::Client, token: &str, url: &str) -> reqwest::RequestBuilder {
+    client
+        .patch(url)
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "gh-inbox")
+        .header("X-GitHub-Api-Version", "2026-03-10")
+}
+
+#[allow(dead_code)]
+fn github_delete(client: &reqwest::Client, token: &str, url: &str) -> reqwest::RequestBuilder {
+    client
+        .delete(url)
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "gh-inbox")
+        .header("X-GitHub-Api-Version", "2026-03-10")
+}
