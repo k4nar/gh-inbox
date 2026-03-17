@@ -224,6 +224,68 @@ pub async fn query_archived_enriched(
         .map_err(|e| crate::api::AppError::Internal(e.to_string()))
 }
 
+/// Query inbox (unarchived) notifications with enrichment — paginated.
+/// Returns (items, total_count).
+#[allow(dead_code)]
+pub async fn query_inbox_enriched_paginated(
+    pool: &SqlitePool,
+    limit: u32,
+    offset: u32,
+) -> Result<(Vec<InboxItem>, i64), crate::api::AppError> {
+    let rows = sqlx::query_as::<_, InboxItemRow>(&format!(
+        "{INBOX_ENRICHED_SQL} WHERE n.archived = 0 ORDER BY n.updated_at DESC LIMIT ? OFFSET ?"
+    ))
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await
+    .map_err(crate::api::AppError::Database)?;
+
+    let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notifications WHERE archived = 0")
+        .fetch_one(pool)
+        .await
+        .map_err(crate::api::AppError::Database)?;
+
+    let items = rows
+        .into_iter()
+        .map(to_inbox_item)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| crate::api::AppError::Internal(e.to_string()))?;
+
+    Ok((items, total.0))
+}
+
+/// Query archived notifications with enrichment — paginated.
+/// Returns (items, total_count).
+#[allow(dead_code)]
+pub async fn query_archived_enriched_paginated(
+    pool: &SqlitePool,
+    limit: u32,
+    offset: u32,
+) -> Result<(Vec<InboxItem>, i64), crate::api::AppError> {
+    let rows = sqlx::query_as::<_, InboxItemRow>(&format!(
+        "{INBOX_ENRICHED_SQL} WHERE n.archived = 1 ORDER BY n.updated_at DESC LIMIT ? OFFSET ?"
+    ))
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await
+    .map_err(crate::api::AppError::Database)?;
+
+    let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notifications WHERE archived = 1")
+        .fetch_one(pool)
+        .await
+        .map_err(crate::api::AppError::Database)?;
+
+    let items = rows
+        .into_iter()
+        .map(to_inbox_item)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| crate::api::AppError::Internal(e.to_string()))?;
+
+    Ok((items, total.0))
+}
+
 /// Atomically mark a set of PRs as 'fetching' teams (concurrency guard).
 /// Only transitions rows from NULL → 'fetching'. Returns the IDs that were actually changed.
 pub async fn set_teams_fetching(pool: &SqlitePool, pr_ids: &[i64]) -> sqlx::Result<Vec<i64>> {
@@ -607,6 +669,60 @@ mod tests {
         let (commits, comments) = get_pr_activity(&pool, 999, "owner/repo").await.unwrap();
         assert!(commits.is_none());
         assert!(comments.is_none());
+    }
+
+    #[tokio::test]
+    async fn query_inbox_enriched_paginates() {
+        let pool = test_pool().await;
+        for i in 1..=3 {
+            let notif = crate::db::queries::NotificationRow {
+                id: format!("n{i}"),
+                pr_id: Some(i),
+                title: format!("PR {i}"),
+                repository: "owner/repo".to_string(),
+                reason: "review_requested".to_string(),
+                unread: true,
+                archived: false,
+                updated_at: format!("2025-01-0{i}T00:00:00Z"),
+            };
+            crate::db::queries::upsert_notification(&pool, &notif)
+                .await
+                .unwrap();
+        }
+        let (items, total) = query_inbox_enriched_paginated(&pool, 2, 0).await.unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(total, 3);
+        let (items, total) = query_inbox_enriched_paginated(&pool, 2, 2).await.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(total, 3);
+        let (items, total) = query_inbox_enriched_paginated(&pool, 2, 4).await.unwrap();
+        assert!(items.is_empty());
+        assert_eq!(total, 3);
+    }
+
+    #[tokio::test]
+    async fn query_archived_enriched_paginates() {
+        let pool = test_pool().await;
+        for i in 1..=3 {
+            let notif = crate::db::queries::NotificationRow {
+                id: format!("a{i}"),
+                pr_id: Some(100 + i),
+                title: format!("Archived PR {i}"),
+                repository: "owner/repo".to_string(),
+                reason: "mention".to_string(),
+                unread: false,
+                archived: true,
+                updated_at: format!("2025-02-0{i}T00:00:00Z"),
+            };
+            crate::db::queries::upsert_notification(&pool, &notif)
+                .await
+                .unwrap();
+        }
+        let (items, total) = query_archived_enriched_paginated(&pool, 2, 0)
+            .await
+            .unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(total, 3);
     }
 
     #[tokio::test]
