@@ -7,7 +7,7 @@ mod teams;
 
 use std::sync::Arc;
 
-use reqwest::{Method, RequestBuilder, Response};
+use reqwest::{Method, Response};
 
 pub const GITHUB_API_BASE: &str = "https://api.github.com";
 
@@ -34,47 +34,35 @@ impl GithubClient {
     }
 
     async fn get(&self, url: &str) -> Result<Response, reqwest::Error> {
-        self.send(self.request(Method::GET, url)).await
+        self.send(Method::GET, url).await
     }
 
     async fn patch(&self, url: &str) -> Result<Response, reqwest::Error> {
-        self.send(self.request(Method::PATCH, url)).await
+        self.send(Method::PATCH, url).await
     }
 
     async fn delete(&self, url: &str) -> Result<Response, reqwest::Error> {
-        self.send(self.request(Method::DELETE, url)).await
+        self.send(Method::DELETE, url).await
     }
 
-    fn request(&self, method: Method, url: &str) -> RequestBuilder {
-        self.client
-            .request(method, url)
+    async fn send(&self, method: Method, url: &str) -> Result<Response, reqwest::Error> {
+        eprintln!("[debug] GitHub {method} {url}");
+
+        let request = self
+            .client
+            .request(method.clone(), url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "gh-inbox")
-            .header("X-GitHub-Api-Version", "2026-03-10")
-    }
-
-    async fn send(&self, request: RequestBuilder) -> Result<Response, reqwest::Error> {
-        let meta = request
-            .try_clone()
-            .and_then(|cloned| cloned.build().ok())
-            .map(|built| (built.method().clone(), built.url().to_string()));
-
-        if let Some((method, url)) = &meta {
-            eprintln!("[debug] GitHub {method} {url}");
-        }
+            .header("X-GitHub-Api-Version", "2026-03-10");
 
         match request.send().await {
             Ok(response) => {
-                if let Some((method, url)) = &meta {
-                    eprintln!("[debug] GitHub {method} {url} -> {}", response.status());
-                }
+                eprintln!("[debug] GitHub {method} {url} -> {}", response.status());
                 Ok(response)
             }
             Err(err) => {
-                if let Some((method, url)) = &meta {
-                    eprintln!("[debug] GitHub {method} {url} -> error: {err}");
-                }
+                eprintln!("[debug] GitHub {method} {url} -> error: {err}");
                 Err(err)
             }
         }
