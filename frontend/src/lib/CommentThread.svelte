@@ -73,7 +73,18 @@ function firstLine(text: string): string {
                     d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688l-.011-.013-2.914-2.914-.013-.011Z"
                 />
             </svg>
-            <span class="thread-path">{thread.path}</span>
+            {#if firstComment?.html_url}
+                <a
+                    class="thread-path thread-path-link"
+                    href={firstComment.html_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onclick={(e) => e.stopPropagation()}
+                    >{thread.path}</a
+                >
+            {:else}
+                <span class="thread-path">{thread.path}</span>
+            {/if}
         {:else}
             <svg
                 aria-hidden="true"
@@ -276,6 +287,13 @@ function firstLine(text: string): string {
     white-space: nowrap;
     flex: 1;
     min-width: 0;
+    color: inherit;
+    text-decoration: none;
+}
+
+.thread-path-link:hover {
+    text-decoration: underline;
+    color: var(--accent-fg);
 }
 
 .new-count-badge {
