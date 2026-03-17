@@ -3,7 +3,7 @@ import { apiFetch } from "./api.ts";
 import { onPrInfoUpdated, onPrTeamsUpdated } from "./sse.svelte.ts";
 import { timeAgo } from "./timeago.ts";
 import { showError } from "./toast.svelte.ts";
-import type { InboxItem } from "./types.ts";
+import type { InboxItem, PaginatedInbox } from "./types.ts";
 
 let {
     currentView = "inbox",
@@ -25,6 +25,9 @@ let listVersion = $state(0);
 // Tracks which notification IDs have already been sent to the prefetch endpoint.
 // Cleared when the list is re-fetched.
 const prefetchedIds = new Set<string>();
+let currentPage = $state(1);
+let totalCount = $state(0);
+const PER_PAGE = 25;
 
 const unsubTeams = onPrTeamsUpdated((pr_id, teams) => {
     const item = notifications.find((n) => n.pr_id === pr_id);
@@ -113,11 +116,17 @@ $effect(() => {
     };
 });
 
-async function fetchNotifications(view: string): Promise<void> {
+async function fetchNotifications(
+    view: string,
+    page: number = currentPage,
+): Promise<void> {
     try {
-        notifications = await apiFetch<InboxItem[]>(
-            `/api/inbox?status=${view}`,
+        const result = await apiFetch<PaginatedInbox>(
+            `/api/inbox?status=${view}&page=${page}&per_page=${PER_PAGE}`,
         );
+        notifications = result.items;
+        totalCount = result.total;
+        currentPage = result.page;
         prefetchedIds.clear();
         listVersion++;
     } catch (err) {
@@ -126,9 +135,20 @@ async function fetchNotifications(view: string): Promise<void> {
     }
 }
 
+// Reset to page 1 when view changes
+let lastView = $state(currentView);
+$effect(() => {
+    if (currentView !== lastView) {
+        lastView = currentView;
+        currentPage = 1;
+        fetchNotifications(currentView, 1);
+    }
+});
+
+// SSE-triggered refresh: refetch current page (don't reset to page 1)
 $effect(() => {
     void refreshKey;
-    fetchNotifications(currentView);
+    fetchNotifications(currentView, currentPage);
 });
 
 let count = $derived(notifications.length);

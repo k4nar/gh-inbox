@@ -87,3 +87,10 @@ export interface InboxItem {
     new_comments: { author: string; count: number }[] | null; // null = first visit
     teams: string[] | null; // null = loading (show shimmer)
 }
+
+export interface PaginatedInbox {
+    items: InboxItem[];
+    total: number;
+    page: number;
+    per_page: number;
+}

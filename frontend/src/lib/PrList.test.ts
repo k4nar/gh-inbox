@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PrList from "./PrList.svelte";
 import type { InboxItem } from "./types.ts";
 
+function paginatedResponse(items: InboxItem[], total?: number): object {
+    return { items, total: total ?? items.length, page: 1, per_page: 25 };
+}
+
 function makeItem(overrides: Partial<InboxItem> = {}): InboxItem {
     return {
         id: "n1",
@@ -75,7 +79,7 @@ describe("PrList", () => {
     });
 
     it("renders empty state for inbox", async () => {
-        globalThis.fetch = mockFetch([]);
+        globalThis.fetch = mockFetch(paginatedResponse([]));
 
         render(PrList);
 
@@ -85,7 +89,7 @@ describe("PrList", () => {
     });
 
     it("renders empty state for archived view", async () => {
-        globalThis.fetch = mockFetch([]);
+        globalThis.fetch = mockFetch(paginatedResponse([]));
 
         render(PrList, { props: { currentView: "archived" } });
 
@@ -97,7 +101,7 @@ describe("PrList", () => {
     });
 
     it("renders PR rows with repo, title, and PR number", async () => {
-        globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
+        globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
 
         render(PrList);
 
@@ -113,7 +117,7 @@ describe("PrList", () => {
     });
 
     it("shows unread dot for unread notifications", async () => {
-        globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
+        globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
 
         const { container } = render(PrList);
 
@@ -130,7 +134,7 @@ describe("PrList", () => {
     });
 
     it("displays correct count in header and statusbar", async () => {
-        globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
+        globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
 
         const { container } = render(PrList);
 
@@ -150,19 +154,19 @@ describe("PrList", () => {
     });
 
     it("fetches with ?status= query param", async () => {
-        globalThis.fetch = mockFetch([]);
+        globalThis.fetch = mockFetch(paginatedResponse([]));
 
         render(PrList, { props: { currentView: "archived" } });
 
         await waitFor(() => {
             expect(globalThis.fetch).toHaveBeenCalledWith(
-                "/api/inbox?status=archived",
+                "/api/inbox?status=archived&page=1&per_page=25",
             );
         });
     });
 
     it("shows header title matching current view", async () => {
-        globalThis.fetch = mockFetch([]);
+        globalThis.fetch = mockFetch(paginatedResponse([]));
 
         render(PrList, { props: { currentView: "archived" } });
 
@@ -172,7 +176,7 @@ describe("PrList", () => {
     });
 
     it("archive button removes notification from list", async () => {
-        globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
+        globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
 
         const { container } = render(PrList);
 
@@ -196,7 +200,7 @@ describe("PrList", () => {
     });
 
     it("refetches notifications when refreshKey changes", async () => {
-        globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
+        globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
 
         const { rerender } = render(PrList, { props: { refreshKey: 0 } });
 
@@ -205,7 +209,7 @@ describe("PrList", () => {
         });
 
         // Reset fetch mock to track new calls
-        const fetchSpy = mockFetch(MOCK_NOTIFICATIONS);
+        const fetchSpy = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
         globalThis.fetch = fetchSpy;
 
         // Changing refreshKey should trigger a refetch
@@ -217,7 +221,7 @@ describe("PrList", () => {
     });
 
     it("clicking a PR marks it as read (optimistic UI)", async () => {
-        globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
+        globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
 
         const onSelect = vi.fn();
         const { container } = render(PrList, { props: { onSelect } });
@@ -247,7 +251,9 @@ describe("PrList", () => {
     // New enriched data tests
 
     it("status icon shows open octicon for pr_status: open", async () => {
-        globalThis.fetch = mockFetch([makeItem({ pr_status: "open" })]);
+        globalThis.fetch = mockFetch(
+            paginatedResponse([makeItem({ pr_status: "open" })]),
+        );
 
         render(PrList);
 
@@ -259,7 +265,9 @@ describe("PrList", () => {
     });
 
     it("status icon shows draft octicon for pr_status: draft", async () => {
-        globalThis.fetch = mockFetch([makeItem({ pr_status: "draft" })]);
+        globalThis.fetch = mockFetch(
+            paginatedResponse([makeItem({ pr_status: "draft" })]),
+        );
 
         render(PrList);
 
@@ -271,9 +279,11 @@ describe("PrList", () => {
     });
 
     it("activity shows '✦ New pull request' when new_commits is null", async () => {
-        globalThis.fetch = mockFetch([
-            makeItem({ new_commits: null, new_comments: null }),
-        ]);
+        globalThis.fetch = mockFetch(
+            paginatedResponse([
+                makeItem({ new_commits: null, new_comments: null }),
+            ]),
+        );
 
         render(PrList);
 
@@ -283,9 +293,9 @@ describe("PrList", () => {
     });
 
     it("activity shows quiet text when new_commits is 0 and new_comments is empty", async () => {
-        globalThis.fetch = mockFetch([
-            makeItem({ new_commits: 0, new_comments: [] }),
-        ]);
+        globalThis.fetch = mockFetch(
+            paginatedResponse([makeItem({ new_commits: 0, new_comments: [] })]),
+        );
 
         render(PrList);
 
@@ -297,9 +307,9 @@ describe("PrList", () => {
     });
 
     it("status icon shimmer is rendered when pr_status is null and pr_id is set", async () => {
-        globalThis.fetch = mockFetch([
-            makeItem({ pr_status: null, pr_id: 42 }),
-        ]);
+        globalThis.fetch = mockFetch(
+            paginatedResponse([makeItem({ pr_status: null, pr_id: 42 })]),
+        );
 
         const { container } = render(PrList);
 
@@ -312,7 +322,9 @@ describe("PrList", () => {
     });
 
     it("team badge renders @owner/team when teams is set", async () => {
-        globalThis.fetch = mockFetch([makeItem({ teams: ["owner/frontend"] })]);
+        globalThis.fetch = mockFetch(
+            paginatedResponse([makeItem({ teams: ["owner/frontend"] })]),
+        );
 
         render(PrList);
 
