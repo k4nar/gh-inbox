@@ -247,3 +247,19 @@ Goal: Compact PR detail panel with status bar, since-last-visit timeline, collap
 - [x] `frontend/src/lib/PrDetail.svelte`: rewrite — status bar (state pill, author avatar, diff stats, CI tooltip), since-last-visit timeline
 
 **Done when:** PR detail panel shows compact status bar, timeline divided by "Since your last visit" / "Earlier", collapsed threads with previews, and comments link to GitHub. `cargo test` and `npm test` pass.
+
+---
+
+## M12 — GitHub Notification State Sync
+
+Goal: When a user marks a notification as read or archives it, the corresponding state change is pushed to GitHub's API as a fire-and-forget background task. Failures are surfaced to the user via a transient toast.
+
+- [x] Add `github_patch` and `github_delete` helpers to `src/github/mod.rs`
+- [x] Add `mark_thread_read` (`PATCH /notifications/threads/{id}`) and `mark_thread_done` (`DELETE /notifications/threads/{id}`) to `src/github/notifications.rs` with 403/404 no-op logic and unit tests
+- [x] Add `GithubSyncError(GithubSyncErrorData)` variant to `SyncEvent` and emit `github:sync_error` SSE event in `src/api/events.rs`
+- [x] Wire fire-and-forget GitHub calls into `src/api/inbox/read.rs` and `src/api/inbox/archive.rs`; on error broadcast `GithubSyncError` via SSE
+- [x] Integration tests: `mark_read_broadcasts_github_sync_error_on_github_failure` and `archive_broadcasts_github_sync_error_on_github_failure`
+- [x] Add `onGithubSyncError` registration function to `frontend/src/lib/sse.svelte.ts` with tests
+- [x] Register `onGithubSyncError` in `App.svelte`; call `showError("Failed to sync with GitHub")` on receipt; log detail to console
+
+**Done when:** Marking a notification as read or archiving it pushes the state to GitHub in the background. Failures show a toast and log to console. `cargo test` and `npm test` pass.

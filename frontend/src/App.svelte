@@ -7,10 +7,12 @@ import {
     connectSSE,
     disconnectSSE,
     getSyncStatus,
+    onGithubSyncError,
     onNewNotifications,
 } from "./lib/sse.svelte.ts";
 import Toast from "./lib/Toast.svelte";
 import Topbar from "./lib/Topbar.svelte";
+import { showError } from "./lib/toast.svelte.ts";
 import type { Notification } from "./lib/types.ts";
 
 let currentView = $state("inbox");
@@ -32,11 +34,16 @@ function handleViewChange(view: string): void {
 
 onMount(() => {
     connectSSE();
-    const unsubscribe = onNewNotifications(() => {
+    const unsubNotifications = onNewNotifications(() => {
         refreshKey++;
     });
+    const unsubGithubError = onGithubSyncError((_notificationId, message) => {
+        showError("Failed to sync with GitHub");
+        console.error("GitHub sync error:", message);
+    });
     return () => {
-        unsubscribe();
+        unsubNotifications();
+        unsubGithubError();
         disconnectSSE();
     };
 });

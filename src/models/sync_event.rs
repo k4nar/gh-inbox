@@ -19,6 +19,7 @@ pub enum SyncEvent {
     SyncStatus { status: SyncStatusKind },
     PrTeamsUpdated(PrTeamsUpdatedData),
     PrInfoUpdated(PrInfoUpdatedData),
+    GithubSyncError(GithubSyncErrorData),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -59,6 +60,13 @@ pub struct PrInfoUpdatedData {
     pub new_commits: Option<i64>,
     /// None means last_viewed_at is NULL; Some([]) = no new comments.
     pub new_comments: Option<Vec<PrNewComment>>,
+}
+
+/// Payload serialized into the SSE `data:` field for GithubSyncError.
+#[derive(Debug, Clone, Serialize)]
+pub struct GithubSyncErrorData {
+    pub notification_id: String,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

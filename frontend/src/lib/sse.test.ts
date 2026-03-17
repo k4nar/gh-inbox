@@ -142,4 +142,39 @@ describe("SSE utility", () => {
         expect(callback).toHaveBeenCalledWith(42, ["acme/platform"]);
         disconnectSSE();
     });
+
+    it("github:sync_error triggers registered callbacks with notificationId and message", async () => {
+        const { connectSSE, onGithubSyncError, disconnectSSE } = await import(
+            "./sse.svelte.ts"
+        );
+        connectSSE();
+        const callback = vi.fn();
+        onGithubSyncError(callback);
+        MockEventSource.instance.simulateEvent("github:sync_error", {
+            notification_id: "123",
+            message: "500 Internal Server Error",
+        });
+        expect(callback).toHaveBeenCalledOnce();
+        expect(callback).toHaveBeenCalledWith(
+            "123",
+            "500 Internal Server Error",
+        );
+        disconnectSSE();
+    });
+
+    it("onGithubSyncError unsubscribe removes callback", async () => {
+        const { connectSSE, onGithubSyncError, disconnectSSE } = await import(
+            "./sse.svelte.ts"
+        );
+        connectSSE();
+        const callback = vi.fn();
+        const unsub = onGithubSyncError(callback);
+        unsub();
+        MockEventSource.instance.simulateEvent("github:sync_error", {
+            notification_id: "123",
+            message: "err",
+        });
+        expect(callback).not.toHaveBeenCalled();
+        disconnectSSE();
+    });
 });

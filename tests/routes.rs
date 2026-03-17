@@ -136,9 +136,150 @@ const MOCK_CHECK_RUNS: &str = r#"{
     ]
 }"#;
 
-/// Start a mock GitHub API server that returns canned responses.
-async fn start_mock_github() -> String {
-    let mock_app = Router::new()
+/// Mock GitHub that returns 500 for PATCH /notifications/threads/:id
+/// and 500 for DELETE /notifications/threads/:id
+async fn start_mock_github_with_sync_error() -> String {
+    let mock_app = start_mock_github_router()
+        .route(
+            "/notifications/threads/{id}",
+            axum::routing::patch(|| async {
+                axum::http::Response::builder()
+                    .status(500)
+                    .body(axum::body::Body::empty())
+                    .unwrap()
+            }),
+        )
+        .route(
+            "/notifications/threads/{id}",
+            axum::routing::delete(|| async {
+                axum::http::Response::builder()
+                    .status(500)
+                    .body(axum::body::Body::empty())
+                    .unwrap()
+            }),
+        );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let base_url = format!("http://{addr}");
+    tokio::spawn(async move { axum::serve(listener, mock_app).await.unwrap() });
+    base_url
+}
+
+#[tokio::test]
+async fn mark_read_broadcasts_github_sync_error_on_github_failure() {
+    let mock_base_url = start_mock_github_with_sync_error().await;
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+
+    // First app instance: populate the DB by fetching /api/inbox.
+    // We discard its AppState — we don't need to subscribe to its broadcast channel.
+    let (app, _) =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let _ = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/inbox")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Second app instance: subscribe to its broadcast channel BEFORE triggering the action.
+    // The fire-and-forget task spawned inside this app broadcasts to this same channel,
+    // so we must subscribe here — not to the first instance's channel — to receive the event.
+    let (app, state) =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let mut rx = state.tx.subscribe();
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/inbox/123/read")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::NO_CONTENT);
+
+    // DB should be updated regardless of GitHub failure
+    let notifications = gh_inbox::db::queries::query_inbox(&pool).await.unwrap();
+    assert!(notifications.iter().any(|n| n.id == "123" && !n.unread));
+
+    // SSE error event should arrive within 500ms
+    let event = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+        .await
+        .expect("timed out waiting for GithubSyncError event")
+        .expect("channel closed");
+
+    match event {
+        gh_inbox::models::SyncEvent::GithubSyncError(data) => {
+            assert_eq!(data.notification_id, "123");
+        }
+        other => panic!("expected GithubSyncError, got {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn archive_broadcasts_github_sync_error_on_github_failure() {
+    let mock_base_url = start_mock_github_with_sync_error().await;
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+
+    // First app instance: populate the DB by fetching /api/inbox.
+    // We discard its AppState — we don't need to subscribe to its broadcast channel.
+    let (app, _) =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let _ = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/inbox")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Second app instance: subscribe to its broadcast channel BEFORE triggering the action.
+    // The fire-and-forget task spawned inside this app broadcasts to this same channel,
+    // so we must subscribe here — not to the first instance's channel — to receive the event.
+    let (app, state) =
+        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
+    let mut rx = state.tx.subscribe();
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/inbox/123/archive")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::NO_CONTENT);
+
+    // DB should be updated regardless of GitHub failure
+    let archived = gh_inbox::db::queries::query_archived(&pool).await.unwrap();
+    assert!(archived.iter().any(|n| n.id == "123"));
+
+    // SSE error event should arrive within 500ms
+    let event = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+        .await
+        .expect("timed out waiting for GithubSyncError event")
+        .expect("channel closed");
+
+    match event {
+        gh_inbox::models::SyncEvent::GithubSyncError(data) => {
+            assert_eq!(data.notification_id, "123");
+        }
+        other => panic!("expected GithubSyncError, got {:?}", other),
+    }
+}
+
+/// Build the mock GitHub API router with canned responses.
+fn start_mock_github_router() -> Router {
+    Router::new()
         .route(
             "/notifications",
             get(|| async { ([("content-type", "application/json")], MOCK_NOTIFICATIONS) }),
@@ -162,16 +303,19 @@ async fn start_mock_github() -> String {
         .route(
             "/repos/{owner}/{repo}/commits/{sha}/check-runs",
             get(|| async { ([("content-type", "application/json")], MOCK_CHECK_RUNS) }),
-        );
+        )
+}
 
+/// Start a mock GitHub API server that returns canned responses.
+async fn start_mock_github() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let base_url = format!("http://{addr}");
-
     tokio::spawn(async move {
-        axum::serve(listener, mock_app).await.unwrap();
+        axum::serve(listener, start_mock_github_router())
+            .await
+            .unwrap();
     });
-
     base_url
 }
 
