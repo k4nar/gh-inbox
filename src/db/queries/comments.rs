@@ -155,6 +155,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn diff_hunk_round_trip() {
+        let pool = test_pool().await;
+        upsert_pull_request(&pool, &sample_pr()).await.unwrap();
+
+        let mut c = sample(1, 42);
+        c.diff_hunk = Some("@@ -1,4 +1,5 @@\n context\n+added line\n context".to_string());
+        upsert_comment(&pool, &c).await.unwrap();
+
+        let comments = query_comments_for_pr(&pool, 42).await.unwrap();
+        assert_eq!(
+            comments[0].diff_hunk,
+            Some("@@ -1,4 +1,5 @@\n context\n+added line\n context".to_string())
+        );
+    }
+
+    #[tokio::test]
     async fn threading() {
         let pool = test_pool().await;
         upsert_pull_request(&pool, &sample_pr()).await.unwrap();
