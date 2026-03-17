@@ -9,8 +9,7 @@ pub async fn fetch_commits(
     number: i64,
 ) -> Result<Vec<GithubCommit>, reqwest::Error> {
     let url = format!("{base_url}/repos/{owner}/{repo}/pulls/{number}/commits");
-    super::github_request(client, token, &url)
-        .send()
+    super::send_github_request(super::github_request(client, token, &url), "GET", &url)
         .await?
         .error_for_status()?
         .json()

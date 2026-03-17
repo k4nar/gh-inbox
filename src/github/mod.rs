@@ -5,6 +5,8 @@ mod pull_requests;
 pub mod sync;
 mod teams;
 
+use reqwest::{RequestBuilder, Response};
+
 pub use check_runs::fetch_check_runs;
 pub use commits::fetch_commits;
 pub use notifications::{fetch_notifications, mark_thread_done, mark_thread_read};
@@ -38,4 +40,23 @@ fn github_delete(client: &reqwest::Client, token: &str, url: &str) -> reqwest::R
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", "gh-inbox")
         .header("X-GitHub-Api-Version", "2026-03-10")
+}
+
+async fn send_github_request(
+    request: RequestBuilder,
+    method: &str,
+    url: &str,
+) -> Result<Response, reqwest::Error> {
+    eprintln!("[debug] GitHub {method} {url}");
+
+    match request.send().await {
+        Ok(response) => {
+            eprintln!("[debug] GitHub {method} {url} -> {}", response.status());
+            Ok(response)
+        }
+        Err(err) => {
+            eprintln!("[debug] GitHub {method} {url} -> error: {err}");
+            Err(err)
+        }
+    }
 }

@@ -34,12 +34,12 @@ pub async fn fetch_user_teams(
     base_url: &str,
 ) -> Result<Vec<String>, reqwest::Error> {
     let url = format!("{base_url}/user/teams?per_page=100");
-    let teams: Vec<GithubTeam> = super::github_request(client, token, &url)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let teams: Vec<GithubTeam> =
+        super::send_github_request(super::github_request(client, token, &url), "GET", &url)
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
     Ok(teams
         .into_iter()
         .map(|t| format!("{}/{}", t.organization.login, t.slug))
@@ -57,12 +57,12 @@ pub async fn fetch_requested_reviewer_teams(
     pr_number: i64,
 ) -> Result<Vec<String>, reqwest::Error> {
     let url = format!("{base_url}/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers");
-    let response: ReviewersResponse = super::github_request(client, token, &url)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let response: ReviewersResponse =
+        super::send_github_request(super::github_request(client, token, &url), "GET", &url)
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
     Ok(response
         .teams
         .into_iter()

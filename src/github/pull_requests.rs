@@ -9,8 +9,7 @@ pub async fn fetch_pull_request(
     number: i64,
 ) -> Result<GithubPullRequest, reqwest::Error> {
     let url = format!("{base_url}/repos/{owner}/{repo}/pulls/{number}");
-    super::github_request(client, token, &url)
-        .send()
+    super::send_github_request(super::github_request(client, token, &url), "GET", &url)
         .await?
         .error_for_status()?
         .json()
@@ -26,8 +25,7 @@ pub async fn fetch_issue_comments(
     number: i64,
 ) -> Result<Vec<GithubIssueComment>, reqwest::Error> {
     let url = format!("{base_url}/repos/{owner}/{repo}/issues/{number}/comments");
-    super::github_request(client, token, &url)
-        .send()
+    super::send_github_request(super::github_request(client, token, &url), "GET", &url)
         .await?
         .error_for_status()?
         .json()
@@ -43,8 +41,7 @@ pub async fn fetch_review_comments(
     number: i64,
 ) -> Result<Vec<GithubReviewComment>, reqwest::Error> {
     let url = format!("{base_url}/repos/{owner}/{repo}/pulls/{number}/comments");
-    super::github_request(client, token, &url)
-        .send()
+    super::send_github_request(super::github_request(client, token, &url), "GET", &url)
         .await?
         .error_for_status()?
         .json()
