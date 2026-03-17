@@ -29,6 +29,8 @@ let hasNewComments = $derived(newCount > 0);
 let firstComment = $derived(thread.comments[0] ?? null);
 let lastComment = $derived(thread.comments[thread.comments.length - 1] ?? null);
 let diffHunk = $derived(firstComment?.diff_hunk ?? null);
+let lastOldComment = $derived(oldComments[oldComments.length - 1] ?? null);
+let lastNewComment = $derived(newComments[newComments.length - 1] ?? null);
 
 function parseDiffLines(
     hunk: string,
@@ -168,49 +170,71 @@ function firstLine(text: string): string {
                 </a>
             {/each}
         </div>
-    {:else if hasNewComments}
-        <!-- Has new comments: show old ones collapsed + new ones always visible -->
-        {#if oldComments.length > 0}
+    {:else if hasNewComments && lastNewComment}
+        <!-- Has new comments: one-liner for old + last new comment expanded -->
+        {#if firstComment}
             <button
                 type="button"
-                class="older-comments-toggle"
+                class="thread-preview"
                 onclick={() => (expanded = true)}
             >
-                {oldComments.length}
-                older
-                {oldComments.length === 1 ? "comment" : "comments"}
-                — click to expand
+                <div class="comment-preview">
+                    <img
+                        class="preview-avatar"
+                        src={avatarUrl(firstComment.author)}
+                        alt={firstComment.author}
+                        width="16"
+                        height="16"
+                    >
+                    <span class="preview-author">{firstComment.author}:</span>
+                    <span class="preview-text"
+                        >{firstLine(firstComment.body)}</span
+                    >
+                </div>
+                {#if lastOldComment && lastOldComment.id !== firstComment.id}
+                    <div class="comment-preview">
+                        <img
+                            class="preview-avatar"
+                            src={avatarUrl(lastOldComment.author)}
+                            alt={lastOldComment.author}
+                            width="16"
+                            height="16"
+                        >
+                        <span class="preview-author"
+                            >{lastOldComment.author}:</span
+                        >
+                        <span class="preview-text"
+                            >{firstLine(lastOldComment.body)}</span
+                        >
+                    </div>
+                {/if}
             </button>
         {/if}
         <div class="thread-comments">
-            {#each newComments as comment (comment.id)}
-                <a
-                    class="comment new-comment"
-                    href={comment.html_url ?? "#"}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                >
-                    <div class="comment-header">
-                        <img
-                            class="comment-avatar"
-                            src={avatarUrl(comment.author)}
-                            alt={comment.author}
-                            width="18"
-                            height="18"
-                        >
-                        <span class="comment-author">{comment.author}</span>
-                        <span class="comment-date"
-                            >· {timeAgo(comment.created_at)}</span
-                        >
-                        <span class="comment-link-icon" aria-hidden="true"
-                            >↗</span
-                        >
-                    </div>
-                    <div class="comment-body markdown-body">
-                        {@html comment.body_html}
-                    </div>
-                </a>
-            {/each}
+            <a
+                class="comment new-comment"
+                href={lastNewComment.html_url ?? "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+            >
+                <div class="comment-header">
+                    <img
+                        class="comment-avatar"
+                        src={avatarUrl(lastNewComment.author)}
+                        alt={lastNewComment.author}
+                        width="18"
+                        height="18"
+                    >
+                    <span class="comment-author">{lastNewComment.author}</span>
+                    <span class="comment-date"
+                        >· {timeAgo(lastNewComment.created_at)}</span
+                    >
+                    <span class="comment-link-icon" aria-hidden="true">↗</span>
+                </div>
+                <div class="comment-body markdown-body">
+                    {@html lastNewComment.body_html}
+                </div>
+            </a>
         </div>
     {:else if firstComment}
         <!-- No new comments, collapsed: two-line preview, click to expand -->
@@ -428,26 +452,6 @@ function firstLine(text: string): string {
 .comment-body {
     padding-left: 24px;
     font-size: 13px;
-}
-
-/* Older comments toggle (when thread has new comments) */
-.older-comments-toggle {
-    display: block;
-    width: 100%;
-    padding: 5px 10px;
-    background: none;
-    border: none;
-    border-bottom: 1px solid var(--border-muted);
-    font-size: 11px;
-    color: var(--fg-muted);
-    text-align: left;
-    cursor: pointer;
-    font-family: inherit;
-}
-
-.older-comments-toggle:hover {
-    background: var(--canvas-subtle);
-    color: var(--fg-default);
 }
 
 /* Collapsed: preview */
