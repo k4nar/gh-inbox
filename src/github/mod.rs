@@ -21,7 +21,7 @@ pub use teams::{fetch_requested_reviewer_teams, fetch_user_teams};
 pub struct GithubClient {
     client: reqwest::Client,
     token: Arc<str>,
-    base_url: String,
+    pub(crate) base_url: String,
 }
 
 impl GithubClient {
