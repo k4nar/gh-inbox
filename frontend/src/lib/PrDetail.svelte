@@ -159,7 +159,17 @@ let hasNewItems = $derived(
                 />
             </svg>
         </button>
-        <span class="detail-title">{notification.title}</span>
+        {#if detail?.pull_request?.url}
+            <a
+                class="detail-title detail-title-link"
+                href={detail.pull_request.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                >{notification.title}</a
+            >
+        {:else}
+            <span class="detail-title">{notification.title}</span>
+        {/if}
         {#if detail?.pull_request?.url}
             <a
                 class="gh-link"
@@ -401,11 +411,17 @@ let hasNewItems = $derived(
     font-size: 13px;
     font-weight: 600;
     color: var(--fg-default);
+    text-decoration: none;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     flex: 1;
     min-width: 0;
+}
+
+.detail-title-link:hover {
+    color: var(--accent-fg);
+    text-decoration: underline;
 }
 
 .gh-link {
