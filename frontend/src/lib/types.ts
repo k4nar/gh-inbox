@@ -24,6 +24,8 @@ export interface PullRequest {
     additions: number;
     deletions: number;
     changed_files: number;
+    draft: boolean;
+    merged_at: string | null;
 }
 
 export interface Comment {
@@ -38,6 +40,8 @@ export interface Comment {
     path: string | null;
     position: number | null;
     in_reply_to_id: number | null;
+    html_url: string | null;
+    diff_hunk: string | null;
 }
 
 export interface CheckRun {
@@ -65,6 +69,7 @@ export interface PrDetailResponse {
     comments: Comment[];
     commits: Commit[];
     check_runs: CheckRun[];
+    previous_viewed_at: string | null;
 }
 
 export interface InboxItem {

@@ -1,4 +1,3 @@
-use super::ConditionalResponse;
 use crate::models::{GithubIssueComment, GithubPullRequest, GithubReviewComment};
 
 pub async fn fetch_pull_request(
@@ -16,34 +15,6 @@ pub async fn fetch_pull_request(
         .error_for_status()?
         .json()
         .await
-}
-
-pub async fn fetch_pull_request_conditional(
-    token: &str,
-    client: &reqwest::Client,
-    base_url: &str,
-    owner: &str,
-    repo: &str,
-    number: i64,
-    etag: Option<&str>,
-) -> Result<ConditionalResponse<GithubPullRequest>, reqwest::Error> {
-    let url = format!("{base_url}/repos/{owner}/{repo}/pulls/{number}");
-    let mut builder = super::github_request(client, token, &url);
-    if let Some(tag) = etag {
-        builder = builder.header("If-None-Match", tag);
-    }
-    let response = builder.send().await?;
-    if response.status() == reqwest::StatusCode::NOT_MODIFIED {
-        return Ok(ConditionalResponse::NotModified);
-    }
-    let response = response.error_for_status()?;
-    let etag = response
-        .headers()
-        .get("etag")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
-    let data = response.json::<GithubPullRequest>().await?;
-    Ok(ConditionalResponse::Modified { data, etag })
 }
 
 pub async fn fetch_issue_comments(
@@ -82,7 +53,6 @@ pub async fn fetch_review_comments(
 
 #[cfg(test)]
 mod tests {
-    use super::ConditionalResponse;
     use crate::models::{GithubIssueComment, GithubPullRequest, GithubReviewComment};
 
     fn parse_pull_request(json: &str) -> Result<GithubPullRequest, serde_json::Error> {
@@ -144,7 +114,8 @@ mod tests {
     fn parse_valid_issue_comments() {
         let json = r#"[{
             "id": 100, "user": { "login": "bob" },
-            "body": "Looks good!", "created_at": "2025-01-01T00:00:00Z"
+            "body": "Looks good!", "created_at": "2025-01-01T00:00:00Z",
+            "html_url": "https://github.com/owner/repo/pull/42#issuecomment-100"
         }]"#;
         let comments = parse_issue_comments(json).unwrap();
         assert_eq!(comments.len(), 1);
@@ -165,7 +136,8 @@ mod tests {
             "id": 200, "user": { "login": "carol" },
             "body": "Nit: rename this", "created_at": "2025-01-01T00:00:00Z",
             "path": "src/main.rs", "position": 10,
-            "in_reply_to_id": null, "pull_request_review_id": 50
+            "in_reply_to_id": null, "pull_request_review_id": 50,
+            "html_url": "https://github.com/owner/repo/pull/42#discussion_r200"
         }]"#;
         let comments = parse_review_comments(json).unwrap();
         assert_eq!(comments.len(), 1);
@@ -180,7 +152,8 @@ mod tests {
             "id": 201, "user": { "login": "dave" },
             "body": "Done!", "created_at": "2025-01-02T00:00:00Z",
             "path": "src/main.rs", "position": 10,
-            "in_reply_to_id": 200, "pull_request_review_id": 51
+            "in_reply_to_id": 200, "pull_request_review_id": 51,
+            "html_url": "https://github.com/owner/repo/pull/42#discussion_r201"
         }]"#;
         let comments = parse_review_comments(json).unwrap();
         assert_eq!(comments[0].in_reply_to_id, Some(200));
@@ -190,29 +163,5 @@ mod tests {
     fn parse_empty_review_comments() {
         let comments = parse_review_comments("[]").unwrap();
         assert!(comments.is_empty());
-    }
-
-    #[test]
-    fn conditional_response_modified_holds_data_and_etag() {
-        // Simulate what fetch_pull_request_conditional returns on 200.
-        let json = r#"{
-            "number": 42, "title": "Fix bug in parser",
-            "body": "This fixes the parser bug.", "state": "open",
-            "user": { "login": "alice" }, "html_url": "https://github.com/owner/repo/pull/42",
-            "head": { "sha": "abc123" }, "additions": 10, "deletions": 3, "changed_files": 2,
-            "draft": false
-        }"#;
-        let pr: GithubPullRequest = serde_json::from_str(json).unwrap();
-        let resp: ConditionalResponse<GithubPullRequest> = ConditionalResponse::Modified {
-            data: pr,
-            etag: Some("\"abc\"".to_string()),
-        };
-        match resp {
-            ConditionalResponse::Modified { data, etag } => {
-                assert_eq!(data.number, 42);
-                assert_eq!(etag.as_deref(), Some("\"abc\""));
-            }
-            ConditionalResponse::NotModified => panic!("expected Modified"),
-        }
     }
 }

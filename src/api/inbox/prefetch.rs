@@ -9,7 +9,7 @@ use tokio::sync::broadcast::Sender;
 
 use crate::api::AppError;
 use crate::api::inbox::teams::{ensure_user_teams_fresh, fetch_teams_for_pr};
-use crate::api::pull_requests::fetch::fetch_and_cache_pr_meta;
+use crate::api::pull_requests::fetch::{derive_pr_status_from_row, fetch_and_cache_pr};
 use crate::db::queries;
 use crate::models::{PrInfoUpdatedData, PrNewComment, SyncEvent};
 use crate::server::AppState;
@@ -88,8 +88,10 @@ async fn fetch_one(
     }
     let (owner, repo_name) = (parts[0], parts[1]);
 
-    // fetch_and_cache_pr_meta uses ETags — no time-based throttle needed.
-    let fetch_result = fetch_and_cache_pr_meta(
+    // Fetch and cache the full PR detail (comments, commits, check runs).
+    // Uses a 60s time-based throttle — no-ops if fetched recently.
+    // Does NOT update last_viewed_at; that only happens when the user opens the PR.
+    let fetch_result = fetch_and_cache_pr(
         pool,
         client,
         token,
@@ -103,7 +105,13 @@ async fn fetch_one(
 
     let (author, pr_status) = match fetch_result {
         Some(r) => (r.author, r.pr_status),
-        None => return Ok(()), // PR not in DB and 304 received — nothing to broadcast.
+        None => {
+            // Throttled — data is fresh in SQLite already; read it for the SSE broadcast.
+            match queries::get_pull_request(pool, &item.repository, item.pr_number).await? {
+                Some(pr) => (pr.author.clone(), derive_pr_status_from_row(&pr)),
+                None => return Ok(()), // Not yet in DB — nothing to broadcast.
+            }
+        }
     };
 
     // Query actual activity counts (respects last_viewed_at).

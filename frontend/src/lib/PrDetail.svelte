@@ -23,6 +23,7 @@ let detail = $state<PrDetailResponse | null>(null);
 let threads: Thread[] = $state([]);
 let loading = $state(true);
 let error: string | null = $state(null);
+let showCiTooltip = $state(false);
 
 $effect(() => {
     if (notification?.pr_id && notification?.repository) {
@@ -33,7 +34,6 @@ $effect(() => {
 async function loadDetail(): Promise<void> {
     loading = true;
     error = null;
-    descriptionExpanded = false;
 
     const [owner, repo] = notification.repository.split("/");
     const number = notification.pr_id;
@@ -52,17 +52,24 @@ async function loadDetail(): Promise<void> {
     }
 }
 
-function ciClass(status: string, conclusion: string | null): string {
-    if (status !== "completed") return "ci-pending";
-    if (conclusion === "success") return "ci-success";
-    if (conclusion === "failure" || conclusion === "timed_out")
-        return "ci-failure";
-    return "ci-neutral";
+// --- Status bar derived values ---
+
+function deriveStatePill(pr: PrDetailResponse["pull_request"]): {
+    label: string;
+    cls: string;
+} {
+    if (pr.merged_at) return { label: "Merged", cls: "pill-merged" };
+    if (pr.state === "closed") return { label: "Closed", cls: "pill-closed" };
+    if (pr.draft) return { label: "Draft", cls: "pill-draft" };
+    return { label: "Open", cls: "pill-open" };
 }
 
-function ciLabel(status: string, conclusion: string | null): string {
-    if (status !== "completed") return "Running";
-    return conclusion || "unknown";
+function avatarUrl(login: string): string {
+    return `https://github.com/${login}.png?size=40`;
+}
+
+function commitUrl(repo: string, sha: string): string {
+    return `https://github.com/${repo}/commit/${sha}`;
 }
 
 function isPassing(cr: CheckRun): boolean {
@@ -74,25 +81,98 @@ function isPassing(cr: CheckRun): boolean {
     );
 }
 
-let failedOrPending: CheckRun[] = $derived(
-    detail != null ? detail.check_runs.filter((cr) => !isPassing(cr)) : [],
-);
-let passingChecks: CheckRun[] = $derived(
-    detail != null ? detail.check_runs.filter((cr) => isPassing(cr)) : [],
-);
-let showPassing = $state(false);
-
-let showDescription = $derived(detail?.pull_request?.last_viewed_at == null);
-let descriptionExpanded = $state(false);
-let isDescriptionVisible = $derived(showDescription || descriptionExpanded);
-
-function isNewCommit(commit: Commit): boolean {
-    if (!detail?.pull_request?.last_viewed_at) return false;
-    return commit.committed_at > detail.pull_request.last_viewed_at;
+function ciDotClass(cr: CheckRun): string {
+    if (cr.status !== "completed") return "ci-pending";
+    if (
+        cr.conclusion === "success" ||
+        cr.conclusion === "skipped" ||
+        cr.conclusion === "neutral"
+    )
+        return "ci-success";
+    return "ci-failure";
 }
+
+function ciLabel(cr: CheckRun): string {
+    if (cr.status !== "completed") return "running";
+    return cr.conclusion ?? "unknown";
+}
+
+let ciSummary = $derived.by((): { text: string; cls: string } => {
+    if (!detail || detail.check_runs.length === 0) return { text: "", cls: "" };
+    const failing = detail.check_runs.filter(
+        (cr) =>
+            !isPassing(cr) &&
+            cr.status === "completed" &&
+            cr.conclusion !== null,
+    );
+    const pending = detail.check_runs.filter((cr) => cr.status !== "completed");
+    if (failing.length > 0)
+        return { text: `${failing.length} failing`, cls: "ci-failing" };
+    if (pending.length > 0)
+        return { text: `${pending.length} running`, cls: "ci-pending" };
+    return { text: "CI passing", cls: "ci-passing" };
+});
+
+// --- Timeline derived values ---
+
+let previousViewedAt = $derived(detail?.previous_viewed_at ?? null);
+
+function isNew(timestamp: string): boolean {
+    if (!previousViewedAt) return true;
+    return timestamp > previousViewedAt;
+}
+
+let newCommits = $derived(
+    detail?.commits.filter((c) => isNew(c.committed_at)) ?? [],
+);
+let oldCommits = $derived(
+    detail?.commits.filter((c) => !isNew(c.committed_at)) ?? [],
+);
+
+let threadNewCounts = $derived(
+    new Map(
+        threads.map((t) => [
+            t.thread_id,
+            t.comments.filter((c) => isNew(c.created_at)).length,
+        ]),
+    ),
+);
+
+let newThreads = $derived(
+    threads.filter((t) => (threadNewCounts.get(t.thread_id) ?? 0) > 0),
+);
+let oldThreads = $derived(
+    threads.filter((t) => (threadNewCounts.get(t.thread_id) ?? 0) === 0),
+);
+
+let hasNewItems = $derived(
+    previousViewedAt !== null &&
+        (newCommits.length > 0 || newThreads.length > 0),
+);
+
+let ciActiveRuns = $derived(
+    detail?.check_runs.filter(
+        (cr) => cr.status !== "completed" || !isPassing(cr),
+    ) ?? [],
+);
+let ciSucceededCount = $derived(
+    detail?.check_runs.filter(
+        (cr) => cr.status === "completed" && cr.conclusion === "success",
+    ).length ?? 0,
+);
+
+let diffSinceBase = $derived(oldCommits[oldCommits.length - 1]?.sha ?? null);
+let diffSinceUrl = $derived(
+    detail && newCommits.length > 0
+        ? diffSinceBase
+            ? `${detail.pull_request.url}/files/${diffSinceBase}..${detail.pull_request.head_sha}`
+            : `${detail.pull_request.url}/files`
+        : null,
+);
 </script>
 
 <div class="pr-detail">
+    <!-- Header -->
     <div class="detail-header">
         <button
             type="button"
@@ -112,7 +192,17 @@ function isNewCommit(commit: Commit): boolean {
                 />
             </svg>
         </button>
-        <span class="detail-title">{notification.title}</span>
+        {#if detail?.pull_request?.url}
+            <a
+                class="detail-title detail-title-link"
+                href={detail.pull_request.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                >{notification.title}</a
+            >
+        {:else}
+            <span class="detail-title">{notification.title}</span>
+        {/if}
         {#if detail?.pull_request?.url}
             <a
                 class="gh-link"
@@ -141,186 +231,191 @@ function isNewCommit(commit: Commit): boolean {
     {:else if error}
         <div class="detail-error">{error}</div>
     {:else if detail}
-        <div class="detail-content">
-            <div class="pr-meta">
-                <div class="pr-meta-row">
-                    <span class="meta-label">Author</span>
-                    <span class="meta-value">{detail.pull_request.author}</span>
-                </div>
-                <div class="pr-meta-row">
-                    <span class="meta-label">State</span>
-                    <span class="meta-value state-{detail.pull_request.state}"
-                        >{detail.pull_request.state}</span
-                    >
-                </div>
-                <div class="pr-meta-row">
-                    <span class="meta-label">Changes</span>
-                    <span class="meta-value">
-                        <span class="additions"
-                            >+{detail.pull_request.additions}</span
-                        >
-                        <span class="deletions"
-                            >-{detail.pull_request.deletions}</span
-                        >
-                        in {detail.pull_request.changed_files} files
-                    </span>
-                </div>
-            </div>
+        {@const pr = detail.pull_request}
+        {@const pill = deriveStatePill(pr)}
+
+        <!-- Status bar -->
+        <div class="status-bar">
+            <span class="state-pill {pill.cls}">{pill.label}</span>
+            <img
+                class="status-avatar"
+                src={avatarUrl(pr.author)}
+                alt={pr.author}
+                width="18"
+                height="18"
+            >
+            <span class="status-author">{pr.author}</span>
+            <span class="status-sep">·</span>
+            <a
+                class="diff-link"
+                href="{detail.pull_request.url}/files"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="View diff on GitHub"
+            >
+                <span class="additions">+{pr.additions}</span>
+                <span class="deletions">−{pr.deletions}</span>
+                <span class="status-files">in {pr.changed_files} files</span>
+            </a>
 
             {#if detail.check_runs.length > 0}
-                <div class="ci-section">
-                    <h3 class="section-title">CI Status</h3>
-                    {#if failedOrPending.length === 0 && passingChecks.length > 0}
-                        <div class="ci-all-passing">
-                            <span class="ci-dot ci-success"></span>
-                            All checks passed
-                        </div>
-                    {:else}
-                        <div class="ci-list">
-                            {#each failedOrPending as cr}
-                                <div class="ci-item">
+                <button
+                    type="button"
+                    class="ci-wrapper"
+                    onmouseenter={() => (showCiTooltip = true)}
+                    onmouseleave={() => (showCiTooltip = false)}
+                    onfocus={() => (showCiTooltip = true)}
+                    onblur={() => (showCiTooltip = false)}
+                >
+                    <span class="ci-indicator {ciSummary.cls}">
+                        <span class="ci-dot-indicator"></span>
+                        {ciSummary.text}
+                    </span>
+                    {#if showCiTooltip}
+                        <div class="ci-tooltip">
+                            <div class="ci-tooltip-title">CI Checks</div>
+                            {#each ciActiveRuns as cr}
+                                <div class="ci-tooltip-row">
                                     <span
-                                        class="ci-dot {ciClass(cr.status, cr.conclusion)}"
+                                        class="ci-dot {ciDotClass(cr)}"
                                     ></span>
-                                    <span class="ci-name">{cr.name}</span>
-                                    <span class="ci-conclusion"
-                                        >{ciLabel(cr.status, cr.conclusion)}</span
+                                    <span class="ci-tooltip-name"
+                                        >{cr.name}</span
+                                    >
+                                    <span class="ci-tooltip-conclusion"
+                                        >{ciLabel(cr)}</span
                                     >
                                 </div>
                             {/each}
-                        </div>
-                        {#if passingChecks.length > 0}
-                            <button
-                                class="ci-passing-toggle"
-                                type="button"
-                                onclick={() => showPassing = !showPassing}
-                            >
-                                <span class="ci-dot ci-success"></span>
-                                {passingChecks.length}
-                                passing
-                                <svg
-                                    aria-hidden="true"
-                                    class="toggle-chevron"
-                                    class:open={showPassing}
-                                    width="12"
-                                    height="12"
-                                    viewBox="0 0 16 16"
-                                    fill="currentColor"
-                                >
-                                    <path
-                                        d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z"
-                                    />
-                                </svg>
-                            </button>
-                            {#if showPassing}
-                                <div class="ci-list">
-                                    {#each passingChecks as cr}
-                                        <div class="ci-item">
-                                            <span
-                                                class="ci-dot {ciClass(cr.status, cr.conclusion)}"
-                                            ></span>
-                                            <span class="ci-name"
-                                                >{cr.name}</span
-                                            >
-                                            <span class="ci-conclusion"
-                                                >{ciLabel(cr.status, cr.conclusion)}</span
-                                            >
-                                        </div>
-                                    {/each}
+                            {#if ciSucceededCount > 0}
+                                <div class="ci-tooltip-row ci-tooltip-summary">
+                                    <span class="ci-dot ci-success"></span>
+                                    <span class="ci-tooltip-name"
+                                        >{ciSucceededCount}
+                                        succeeded</span
+                                    >
                                 </div>
                             {/if}
-                        {/if}
+                        </div>
                     {/if}
-                </div>
+                </button>
             {/if}
+        </div>
 
-            {#if detail.commits && detail.commits.length > 0}
-                <div class="commits-section">
-                    <h3 class="section-title">
-                        Commits
-                        <span class="comment-count"
-                            >{detail.commits.length}</span
+        <!-- Timeline -->
+        <div class="timeline">
+            {#if hasNewItems}
+                <!-- "Since your last visit" zone -->
+                <div class="divider divider-new">
+                    <div class="divider-line divider-line-new"></div>
+                    <span class="divider-label divider-label-new"
+                        >Since your last visit</span
+                    >
+                    {#if diffSinceUrl}
+                        <a
+                            class="diff-since-link"
+                            href={diffSinceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >View changes ↗</a
                         >
-                    </h3>
-                    <div class="commits-list">
-                        {#each detail.commits as commit (commit.sha)}
-                            <div
-                                class="commit-item"
-                                class:new-commit={isNewCommit(commit)}
+                    {/if}
+                    <div class="divider-line divider-line-new"></div>
+                </div>
+
+                <div class="zone zone-new">
+                    {#each newCommits as commit (commit.sha)}
+                        <a
+                            class="commit-row commit-row-new"
+                            href={commitUrl(detail.pull_request.repo, commit.sha)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            <span class="commit-icon">⬆</span>
+                            <span class="commit-sha"
+                                >{commit.sha.slice(0, 7)}</span
                             >
-                                <span class="commit-sha"
+                            <span class="commit-message">{commit.message}</span>
+                            <span class="commit-date"
+                                >{timeAgo(commit.committed_at)}</span
+                            >
+                        </a>
+                    {/each}
+
+                    {#each newThreads as thread (thread.thread_id)}
+                        <CommentThread
+                            {thread}
+                            {previousViewedAt}
+                            initiallyExpanded={(threadNewCounts.get(thread.thread_id) ?? 0) === thread.comments.length}
+                        />
+                    {/each}
+                </div>
+
+                {#if oldCommits.length > 0 || oldThreads.length > 0}
+                    <!-- "Earlier" zone -->
+                    <div class="divider divider-old">
+                        <div class="divider-line divider-line-old"></div>
+                        <span class="divider-label divider-label-old"
+                            >Earlier</span
+                        >
+                        <div class="divider-line divider-line-old"></div>
+                    </div>
+
+                    <div class="zone zone-old">
+                        {#each oldCommits as commit (commit.sha)}
+                            <a
+                                class="commit-row commit-row-old"
+                                href={commitUrl(detail.pull_request.repo, commit.sha)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                <span class="commit-icon commit-icon-old"
+                                    >⬆</span
+                                >
+                                <span class="commit-sha commit-sha-old"
                                     >{commit.sha.slice(0, 7)}</span
                                 >
-                                <span class="commit-message"
+                                <span class="commit-message commit-message-old"
                                     >{commit.message}</span
-                                >
-                                <span class="commit-author"
-                                    >{commit.author}</span
                                 >
                                 <span class="commit-date"
                                     >{timeAgo(commit.committed_at)}</span
                                 >
-                                {#if isNewCommit(commit)}
-                                    <span class="new-badge">new</span>
-                                {/if}
-                            </div>
+                            </a>
                         {/each}
-                    </div>
-                </div>
-            {/if}
 
-            {#if detail.pull_request.body_html}
-                <div class="pr-description">
-                    <button
-                        type="button"
-                        class="section-title description-toggle"
-                        onclick={() => descriptionExpanded = !descriptionExpanded}
-                    >
-                        Description
-                        <svg
-                            aria-hidden="true"
-                            class="toggle-chevron"
-                            class:open={isDescriptionVisible}
-                            width="12"
-                            height="12"
-                            viewBox="0 0 16 16"
-                            fill="currentColor"
-                        >
-                            <path
-                                d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z"
-                            />
-                        </svg>
-                    </button>
-                    {#if isDescriptionVisible}
-                        <div class="description-body markdown-body">
-                            {@html detail.pull_request.body_html}
-                        </div>
-                    {/if}
-                </div>
-            {/if}
-
-            <div class="threads-section">
-                <h3 class="section-title">
-                    Comments
-                    {#if detail.comments.length > 0}
-                        <span class="comment-count"
-                            >{detail.comments.length}</span
-                        >
-                    {/if}
-                </h3>
-                {#if threads.length === 0}
-                    <div class="no-comments">No comments yet.</div>
-                {:else}
-                    <div class="threads-list">
-                        {#each threads as thread (thread.thread_id)}
-                            <CommentThread
-                                {thread}
-                                lastViewedAt={detail.pull_request.last_viewed_at}
-                            />
+                        {#each oldThreads as thread (thread.thread_id)}
+                            <CommentThread {thread} {previousViewedAt} />
                         {/each}
                     </div>
                 {/if}
-            </div>
+            {:else}
+                <!-- No dividers: first visit or nothing new -->
+                <div class="zone">
+                    {#each detail.commits as commit (commit.sha)}
+                        <a
+                            class="commit-row commit-row-old"
+                            href={commitUrl(detail.pull_request.repo, commit.sha)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            <span class="commit-icon commit-icon-old">⬆</span>
+                            <span class="commit-sha commit-sha-old"
+                                >{commit.sha.slice(0, 7)}</span
+                            >
+                            <span class="commit-message commit-message-old"
+                                >{commit.message}</span
+                            >
+                            <span class="commit-date"
+                                >{timeAgo(commit.committed_at)}</span
+                            >
+                        </a>
+                    {/each}
+                    {#each threads as thread (thread.thread_id)}
+                        <CommentThread {thread} {previousViewedAt} />
+                    {/each}
+                </div>
+            {/if}
         </div>
     {/if}
 </div>
@@ -335,14 +430,16 @@ function isNewCommit(commit: Commit): boolean {
     min-width: 400px;
     max-width: 600px;
 }
+
 .detail-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 12px 16px;
+    padding: 10px 14px;
     border-bottom: 1px solid var(--border-default);
     flex-shrink: 0;
 }
+
 .back-btn {
     display: inline-flex;
     align-items: center;
@@ -354,169 +451,27 @@ function isNewCommit(commit: Commit): boolean {
     cursor: pointer;
     padding: 4px;
 }
+
 .back-btn:hover {
     color: var(--fg-default);
     background: var(--canvas-subtle);
 }
+
 .detail-title {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     color: var(--fg-default);
+    text-decoration: none;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.detail-loading,
-.detail-error,
-.no-comments {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 32px;
-    color: var(--fg-muted);
-    font-size: 14px;
-}
-.detail-error {
-    color: var(--danger-fg);
-}
-
-.detail-content {
     flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
+    min-width: 0;
 }
 
-.pr-meta {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 12px;
-    background: var(--canvas-subtle);
-    border-radius: 6px;
-    border: 1px solid var(--border-default);
-}
-.pr-meta-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 13px;
-}
-.meta-label {
-    width: 80px;
-    color: var(--fg-muted);
-    font-weight: 500;
-    flex-shrink: 0;
-}
-.meta-value {
-    color: var(--fg-default);
-}
-.state-open {
-    color: var(--success-fg);
-}
-.state-closed {
-    color: var(--danger-fg);
-}
-.state-merged {
-    color: var(--done-fg);
-}
-.additions {
-    color: var(--success-fg);
-}
-.deletions {
-    color: var(--danger-fg);
-}
-
-.section-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--fg-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 8px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-.comment-count {
-    font-size: 11px;
-    font-weight: 500;
-    background: var(--canvas-subtle);
-    border: 1px solid var(--border-default);
-    border-radius: 2em;
-    padding: 0 6px;
-    line-height: 18px;
-}
-
-.ci-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-.ci-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    padding: 4px 0;
-}
-.ci-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-.ci-success {
-    background: var(--success-fg);
-}
-.ci-failure {
-    background: var(--danger-fg);
-}
-.ci-pending {
-    background: var(--attention-fg);
-}
-.ci-neutral {
-    background: var(--fg-muted);
-}
-.ci-name {
-    color: var(--fg-default);
-}
-.ci-conclusion {
-    color: var(--fg-muted);
-    font-size: 12px;
-}
-
-.pr-description {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-.description-toggle {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-family: inherit;
-    padding: 0;
-    text-align: left;
-    color: var(--fg-muted);
-}
-.description-toggle:hover {
-    color: var(--fg-default);
-}
-.description-body {
-    padding: 12px;
-    background: var(--canvas-subtle);
-    border: 1px solid var(--border-default);
-    border-radius: 6px;
-}
-
-.threads-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+.detail-title-link:hover {
+    color: var(--accent-fg);
+    text-decoration: underline;
 }
 
 .gh-link {
@@ -524,103 +479,355 @@ function isNewCommit(commit: Commit): boolean {
     align-items: center;
     justify-content: center;
     color: var(--fg-muted);
-    margin-left: auto;
     flex-shrink: 0;
     padding: 4px;
     border-radius: 6px;
 }
+
 .gh-link:hover {
     color: var(--fg-default);
     background: var(--canvas-subtle);
 }
 
-.ci-all-passing {
+.detail-loading,
+.detail-error {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--success-fg);
-    padding: 4px 0;
-}
-.ci-passing-toggle {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
+    justify-content: center;
+    padding: 32px;
     color: var(--fg-muted);
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 6px 0;
-    font-family: inherit;
-}
-.ci-passing-toggle:hover {
-    color: var(--fg-default);
-}
-.toggle-chevron {
-    transition: transform 0.15s;
-}
-.toggle-chevron.open {
-    transform: rotate(180deg);
+    font-size: 14px;
 }
 
-.commits-list {
+.detail-error {
+    color: var(--danger-fg);
+}
+
+/* Status bar */
+.status-bar {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 14px;
+    border-bottom: 1px solid var(--border-default);
+    font-size: 12px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.state-pill {
+    border-radius: 2em;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.pill-open {
+    background: var(--color-success-emphasis, #1a7f37);
+    color: #fff;
+}
+.pill-draft {
+    background: var(--canvas-subtle);
+    color: var(--fg-muted);
+    border: 1px solid var(--border-default);
+}
+.pill-merged {
+    background: var(--color-done-emphasis, #6e40c9);
+    color: #fff;
+}
+.pill-closed {
+    background: var(--canvas-subtle);
+    color: var(--danger-fg);
+    border: 1px solid var(--border-default);
+}
+
+.status-avatar {
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.status-author {
+    color: var(--fg-muted);
+}
+
+.status-sep {
+    color: var(--fg-subtle);
+}
+
+.additions {
+    color: var(--success-fg);
+    font-weight: 500;
+}
+
+.deletions {
+    color: var(--danger-fg);
+    font-weight: 500;
+}
+
+.status-files {
+    color: var(--fg-muted);
+}
+
+.diff-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-decoration: none;
+    border-radius: 4px;
+    padding: 1px 3px;
+    margin: -1px -3px;
+}
+
+.diff-link:hover {
+    background: var(--canvas-subtle);
+    text-decoration: underline;
+}
+
+/* CI indicator */
+.ci-wrapper {
+    position: relative;
+    margin-left: auto;
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: inherit;
+    cursor: default;
+}
+
+.ci-indicator {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    cursor: default;
+    white-space: nowrap;
+}
+
+.ci-passing {
+    color: var(--success-fg);
+    background: rgba(46, 160, 67, 0.1);
+    border: 1px solid rgba(46, 160, 67, 0.25);
+}
+
+.ci-failing {
+    color: var(--danger-fg);
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid rgba(248, 81, 73, 0.25);
+}
+
+.ci-pending {
+    color: var(--attention-fg);
+    background: rgba(210, 153, 34, 0.1);
+    border: 1px solid rgba(210, 153, 34, 0.25);
+}
+
+.ci-dot-indicator {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.ci-passing .ci-dot-indicator {
+    background: var(--success-fg);
+}
+.ci-failing .ci-dot-indicator {
+    background: var(--danger-fg);
+}
+.ci-pending .ci-dot-indicator {
+    background: var(--attention-fg);
+}
+
+.ci-tooltip {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    background: var(--canvas-overlay, var(--canvas-default));
     border: 1px solid var(--border-default);
     border-radius: 6px;
-    overflow: hidden;
+    padding: 8px 10px;
+    min-width: 220px;
+    z-index: 100;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
-.commit-item {
+
+.ci-tooltip-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 6px;
+}
+
+.ci-tooltip-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 3px 0;
+    font-size: 12px;
+}
+
+.ci-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.ci-success {
+    background: var(--success-fg);
+}
+.ci-failure {
+    background: var(--danger-fg);
+}
+
+.ci-tooltip-name {
+    color: var(--fg-default);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ci-tooltip-conclusion {
+    color: var(--fg-muted);
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
+.ci-tooltip-summary {
+    border-top: 1px solid var(--border-muted);
+    margin-top: 2px;
+    padding-top: 4px;
+    color: var(--fg-muted);
+}
+
+/* Timeline */
+.timeline {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.divider {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 12px;
+    padding: 10px 14px;
+}
+
+.divider-line {
+    flex: 1;
+    height: 1px;
+}
+
+.divider-line-new {
+    background: rgba(47, 129, 247, 0.3);
+}
+.divider-line-old {
+    background: var(--border-muted);
+}
+
+.divider-label {
+    font-size: 11px;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.divider-label-new {
+    color: var(--accent-fg);
+}
+
+.diff-since-link {
+    font-size: 11px;
+    white-space: nowrap;
+    color: var(--accent-fg);
+    text-decoration: none;
+    opacity: 0.7;
+}
+
+.diff-since-link:hover {
+    opacity: 1;
+    text-decoration: underline;
+}
+.divider-label-old {
+    color: var(--fg-subtle);
+}
+
+.zone {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 0 14px 10px;
+}
+
+/* Commit rows */
+.commit-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    border: 1px solid var(--border-default);
+    text-decoration: none;
+    color: inherit;
+}
+
+.commit-row:hover {
+    background: var(--canvas-subtle);
+    border-color: var(--border-muted);
+}
+
+.commit-row-new {
+    background: rgba(47, 129, 247, 0.06);
+    border-color: rgba(47, 129, 247, 0.2);
+}
+
+.commit-icon {
+    color: var(--accent-fg);
+    flex-shrink: 0;
     font-size: 13px;
-    border-bottom: 1px solid var(--border-muted);
 }
-.commit-item:last-child {
-    border-bottom: none;
+
+.commit-icon-old {
+    color: var(--fg-muted);
 }
-.new-commit {
-    background: rgba(47, 129, 247, 0.05);
-    border-left: 3px solid var(--accent-fg);
-}
+
 .commit-sha {
     font-family:
         ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--accent-fg);
     flex-shrink: 0;
 }
+
+.commit-sha-old {
+    color: var(--fg-muted);
+}
+
 .commit-message {
     flex: 1;
     min-width: 0;
-    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--fg-default);
 }
-.commit-author {
-    font-size: 12px;
+
+.commit-message-old {
     color: var(--fg-muted);
-    flex-shrink: 0;
 }
+
 .commit-date {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--fg-subtle);
-    flex-shrink: 0;
-}
-.new-badge {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    color: var(--accent-fg);
-    background: rgba(47, 129, 247, 0.15);
-    border: 1px solid rgba(47, 129, 247, 0.4);
-    border-radius: 2em;
-    padding: 0 6px;
-    line-height: 18px;
     flex-shrink: 0;
 }
 </style>

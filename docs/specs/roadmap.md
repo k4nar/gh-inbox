@@ -230,3 +230,20 @@ Goal: Each PR row in the inbox shows the author avatar, PR status (open/draft/me
 - [x] All backend and frontend tests pass
 
 **Done when:** The inbox list shows avatar, status badge, activity sentence, and team badges for each PR. Team badges update in real-time via SSE. `cargo test` and `npm test` pass.
+
+---
+
+## M11 — PR Detail Redesign
+
+Goal: Compact PR detail panel with status bar, since-last-visit timeline, collapsed threads with previews, and clickable comments linking to GitHub.
+
+- [x] Migration 012: add `html_url TEXT` column to `comments` table
+- [x] `src/models/pull_request.rs`: add `html_url` to `GithubIssueComment` and `GithubReviewComment`
+- [x] `src/db/queries/comments.rs`: add `html_url: Option<String>` to `CommentRow`, update upsert/query
+- [x] `src/api/pull_requests/fetch.rs`: pass `html_url` when constructing `CommentRow`
+- [x] `src/api/pull_requests/get.rs`: add `previous_viewed_at` to `PrDetailResponse`; read old `last_viewed_at` before updating
+- [x] `frontend/src/lib/types.ts`: add `html_url` to `Comment`, `draft`/`merged_at` to `PullRequest`, `previous_viewed_at` to `PrDetailResponse`
+- [x] `frontend/src/lib/CommentThread.svelte`: rewrite — collapsed preview with avatars, expand on click, clickable comment links
+- [x] `frontend/src/lib/PrDetail.svelte`: rewrite — status bar (state pill, author avatar, diff stats, CI tooltip), since-last-visit timeline
+
+**Done when:** PR detail panel shows compact status bar, timeline divided by "Since your last visit" / "Earlier", collapsed threads with previews, and comments link to GitHub. `cargo test` and `npm test` pass.

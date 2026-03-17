@@ -35,6 +35,7 @@ pub struct GithubIssueComment {
     pub user: GithubUser,
     pub body: String,
     pub created_at: String,
+    pub html_url: String,
 }
 
 /// A GitHub pull request review comment (inline on code).
@@ -48,6 +49,8 @@ pub struct GithubReviewComment {
     pub position: Option<i64>,
     pub in_reply_to_id: Option<i64>,
     pub pull_request_review_id: Option<i64>,
+    pub html_url: String,
+    pub diff_hunk: Option<String>,
 }
 
 /// A GitHub check run (CI status).
