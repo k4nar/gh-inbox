@@ -68,6 +68,10 @@ function avatarUrl(login: string): string {
     return `https://github.com/${login}.png?size=40`;
 }
 
+function commitUrl(repo: string, sha: string): string {
+    return `https://github.com/${repo}/commit/${sha}`;
+}
+
 function isPassing(cr: CheckRun): boolean {
     return (
         cr.status === "completed" &&
@@ -290,7 +294,12 @@ let hasNewItems = $derived(
 
                 <div class="zone zone-new">
                     {#each newCommits as commit (commit.sha)}
-                        <div class="commit-row commit-row-new">
+                        <a
+                            class="commit-row commit-row-new"
+                            href={commitUrl(detail.pull_request.repo, commit.sha)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
                             <span class="commit-icon">⬆</span>
                             <span class="commit-sha"
                                 >{commit.sha.slice(0, 7)}</span
@@ -299,7 +308,7 @@ let hasNewItems = $derived(
                             <span class="commit-date"
                                 >{timeAgo(commit.committed_at)}</span
                             >
-                        </div>
+                        </a>
                     {/each}
 
                     {#each newThreads as thread (thread.thread_id)}
@@ -323,7 +332,12 @@ let hasNewItems = $derived(
 
                     <div class="zone zone-old">
                         {#each oldCommits as commit (commit.sha)}
-                            <div class="commit-row commit-row-old">
+                            <a
+                                class="commit-row commit-row-old"
+                                href={commitUrl(detail.pull_request.repo, commit.sha)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
                                 <span class="commit-icon commit-icon-old"
                                     >⬆</span
                                 >
@@ -336,7 +350,7 @@ let hasNewItems = $derived(
                                 <span class="commit-date"
                                     >{timeAgo(commit.committed_at)}</span
                                 >
-                            </div>
+                            </a>
                         {/each}
 
                         {#each oldThreads as thread (thread.thread_id)}
@@ -348,7 +362,12 @@ let hasNewItems = $derived(
                 <!-- No dividers: first visit or nothing new -->
                 <div class="zone commits-list">
                     {#each detail.commits as commit (commit.sha)}
-                        <div class="commit-row commit-row-old">
+                        <a
+                            class="commit-row commit-row-old"
+                            href={commitUrl(detail.pull_request.repo, commit.sha)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
                             <span class="commit-icon commit-icon-old">⬆</span>
                             <span class="commit-sha commit-sha-old"
                                 >{commit.sha.slice(0, 7)}</span
@@ -359,7 +378,7 @@ let hasNewItems = $derived(
                             <span class="commit-date"
                                 >{timeAgo(commit.committed_at)}</span
                             >
-                        </div>
+                        </a>
                     {/each}
                     {#each threads as thread (thread.thread_id)}
                         <CommentThread {thread} {previousViewedAt} />
@@ -708,6 +727,13 @@ let hasNewItems = $derived(
     border-radius: 6px;
     font-size: 12px;
     border: 1px solid var(--border-default);
+    text-decoration: none;
+    color: inherit;
+}
+
+.commit-row:hover {
+    background: var(--canvas-subtle);
+    border-color: var(--border-muted);
 }
 
 .commit-row-new {
