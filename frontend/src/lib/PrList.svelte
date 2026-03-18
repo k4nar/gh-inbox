@@ -135,20 +135,16 @@ async function fetchNotifications(
     }
 }
 
-// Reset to page 1 when view changes
-let lastView = $state("inbox");
-$effect(() => {
-    if (currentView !== lastView) {
-        lastView = currentView;
-        currentPage = 1;
-        fetchNotifications(currentView, 1);
-    }
-});
-
-// SSE-triggered refresh: refetch current page (don't reset to page 1)
+// Single effect: reset to page 1 when view changes, otherwise refetch current page.
+let lastView = $state(currentView);
 $effect(() => {
     void refreshKey;
-    fetchNotifications(currentView, currentPage);
+    const viewChanged = currentView !== lastView;
+    if (viewChanged) {
+        lastView = currentView;
+        currentPage = 1;
+    }
+    fetchNotifications(currentView, viewChanged ? 1 : currentPage);
 });
 
 let count = $derived(notifications.length);
