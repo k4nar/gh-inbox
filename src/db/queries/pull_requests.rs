@@ -190,40 +190,6 @@ const INBOX_ENRICHED_SQL: &str = "
     LEFT JOIN pull_requests pr ON pr.id = n.pr_id AND pr.repo = n.repository
 ";
 
-/// Query inbox (unarchived) notifications with enrichment.
-pub async fn query_inbox_enriched(
-    pool: &SqlitePool,
-) -> Result<Vec<InboxItem>, crate::api::AppError> {
-    let rows = sqlx::query_as::<_, InboxItemRow>(&format!(
-        "{INBOX_ENRICHED_SQL} WHERE n.archived = 0 ORDER BY n.updated_at DESC"
-    ))
-    .fetch_all(pool)
-    .await
-    .map_err(crate::api::AppError::Database)?;
-
-    rows.into_iter()
-        .map(to_inbox_item)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| crate::api::AppError::Internal(e.to_string()))
-}
-
-/// Query archived notifications with enrichment.
-pub async fn query_archived_enriched(
-    pool: &SqlitePool,
-) -> Result<Vec<InboxItem>, crate::api::AppError> {
-    let rows = sqlx::query_as::<_, InboxItemRow>(&format!(
-        "{INBOX_ENRICHED_SQL} WHERE n.archived = 1 ORDER BY n.updated_at DESC"
-    ))
-    .fetch_all(pool)
-    .await
-    .map_err(crate::api::AppError::Database)?;
-
-    rows.into_iter()
-        .map(to_inbox_item)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| crate::api::AppError::Internal(e.to_string()))
-}
-
 /// Query enriched notifications — paginated.
 /// `archived` selects inbox (false) or archived (true) view.
 /// Returns (items, total_count).
@@ -490,7 +456,7 @@ mod tests {
         .await
         .unwrap();
 
-        let items = query_inbox_enriched(&pool).await.unwrap();
+        let (items, _) = query_inbox_enriched_paginated(&pool, 100, 0).await.unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].author.as_deref(), Some("alice"));
         assert_eq!(items[0].pr_status.as_deref(), Some("open"));
@@ -538,7 +504,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let items = query_inbox_enriched(&pool).await.unwrap();
+        let (items, _) = query_inbox_enriched_paginated(&pool, 100, 0).await.unwrap();
         let item = items.iter().find(|i| i.pr_id == Some(43)).unwrap();
         assert_eq!(item.pr_status.as_deref(), Some("draft"));
     }
@@ -582,7 +548,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let items = query_inbox_enriched(&pool).await.unwrap();
+        let (items, _) = query_inbox_enriched_paginated(&pool, 100, 0).await.unwrap();
         let item = items.iter().find(|i| i.pr_id == Some(44)).unwrap();
         assert_eq!(item.pr_status.as_deref(), Some("merged"));
     }
@@ -626,7 +592,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let items = query_inbox_enriched(&pool).await.unwrap();
+        let (items, _) = query_inbox_enriched_paginated(&pool, 100, 0).await.unwrap();
         let item = items.iter().find(|i| i.pr_id == Some(45)).unwrap();
         assert!(item.new_commits.is_none());
         assert!(item.new_comments.is_none());
