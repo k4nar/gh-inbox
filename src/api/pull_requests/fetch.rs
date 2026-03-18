@@ -186,7 +186,9 @@ pub async fn fetch_and_cache_pr(
                     submitted_at: r.submitted_at.clone(),
                     html_url: r.html_url.clone(),
                 };
-                queries::upsert_review(pool, &row).await?;
+                if let Err(e) = queries::upsert_review(pool, &row).await {
+                    eprintln!("[warn] upsert_review failed for review {}: {e}", row.id);
+                }
             }
         }
         Err(err) => {
