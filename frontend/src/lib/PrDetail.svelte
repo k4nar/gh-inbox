@@ -151,8 +151,11 @@ let oldThreads = $derived(
     threads.filter((t) => (threadNewCounts.get(t.thread_id) ?? 0) === 0),
 );
 
-let newReviews = $derived(reviews.filter((r) => isNew(r.submitted_at)));
-let oldReviews = $derived(reviews.filter((r) => !isNew(r.submitted_at)));
+let sortedReviews = $derived(
+    [...reviews].sort((a, b) => a.submitted_at.localeCompare(b.submitted_at)),
+);
+let newReviews = $derived(sortedReviews.filter((r) => isNew(r.submitted_at)));
+let oldReviews = $derived(sortedReviews.filter((r) => !isNew(r.submitted_at)));
 
 let expandedReviews = $state<Set<number>>(new Set());
 
@@ -334,6 +337,47 @@ let diffSinceUrl = $derived(
         </div>
 
         <!-- Timeline -->
+
+        {#snippet reviewItem(review: import("./types.ts").Review, showBadge: boolean)}
+            <div class="timeline-item review-item">
+                <div class="review-header">
+                    <img
+                        class="avatar avatar-sm"
+                        src={avatarUrl(review.reviewer)}
+                        alt={review.reviewer}
+                        width="18"
+                        height="18"
+                    >
+                    <span class="reviewer-name">{review.reviewer}</span>
+                    <span
+                        class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : 'pill-changes'}"
+                    >
+                        {review.state === 'APPROVED' ? 'Approved' : 'Changes requested'}
+                    </span>
+                    <span class="timestamp"
+                        >{timeAgo(review.submitted_at)}</span
+                    >
+                    {#if showBadge}
+                        <span class="new-badge">New</span>
+                    {/if}
+                    {#if review.body}
+                        <button
+                            type="button"
+                            class="review-toggle"
+                            onclick={() => toggleReview(review.id)}
+                        >
+                            {expandedReviews.has(review.id) ? '▲' : '▼'}
+                        </button>
+                    {/if}
+                </div>
+                {#if review.body && expandedReviews.has(review.id)}
+                    <div class="review-body">
+                        <p>{review.body}</p>
+                    </div>
+                {/if}
+            </div>
+        {/snippet}
+
         <div class="timeline">
             {#if hasNewItems}
                 <!-- "Since your last visit" zone -->
@@ -374,43 +418,7 @@ let diffSinceUrl = $derived(
                     {/each}
 
                     {#each newReviews as review (review.id)}
-                        <div class="timeline-item review-item">
-                            <div class="review-header">
-                                <img
-                                    class="avatar avatar-sm"
-                                    src="https://github.com/{review.reviewer}.png?size=18"
-                                    alt={review.reviewer}
-                                    width="18"
-                                    height="18"
-                                >
-                                <span class="reviewer-name"
-                                    >{review.reviewer}</span
-                                >
-                                <span
-                                    class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : 'pill-changes'}"
-                                >
-                                    {review.state === 'APPROVED' ? 'Approved' : 'Changes requested'}
-                                </span>
-                                <span class="timestamp"
-                                    >{timeAgo(review.submitted_at)}</span
-                                >
-                                <span class="new-badge">New</span>
-                                {#if review.body}
-                                    <button
-                                        type="button"
-                                        class="review-toggle"
-                                        onclick={() => toggleReview(review.id)}
-                                    >
-                                        {expandedReviews.has(review.id) ? '▲' : '▼'}
-                                    </button>
-                                {/if}
-                            </div>
-                            {#if review.body && expandedReviews.has(review.id)}
-                                <div class="review-body">
-                                    <p>{review.body}</p>
-                                </div>
-                            {/if}
-                        </div>
+                        {@render reviewItem(review, true)}
                     {/each}
 
                     {#each newThreads as thread (thread.thread_id)}
@@ -422,7 +430,7 @@ let diffSinceUrl = $derived(
                     {/each}
                 </div>
 
-                {#if oldCommits.length > 0 || oldThreads.length > 0}
+                {#if oldCommits.length > 0 || oldThreads.length > 0 || oldReviews.length > 0}
                     <!-- "Earlier" zone -->
                     <div class="divider divider-old">
                         <div class="divider-line divider-line-old"></div>
@@ -456,42 +464,7 @@ let diffSinceUrl = $derived(
                         {/each}
 
                         {#each oldReviews as review (review.id)}
-                            <div class="timeline-item review-item">
-                                <div class="review-header">
-                                    <img
-                                        class="avatar avatar-sm"
-                                        src="https://github.com/{review.reviewer}.png?size=18"
-                                        alt={review.reviewer}
-                                        width="18"
-                                        height="18"
-                                    >
-                                    <span class="reviewer-name"
-                                        >{review.reviewer}</span
-                                    >
-                                    <span
-                                        class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : 'pill-changes'}"
-                                    >
-                                        {review.state === 'APPROVED' ? 'Approved' : 'Changes requested'}
-                                    </span>
-                                    <span class="timestamp"
-                                        >{timeAgo(review.submitted_at)}</span
-                                    >
-                                    {#if review.body}
-                                        <button
-                                            type="button"
-                                            class="review-toggle"
-                                            onclick={() => toggleReview(review.id)}
-                                        >
-                                            {expandedReviews.has(review.id) ? '▲' : '▼'}
-                                        </button>
-                                    {/if}
-                                </div>
-                                {#if review.body && expandedReviews.has(review.id)}
-                                    <div class="review-body">
-                                        <p>{review.body}</p>
-                                    </div>
-                                {/if}
-                            </div>
+                            {@render reviewItem(review, false)}
                         {/each}
 
                         {#each oldThreads as thread (thread.thread_id)}
@@ -522,42 +495,7 @@ let diffSinceUrl = $derived(
                         </a>
                     {/each}
                     {#each reviews as review (review.id)}
-                        <div class="timeline-item review-item">
-                            <div class="review-header">
-                                <img
-                                    class="avatar avatar-sm"
-                                    src="https://github.com/{review.reviewer}.png?size=18"
-                                    alt={review.reviewer}
-                                    width="18"
-                                    height="18"
-                                >
-                                <span class="reviewer-name"
-                                    >{review.reviewer}</span
-                                >
-                                <span
-                                    class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : 'pill-changes'}"
-                                >
-                                    {review.state === 'APPROVED' ? 'Approved' : 'Changes requested'}
-                                </span>
-                                <span class="timestamp"
-                                    >{timeAgo(review.submitted_at)}</span
-                                >
-                                {#if review.body}
-                                    <button
-                                        type="button"
-                                        class="review-toggle"
-                                        onclick={() => toggleReview(review.id)}
-                                    >
-                                        {expandedReviews.has(review.id) ? '▲' : '▼'}
-                                    </button>
-                                {/if}
-                            </div>
-                            {#if review.body && expandedReviews.has(review.id)}
-                                <div class="review-body">
-                                    <p>{review.body}</p>
-                                </div>
-                            {/if}
-                        </div>
+                        {@render reviewItem(review, false)}
                     {/each}
                     {#each threads as thread (thread.thread_id)}
                         <CommentThread {thread} {previousViewedAt} />
