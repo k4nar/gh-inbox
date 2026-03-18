@@ -2,7 +2,7 @@ use crate::models::GithubReview;
 
 use super::GithubClient;
 
-const ALLOWED_STATES: &[&str] = &["APPROVED", "CHANGES_REQUESTED"];
+const ALLOWED_STATES: &[&str] = &["APPROVED", "CHANGES_REQUESTED", "DISMISSED"];
 
 pub fn parse_reviews(json: &str) -> Result<Vec<GithubReview>, serde_json::Error> {
     let all: Vec<GithubReview> = serde_json::from_str(json)?;
@@ -65,7 +65,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_filters_commented_and_dismissed() {
+    fn parse_filters_commented_keeps_dismissed() {
         let json = r#"[
             { "id": 1, "user": { "login": "a" }, "state": "COMMENTED",         "body": "", "submitted_at": "2025-01-01T00:00:00Z", "html_url": "" },
             { "id": 2, "user": { "login": "b" }, "state": "DISMISSED",         "body": "", "submitted_at": "2025-01-01T00:00:00Z", "html_url": "" },
@@ -73,12 +73,9 @@ mod tests {
             { "id": 4, "user": { "login": "d" }, "state": "CHANGES_REQUESTED", "body": "", "submitted_at": "2025-01-01T00:00:00Z", "html_url": "" }
         ]"#;
         let reviews = parse_reviews(json).unwrap();
-        assert_eq!(reviews.len(), 2);
-        assert!(
-            reviews
-                .iter()
-                .all(|r| r.state == "APPROVED" || r.state == "CHANGES_REQUESTED")
-        );
+        assert_eq!(reviews.len(), 3);
+        assert!(reviews.iter().all(|r| r.state != "COMMENTED"));
+        assert!(reviews.iter().any(|r| r.state == "DISMISSED"));
     }
 
     #[test]

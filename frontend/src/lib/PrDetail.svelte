@@ -361,9 +361,9 @@ let diffSinceUrl = $derived(
                     >
                     <span class="reviewer-name">{review.reviewer}</span>
                     <span
-                        class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : 'pill-changes'}"
+                        class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : review.state === 'CHANGES_REQUESTED' ? 'pill-changes' : 'pill-dismissed'}"
                     >
-                        {review.state === 'APPROVED' ? 'Approved' : 'Changes requested'}
+                        {review.state === 'APPROVED' ? 'Approved' : review.state === 'CHANGES_REQUESTED' ? 'Changes requested' : 'Dismissed'}
                     </span>
                     <span class="timestamp"
                         >{timeAgo(review.submitted_at)}</span
@@ -989,6 +989,13 @@ let diffSinceUrl = $derived(
     background: rgba(248, 81, 73, 0.1);
     color: var(--danger-fg);
     border: 1px solid rgba(248, 81, 73, 0.25);
+}
+
+.pill-dismissed {
+    background: var(--canvas-subtle);
+    color: var(--fg-muted);
+    border: 1px solid var(--border-muted);
+    text-decoration: line-through;
 }
 
 .timestamp {

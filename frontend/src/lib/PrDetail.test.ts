@@ -396,6 +396,30 @@ describe("PrDetail — reviews", () => {
         expect(reviewItem.querySelector(".new-badge")).toBeInTheDocument();
     });
 
+    it("renders a dismissed review with Dismissed pill", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            reviews: [
+                {
+                    id: 5,
+                    reviewer: "grace",
+                    state: "DISMISSED",
+                    body: "",
+                    submitted_at: "2025-06-01T08:00:00Z",
+                    html_url:
+                        "https://github.com/owner/repo/pull/42#pullrequestreview-5",
+                },
+            ],
+        };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            expect(container.querySelector(".review-item")).toBeInTheDocument();
+        });
+        const pill = container.querySelector(".pill-dismissed");
+        expect(pill).toBeInTheDocument();
+        expect(pill!.textContent).toBe("Dismissed");
+    });
+
     it("does not show New badge for a review submitted before previous_viewed_at", async () => {
         const detail = {
             ...BASE_DETAIL,

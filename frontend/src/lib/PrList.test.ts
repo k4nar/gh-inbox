@@ -592,6 +592,26 @@ describe("PrList", () => {
         });
     });
 
+    it("activitySentence shows dismissed for DISMISSED review", async () => {
+        globalThis.fetch = mockFetch(
+            paginatedResponse([
+                makeItem({
+                    new_commits: 0,
+                    new_comments: [],
+                    new_reviews: [{ reviewer: "carol", state: "DISMISSED" }],
+                }),
+            ]),
+        );
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(
+                screen.getByText("carol's review dismissed"),
+            ).toBeInTheDocument();
+        });
+    });
+
     it("activitySentence does not include reviews when new_reviews is null", async () => {
         globalThis.fetch = mockFetch(
             paginatedResponse([

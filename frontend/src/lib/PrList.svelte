@@ -244,6 +244,8 @@ function activitySentence(item: InboxItem): string | null {
                 parts.push(`${review.reviewer} approved`);
             } else if (review.state === "CHANGES_REQUESTED") {
                 parts.push(`${review.reviewer} requested changes`);
+            } else if (review.state === "DISMISSED") {
+                parts.push(`${review.reviewer}'s review dismissed`);
             }
         }
     }
