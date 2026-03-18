@@ -263,3 +263,23 @@ Goal: When a user marks a notification as read or archives it, the corresponding
 - [x] Register `onGithubSyncError` in `App.svelte`; call `showError("Failed to sync with GitHub")` on receipt; log detail to console
 
 **Done when:** Marking a notification as read or archiving it pushes the state to GitHub in the background. Failures show a toast and log to console. `cargo test` and `npm test` pass.
+
+---
+
+## M13 — Inbox Pagination
+
+Goal: The inbox list is paginated with Previous/Next navigation. Users can see their progress toward inbox zero.
+
+- [x] `src/db/queries/pull_requests.rs`: add `query_inbox_enriched_paginated()` and `query_archived_enriched_paginated()` with LIMIT/OFFSET + COUNT
+- [x] Unit tests for paginated queries (page boundaries, empty page, total count)
+- [x] `src/api/inbox/get.rs`: add `page`/`per_page` query params with clamping; return `PaginatedInbox { items, total, page, per_page }`
+- [x] Integration tests for paginated response shape and pagination behavior
+- [x] `frontend/src/lib/types.ts`: add `PaginatedInbox` interface
+- [x] `frontend/src/lib/PrList.svelte`: update fetch to use paginated API; add page state; add Previous/Next controls in statusbar
+- [x] Separate effects for view-change (reset to page 1) vs SSE refresh (refetch current page)
+- [x] Handle archive/unarchive edge case: navigate back when last item on a page is removed
+- [x] Frontend tests for pagination rendering, navigation, and edge cases
+- [x] Update existing backend and frontend tests for new response shape
+- [x] Confirm: `cargo test` and `npm test` pass
+
+**Done when:** Inbox and archived views are paginated with Previous/Next controls. Pagination hides when all items fit on one page. SSE refreshes the current page. Archive/unarchive handles page boundaries. All tests pass.

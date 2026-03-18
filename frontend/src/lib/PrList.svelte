@@ -3,7 +3,11 @@ import { apiFetch } from "./api.ts";
 import { onPrInfoUpdated, onPrTeamsUpdated } from "./sse.svelte.ts";
 import { timeAgo } from "./timeago.ts";
 import { showError } from "./toast.svelte.ts";
-import type { InboxItem } from "./types.ts";
+import {
+    DEFAULT_PER_PAGE,
+    type InboxItem,
+    type PaginatedInbox,
+} from "./types.ts";
 
 let {
     currentView = "inbox",
@@ -25,6 +29,9 @@ let listVersion = $state(0);
 // Tracks which notification IDs have already been sent to the prefetch endpoint.
 // Cleared when the list is re-fetched.
 const prefetchedIds = new Set<string>();
+let currentPage = $state(1);
+let totalCount = $state(0);
+const PER_PAGE = DEFAULT_PER_PAGE;
 
 const unsubTeams = onPrTeamsUpdated((pr_id, teams) => {
     const item = notifications.find((n) => n.pr_id === pr_id);
@@ -113,11 +120,17 @@ $effect(() => {
     };
 });
 
-async function fetchNotifications(view: string): Promise<void> {
+async function fetchNotifications(
+    view: string,
+    page: number = currentPage,
+): Promise<void> {
     try {
-        notifications = await apiFetch<InboxItem[]>(
-            `/api/inbox?status=${view}`,
+        const result = await apiFetch<PaginatedInbox>(
+            `/api/inbox?status=${view}&page=${page}&per_page=${PER_PAGE}`,
         );
+        notifications = result.items;
+        totalCount = result.total;
+        currentPage = result.page;
         prefetchedIds.clear();
         listVersion++;
     } catch (err) {
@@ -126,14 +139,22 @@ async function fetchNotifications(view: string): Promise<void> {
     }
 }
 
+// Single effect: reset to page 1 when view changes, otherwise refetch current page.
+let lastView = $state("inbox");
 $effect(() => {
     void refreshKey;
-    fetchNotifications(currentView);
+    const viewChanged = currentView !== lastView;
+    if (viewChanged) {
+        lastView = currentView;
+        currentPage = 1;
+    }
+    fetchNotifications(currentView, viewChanged ? 1 : currentPage);
 });
 
 let count = $derived(notifications.length);
 let unreadCount = $derived(notifications.filter((n) => n.unread).length);
 let viewTitle = $derived(currentView === "archived" ? "Archived" : "Inbox");
+let totalPages = $derived(Math.max(1, Math.ceil(totalCount / PER_PAGE)));
 let emptyMessage = $derived(
     currentView === "archived"
         ? "No archived notifications."
@@ -156,25 +177,42 @@ async function handleSelect(notif: InboxItem): Promise<void> {
 
 async function handleArchive(e: MouseEvent, notif: InboxItem): Promise<void> {
     e.stopPropagation();
+    const prevNotifications = [...notifications];
     notifications = notifications.filter((n) => n.id !== notif.id);
     try {
         await apiFetch(`/api/inbox/${notif.id}/archive`, { method: "POST" });
+        // Refetch; if page is now empty and not page 1, go back
+        const page =
+            notifications.length === 0 && currentPage > 1
+                ? currentPage - 1
+                : currentPage;
+        await fetchNotifications(currentView, page);
     } catch (err) {
         console.error("Failed to archive:", err);
         showError("Failed to archive notification");
-        notifications = [...notifications, notif];
+        notifications = prevNotifications;
     }
+}
+
+function goToPage(page: number): void {
+    fetchNotifications(currentView, page);
 }
 
 async function handleUnarchive(e: MouseEvent, notif: InboxItem): Promise<void> {
     e.stopPropagation();
+    const prevNotifications = [...notifications];
     notifications = notifications.filter((n) => n.id !== notif.id);
     try {
         await apiFetch(`/api/inbox/${notif.id}/unarchive`, { method: "POST" });
+        const page =
+            notifications.length === 0 && currentPage > 1
+                ? currentPage - 1
+                : currentPage;
+        await fetchNotifications(currentView, page);
     } catch (err) {
         console.error("Failed to unarchive:", err);
         showError("Failed to unarchive notification");
-        notifications = [...notifications, notif];
+        notifications = prevNotifications;
     }
 }
 
@@ -221,7 +259,7 @@ function initials(login: string): string {
     <div class="list-header">
         <span class="list-title">{viewTitle}</span>
         <span class="list-count"
-            >{count}
+            >{totalCount}
             {#if currentView !== "archived"}
                 · {unreadCount} unread
             {/if}</span
@@ -395,8 +433,50 @@ function initials(login: string): string {
     </div>
 
     <div class="statusbar">
-        <span
-            >{count}
+        {#if totalPages > 1}
+            <button
+                type="button"
+                class="page-btn"
+                disabled={currentPage <= 1}
+                aria-label="Previous page"
+                onclick={() => goToPage(currentPage - 1)}
+            >
+                <svg
+                    aria-hidden="true"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                >
+                    <path
+                        d="M9.78 12.78a.75.75 0 0 1-1.06 0L4.47 8.53a.75.75 0 0 1 0-1.06l4.25-4.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L6.06 8l3.72 3.72a.75.75 0 0 1 0 1.06Z"
+                    />
+                </svg>
+            </button>
+            <span class="page-info">Page {currentPage} of {totalPages}</span>
+            <button
+                type="button"
+                class="page-btn"
+                disabled={currentPage >= totalPages}
+                aria-label="Next page"
+                onclick={() => goToPage(currentPage + 1)}
+            >
+                <svg
+                    aria-hidden="true"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                >
+                    <path
+                        d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"
+                    />
+                </svg>
+            </button>
+        {/if}
+        <div class="statusbar-spacer"></div>
+        <span class="statusbar-count"
+            >{totalCount}
             PRs
             {#if currentView !== "archived"}
                 · {unreadCount} unread
@@ -715,5 +795,38 @@ function initials(login: string): string {
     flex-shrink: 0;
     color: var(--fg-subtle);
     font-size: 12px;
+}
+.page-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--fg-muted);
+    cursor: pointer;
+    padding: 0;
+    font-family: inherit;
+}
+.page-btn:hover:not(:disabled) {
+    background: var(--border-muted);
+    color: var(--fg-default);
+}
+.page-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+.page-info {
+    font-size: 12px;
+    color: var(--fg-muted);
+    user-select: none;
+}
+.statusbar-spacer {
+    flex: 1;
+}
+.statusbar-count {
+    color: var(--fg-subtle);
 }
 </style>

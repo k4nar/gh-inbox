@@ -17,13 +17,23 @@ use crate::server::AppState;
 #[derive(Deserialize)]
 pub struct InboxQuery {
     pub status: Option<String>,
+    pub page: Option<u32>,
+    pub per_page: Option<u32>,
+}
+
+#[derive(serde::Serialize)]
+pub struct PaginatedInbox {
+    pub items: Vec<InboxItem>,
+    pub total: i64,
+    pub page: u32,
+    pub per_page: u32,
 }
 
 /// GET /api/inbox — return enriched notifications, spawn async team fetch if needed.
 pub async fn get_inbox(
     State(state): State<AppState>,
     Query(query): Query<InboxQuery>,
-) -> Result<Json<Vec<InboxItem>>, AppError> {
+) -> Result<Json<PaginatedInbox>, AppError> {
     // Bootstrap on first request
     if state
         .bootstrap_done
@@ -39,9 +49,15 @@ pub async fn get_inbox(
         }
     }
 
-    let items = match query.status.as_deref() {
-        Some("archived") => queries::query_archived_enriched(&state.pool).await?,
-        _ => queries::query_inbox_enriched(&state.pool).await?,
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(25).clamp(1, 100);
+    let offset = (page - 1) * per_page;
+
+    let (items, total) = match query.status.as_deref() {
+        Some("archived") => {
+            queries::query_archived_enriched_paginated(&state.pool, per_page, offset).await?
+        }
+        _ => queries::query_inbox_enriched_paginated(&state.pool, per_page, offset).await?,
     };
 
     // Collect PR ids where teams is None (covers both NULL and 'fetching' in DB).
@@ -70,7 +86,12 @@ pub async fn get_inbox(
         }
     }
 
-    Ok(Json(items))
+    Ok(Json(PaginatedInbox {
+        items,
+        total,
+        page,
+        per_page,
+    }))
 }
 
 async fn fetch_teams_background(

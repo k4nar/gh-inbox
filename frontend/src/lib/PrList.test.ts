@@ -1,7 +1,16 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PrList from "./PrList.svelte";
-import type { InboxItem } from "./types.ts";
+import { DEFAULT_PER_PAGE, type InboxItem } from "./types.ts";
+
+function paginatedResponse(items: InboxItem[], total?: number): object {
+    return {
+        items,
+        total: total ?? items.length,
+        page: 1,
+        per_page: DEFAULT_PER_PAGE,
+    };
+}
 
 function makeItem(overrides: Partial<InboxItem> = {}): InboxItem {
     return {
@@ -75,7 +84,7 @@ describe("PrList", () => {
     });
 
     it("renders empty state for inbox", async () => {
-        globalThis.fetch = mockFetch([]);
+        globalThis.fetch = mockFetch(paginatedResponse([]));
 
         render(PrList);
 
@@ -85,7 +94,7 @@ describe("PrList", () => {
     });
 
     it("renders empty state for archived view", async () => {
-        globalThis.fetch = mockFetch([]);
+        globalThis.fetch = mockFetch(paginatedResponse([]));
 
         render(PrList, { props: { currentView: "archived" } });
 
@@ -97,7 +106,7 @@ describe("PrList", () => {
     });
 
     it("renders PR rows with repo, title, and PR number", async () => {
-        globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
+        globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
 
         render(PrList);
 
@@ -113,7 +122,7 @@ describe("PrList", () => {
     });
 
     it("shows unread dot for unread notifications", async () => {
-        globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
+        globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
 
         const { container } = render(PrList);
 
@@ -130,7 +139,7 @@ describe("PrList", () => {
     });
 
     it("displays correct count in header and statusbar", async () => {
-        globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
+        globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
 
         const { container } = render(PrList);
 
@@ -144,25 +153,25 @@ describe("PrList", () => {
         expect(listCount.textContent).toContain("1 unread");
 
         // Statusbar shows count with unread info
-        const statusbar = container.querySelector(".statusbar")!;
-        expect(statusbar.textContent).toMatch(/2\s+PRs/);
-        expect(statusbar.textContent).toContain("1 unread");
+        const statusbarCount = container.querySelector(".statusbar-count")!;
+        expect(statusbarCount.textContent).toMatch(/2\s+PRs/);
+        expect(statusbarCount.textContent).toContain("1 unread");
     });
 
     it("fetches with ?status= query param", async () => {
-        globalThis.fetch = mockFetch([]);
+        globalThis.fetch = mockFetch(paginatedResponse([]));
 
         render(PrList, { props: { currentView: "archived" } });
 
         await waitFor(() => {
             expect(globalThis.fetch).toHaveBeenCalledWith(
-                "/api/inbox?status=archived",
+                `/api/inbox?status=archived&page=1&per_page=${DEFAULT_PER_PAGE}`,
             );
         });
     });
 
     it("shows header title matching current view", async () => {
-        globalThis.fetch = mockFetch([]);
+        globalThis.fetch = mockFetch(paginatedResponse([]));
 
         render(PrList, { props: { currentView: "archived" } });
 
@@ -172,7 +181,7 @@ describe("PrList", () => {
     });
 
     it("archive button removes notification from list", async () => {
-        globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
+        globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
 
         const { container } = render(PrList);
 
@@ -196,7 +205,7 @@ describe("PrList", () => {
     });
 
     it("refetches notifications when refreshKey changes", async () => {
-        globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
+        globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
 
         const { rerender } = render(PrList, { props: { refreshKey: 0 } });
 
@@ -205,7 +214,7 @@ describe("PrList", () => {
         });
 
         // Reset fetch mock to track new calls
-        const fetchSpy = mockFetch(MOCK_NOTIFICATIONS);
+        const fetchSpy = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
         globalThis.fetch = fetchSpy;
 
         // Changing refreshKey should trigger a refetch
@@ -217,7 +226,7 @@ describe("PrList", () => {
     });
 
     it("clicking a PR marks it as read (optimistic UI)", async () => {
-        globalThis.fetch = mockFetch(MOCK_NOTIFICATIONS);
+        globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
 
         const onSelect = vi.fn();
         const { container } = render(PrList, { props: { onSelect } });
@@ -247,7 +256,9 @@ describe("PrList", () => {
     // New enriched data tests
 
     it("status icon shows open octicon for pr_status: open", async () => {
-        globalThis.fetch = mockFetch([makeItem({ pr_status: "open" })]);
+        globalThis.fetch = mockFetch(
+            paginatedResponse([makeItem({ pr_status: "open" })]),
+        );
 
         render(PrList);
 
@@ -259,7 +270,9 @@ describe("PrList", () => {
     });
 
     it("status icon shows draft octicon for pr_status: draft", async () => {
-        globalThis.fetch = mockFetch([makeItem({ pr_status: "draft" })]);
+        globalThis.fetch = mockFetch(
+            paginatedResponse([makeItem({ pr_status: "draft" })]),
+        );
 
         render(PrList);
 
@@ -271,9 +284,11 @@ describe("PrList", () => {
     });
 
     it("activity shows '✦ New pull request' when new_commits is null", async () => {
-        globalThis.fetch = mockFetch([
-            makeItem({ new_commits: null, new_comments: null }),
-        ]);
+        globalThis.fetch = mockFetch(
+            paginatedResponse([
+                makeItem({ new_commits: null, new_comments: null }),
+            ]),
+        );
 
         render(PrList);
 
@@ -283,9 +298,9 @@ describe("PrList", () => {
     });
 
     it("activity shows quiet text when new_commits is 0 and new_comments is empty", async () => {
-        globalThis.fetch = mockFetch([
-            makeItem({ new_commits: 0, new_comments: [] }),
-        ]);
+        globalThis.fetch = mockFetch(
+            paginatedResponse([makeItem({ new_commits: 0, new_comments: [] })]),
+        );
 
         render(PrList);
 
@@ -297,9 +312,9 @@ describe("PrList", () => {
     });
 
     it("status icon shimmer is rendered when pr_status is null and pr_id is set", async () => {
-        globalThis.fetch = mockFetch([
-            makeItem({ pr_status: null, pr_id: 42 }),
-        ]);
+        globalThis.fetch = mockFetch(
+            paginatedResponse([makeItem({ pr_status: null, pr_id: 42 })]),
+        );
 
         const { container } = render(PrList);
 
@@ -312,12 +327,194 @@ describe("PrList", () => {
     });
 
     it("team badge renders @owner/team when teams is set", async () => {
-        globalThis.fetch = mockFetch([makeItem({ teams: ["owner/frontend"] })]);
+        globalThis.fetch = mockFetch(
+            paginatedResponse([makeItem({ teams: ["owner/frontend"] })]),
+        );
 
         render(PrList);
 
         await waitFor(() => {
             expect(screen.getByText("@owner/frontend")).toBeInTheDocument();
         });
+    });
+
+    it("renders pagination bar with page info", async () => {
+        globalThis.fetch = mockFetch({
+            items: MOCK_NOTIFICATIONS,
+            total: DEFAULT_PER_PAGE * 2,
+            page: 1,
+            per_page: DEFAULT_PER_PAGE,
+        });
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+
+        expect(screen.getByText(/Page 1 of 2/)).toBeInTheDocument();
+        expect(
+            screen.getByRole("button", { name: "Previous page" }),
+        ).toBeDisabled();
+        expect(screen.getByRole("button", { name: "Next page" })).toBeEnabled();
+    });
+
+    it("clicking Next page fetches page 2", async () => {
+        globalThis.fetch = mockFetch({
+            items: MOCK_NOTIFICATIONS,
+            total: DEFAULT_PER_PAGE * 2,
+            page: 1,
+            per_page: DEFAULT_PER_PAGE,
+        });
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+
+        globalThis.fetch = mockFetch({
+            items: [makeItem({ id: "p2", title: "Page 2 PR" })],
+            total: DEFAULT_PER_PAGE * 2,
+            page: 2,
+            per_page: DEFAULT_PER_PAGE,
+        });
+
+        await fireEvent.click(
+            screen.getByRole("button", { name: "Next page" }),
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText("Page 2 PR")).toBeInTheDocument();
+        });
+        expect(screen.getByText(/Page 2 of 2/)).toBeInTheDocument();
+    });
+
+    it("archive on last item of page navigates back", async () => {
+        // Page 1 response
+        globalThis.fetch = mockFetch({
+            items: MOCK_NOTIFICATIONS,
+            total: DEFAULT_PER_PAGE + 1,
+            page: 1,
+            per_page: DEFAULT_PER_PAGE,
+        });
+
+        const { container } = render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+
+        // Navigate to page 2 (1 item)
+        globalThis.fetch = mockFetch({
+            items: [makeItem({ id: "last", title: "Last item" })],
+            total: DEFAULT_PER_PAGE + 1,
+            page: 2,
+            per_page: DEFAULT_PER_PAGE,
+        });
+        await fireEvent.click(
+            screen.getByRole("button", { name: "Next page" }),
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText("Last item")).toBeInTheDocument();
+        });
+
+        // Archive the last item — after API call, refetch should go to page 1
+        const archiveFetch = vi
+            .fn()
+            .mockResolvedValueOnce({
+                ok: true,
+                status: 204,
+                json: () => Promise.resolve(undefined),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () =>
+                    Promise.resolve({
+                        items: MOCK_NOTIFICATIONS,
+                        total: DEFAULT_PER_PAGE,
+                        page: 1,
+                        per_page: DEFAULT_PER_PAGE,
+                    }),
+            });
+        globalThis.fetch = archiveFetch as unknown as typeof fetch;
+
+        const archiveBtn = container.querySelector('button[title="Archive"]')!;
+        await fireEvent.click(archiveBtn);
+
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+    });
+
+    it("SSE refresh preserves current page", async () => {
+        // Start on page 1
+        globalThis.fetch = mockFetch({
+            items: MOCK_NOTIFICATIONS,
+            total: DEFAULT_PER_PAGE * 2,
+            page: 1,
+            per_page: DEFAULT_PER_PAGE,
+        });
+
+        const { rerender } = render(PrList, {
+            props: { refreshKey: 0 },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+
+        // Navigate to page 2
+        globalThis.fetch = mockFetch({
+            items: [makeItem({ id: "p2", title: "Page 2 PR" })],
+            total: DEFAULT_PER_PAGE * 2,
+            page: 2,
+            per_page: DEFAULT_PER_PAGE,
+        });
+        await fireEvent.click(
+            screen.getByRole("button", { name: "Next page" }),
+        );
+
+        await waitFor(() => {
+            expect(screen.getByText("Page 2 PR")).toBeInTheDocument();
+        });
+
+        // SSE refresh (refreshKey changes) — should refetch page 2, not reset to 1
+        const fetchSpy = mockFetch({
+            items: [makeItem({ id: "p2-refreshed", title: "Refreshed P2" })],
+            total: DEFAULT_PER_PAGE * 2,
+            page: 2,
+            per_page: DEFAULT_PER_PAGE,
+        });
+        globalThis.fetch = fetchSpy;
+
+        await rerender({ refreshKey: 1 });
+
+        await waitFor(() => {
+            expect(fetchSpy).toHaveBeenCalled();
+        });
+
+        // Verify the fetch URL included page=2
+        const fetchUrl = (fetchSpy as ReturnType<typeof vi.fn>).mock
+            .calls[0][0] as string;
+        expect(fetchUrl).toContain("page=2");
+    });
+
+    it("hides pagination controls when total fits in one page", async () => {
+        globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+
+        expect(
+            screen.queryByRole("button", { name: "Previous page" }),
+        ).not.toBeInTheDocument();
+        expect(
+            screen.queryByRole("button", { name: "Next page" }),
+        ).not.toBeInTheDocument();
     });
 });
