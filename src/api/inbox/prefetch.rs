@@ -116,6 +116,7 @@ async fn fetch_one(
         pr_status,
         new_commits,
         new_comments,
+        new_reviews: None, // TODO Task 7: wire get_pr_review_activity
     }));
 
     // Fetch teams for this PR now that the PR row exists.

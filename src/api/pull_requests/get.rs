@@ -78,6 +78,7 @@ pub async fn get_pr(
         pr_status,
         new_commits: Some(0),
         new_comments: Some(vec![]),
+        new_reviews: Some(vec![]),
     }));
 
     let body_html = render_markdown(&pr.body);

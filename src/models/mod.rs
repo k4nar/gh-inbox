@@ -9,5 +9,5 @@ pub use pull_request::{
 };
 pub use sync_event::{
     GithubSyncErrorData, NewNotificationsData, PrInfoUpdatedData, PrNewComment, PrStatus,
-    PrTeamsUpdatedData, SyncEvent, SyncStatusData, SyncStatusKind,
+    PrTeamsUpdatedData, ReviewSummary, SyncEvent, SyncStatusData, SyncStatusKind,
 };

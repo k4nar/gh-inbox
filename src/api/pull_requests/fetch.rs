@@ -84,7 +84,8 @@ pub async fn fetch_and_cache_pr(
         changed_files: gh_pr.changed_files.unwrap_or(0),
         draft: gh_pr.draft,
         merged_at: gh_pr.merged_at,
-        teams: None, // ON CONFLICT clause preserves existing teams value
+        teams: None,                // ON CONFLICT clause preserves existing teams value
+        labels: String::from("[]"), // TODO Task 5: populate from gh_pr.labels
     };
     queries::upsert_pull_request(pool, &pr_row).await?;
 

@@ -1021,6 +1021,7 @@ async fn sse_receives_pr_info_updated_on_prefetch() {
             pr_status: gh_inbox::models::PrStatus::Open,
             new_commits: None,
             new_comments: None,
+            new_reviews: None,
         }))
         .unwrap();
 

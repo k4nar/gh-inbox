@@ -60,6 +60,8 @@ pub struct PrInfoUpdatedData {
     pub new_commits: Option<i64>,
     /// None means last_viewed_at is NULL; Some([]) = no new comments.
     pub new_comments: Option<Vec<PrNewComment>>,
+    /// None means last_viewed_at is NULL; Some([]) = no new reviews since last visit.
+    pub new_reviews: Option<Vec<ReviewSummary>>,
 }
 
 /// Payload serialized into the SSE `data:` field for GithubSyncError.
@@ -73,4 +75,10 @@ pub struct GithubSyncErrorData {
 pub struct PrNewComment {
     pub author: String,
     pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewSummary {
+    pub reviewer: String,
+    pub state: String,
 }
