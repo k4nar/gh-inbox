@@ -160,36 +160,6 @@ fn to_inbox_item(row: InboxItemRow) -> Result<InboxItem, serde_json::Error> {
     })
 }
 
-const INBOX_ENRICHED_SQL: &str = "
-    SELECT
-        n.id, n.pr_id, n.title, n.repository, n.reason,
-        n.unread, n.archived, n.updated_at,
-        pr.author,
-        CASE
-            WHEN pr.merged_at IS NOT NULL THEN 'merged'
-            WHEN pr.state = 'closed'      THEN 'closed'
-            WHEN pr.draft = 1             THEN 'draft'
-            WHEN pr.id IS NOT NULL        THEN 'open'
-            ELSE NULL
-        END as pr_status,
-        CASE WHEN pr.last_viewed_at IS NULL THEN NULL
-             ELSE (SELECT COUNT(*) FROM commits c
-                   WHERE c.pr_id = pr.id AND c.committed_at > pr.last_viewed_at)
-        END as new_commits,
-        CASE WHEN pr.last_viewed_at IS NULL THEN NULL
-             ELSE COALESCE((
-                 SELECT json_group_array(json_object('author', author, 'count', cnt))
-                 FROM (SELECT author, COUNT(*) as cnt FROM comments
-                       WHERE pr_id = pr.id AND created_at > pr.last_viewed_at
-                       GROUP BY author
-                       ORDER BY cnt DESC, author ASC)
-             ), '[]')
-        END as new_comments_json,
-        pr.teams as teams_json
-    FROM notifications n
-    LEFT JOIN pull_requests pr ON pr.id = n.pr_id AND pr.repo = n.repository
-";
-
 /// Query enriched notifications — paginated.
 /// `archived` selects inbox (false) or archived (true) view.
 /// Returns (items, total_count).
@@ -201,9 +171,36 @@ async fn query_enriched_paginated(
 ) -> Result<(Vec<InboxItem>, i64), crate::api::AppError> {
     let archived_val = i32::from(archived);
 
-    let rows = sqlx::query_as::<_, InboxItemRow>(&format!(
-        "{INBOX_ENRICHED_SQL} WHERE n.archived = ? ORDER BY n.updated_at DESC LIMIT ? OFFSET ?"
-    ))
+    let rows = sqlx::query_as::<_, InboxItemRow>(
+        "SELECT
+             n.id, n.pr_id, n.title, n.repository, n.reason,
+             n.unread, n.archived, n.updated_at,
+             pr.author,
+             CASE
+                 WHEN pr.merged_at IS NOT NULL THEN 'merged'
+                 WHEN pr.state = 'closed'      THEN 'closed'
+                 WHEN pr.draft = 1             THEN 'draft'
+                 WHEN pr.id IS NOT NULL        THEN 'open'
+                 ELSE NULL
+             END as pr_status,
+             CASE WHEN pr.last_viewed_at IS NULL THEN NULL
+                  ELSE (SELECT COUNT(*) FROM commits c
+                        WHERE c.pr_id = pr.id AND c.committed_at > pr.last_viewed_at)
+             END as new_commits,
+             CASE WHEN pr.last_viewed_at IS NULL THEN NULL
+                  ELSE COALESCE((
+                      SELECT json_group_array(json_object('author', author, 'count', cnt))
+                      FROM (SELECT author, COUNT(*) as cnt FROM comments
+                            WHERE pr_id = pr.id AND created_at > pr.last_viewed_at
+                            GROUP BY author
+                            ORDER BY cnt DESC, author ASC)
+                  ), '[]')
+             END as new_comments_json,
+             pr.teams as teams_json
+         FROM notifications n
+         LEFT JOIN pull_requests pr ON pr.id = n.pr_id AND pr.repo = n.repository
+              WHERE n.archived = ? ORDER BY n.updated_at DESC LIMIT ? OFFSET ?",
+    )
     .bind(archived_val)
     .bind(limit)
     .bind(offset)
