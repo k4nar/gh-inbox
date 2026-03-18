@@ -39,8 +39,6 @@ pub async fn upsert_review(pool: &SqlitePool, row: &ReviewRow) -> sqlx::Result<(
 /// Returns reviews submitted after the PR's `last_viewed_at`.
 /// Returns `Ok(None)` when `last_viewed_at` is NULL (first visit — semantics: unknown baseline).
 /// Returns `Ok(Some(vec))` (possibly empty) when `last_viewed_at` is set.
-// Will be wired in Task 7 (prefetch.rs); suppress dead_code until then.
-#[allow(dead_code)]
 pub async fn get_pr_review_activity(
     pool: &SqlitePool,
     pr_id: i64,

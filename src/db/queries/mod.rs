@@ -20,5 +20,5 @@ pub use pull_requests::{
     query_archived_enriched_paginated, query_inbox_enriched_paginated, set_teams_fetching,
     update_last_viewed_at, update_teams, upsert_pull_request,
 };
-pub use reviews::{ReviewRow, query_reviews_for_pr, upsert_review};
+pub use reviews::{ReviewRow, get_pr_review_activity, query_reviews_for_pr, upsert_review};
 pub use user_teams::{get_all_user_teams, replace_user_teams};
