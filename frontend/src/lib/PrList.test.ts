@@ -27,6 +27,7 @@ function makeItem(overrides: Partial<InboxItem> = {}): InboxItem {
         new_commits: null,
         new_comments: null,
         teams: null,
+        new_reviews: null,
         ...overrides,
     };
 }
@@ -46,6 +47,7 @@ const MOCK_NOTIFICATIONS: InboxItem[] = [
         new_commits: null,
         new_comments: null,
         teams: null,
+        new_reviews: null,
     },
     {
         id: "2",
@@ -61,6 +63,7 @@ const MOCK_NOTIFICATIONS: InboxItem[] = [
         new_commits: 0,
         new_comments: [],
         teams: [],
+        new_reviews: null,
     },
 ];
 

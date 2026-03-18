@@ -63,6 +63,8 @@ const BASE_DETAIL: PrDetailResponse = {
         { name: "CI / lint", status: "in_progress", conclusion: null },
     ],
     previous_viewed_at: "2025-06-01T10:00:00Z",
+    reviews: [],
+    labels: [],
 };
 
 const BASE_THREADS = [

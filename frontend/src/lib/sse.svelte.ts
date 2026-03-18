@@ -14,6 +14,7 @@ export interface PrInfoUpdatedPayload {
     pr_status: "open" | "draft" | "merged" | "closed";
     new_commits: number | null;
     new_comments: { author: string; count: number }[] | null;
+    new_reviews: { reviewer: string; state: string }[] | null;
 }
 type PrInfoUpdatedCallback = (data: PrInfoUpdatedPayload) => void;
 let prInfoUpdatedCallbacks: PrInfoUpdatedCallback[] = [];
