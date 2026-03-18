@@ -54,6 +54,7 @@ const unsubInfo = onPrInfoUpdated((data) => {
         item.pr_status = data.pr_status;
         if (data.new_commits !== null) item.new_commits = data.new_commits;
         if (data.new_comments !== null) item.new_comments = data.new_comments;
+        if (data.new_reviews !== undefined) item.new_reviews = data.new_reviews;
         notifications = [...notifications];
     }
 });
@@ -236,6 +237,15 @@ function activitySentence(item: InboxItem): string | null {
         const actors = formatActors(item.new_comments.map((c) => c.author));
         const total = item.new_comments.reduce((s, c) => s + c.count, 0);
         parts.push(`${actors} left ${total} comment${total === 1 ? "" : "s"}`);
+    }
+    if (item.new_reviews && item.new_reviews.length > 0) {
+        for (const review of item.new_reviews) {
+            if (review.state === "APPROVED") {
+                parts.push(`${review.reviewer} approved`);
+            } else if (review.state === "CHANGES_REQUESTED") {
+                parts.push(`${review.reviewer} requested changes`);
+            }
+        }
     }
     return parts.length > 0 ? parts.join(" · ") : "";
 }

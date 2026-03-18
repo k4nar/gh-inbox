@@ -1,7 +1,17 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PrList from "./PrList.svelte";
+import { onPrInfoUpdated } from "./sse.svelte.ts";
 import { DEFAULT_PER_PAGE, type InboxItem } from "./types.ts";
+
+vi.mock("./sse.svelte.ts", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("./sse.svelte.ts")>();
+    return {
+        ...actual,
+        onPrInfoUpdated: vi.fn(actual.onPrInfoUpdated),
+        onPrTeamsUpdated: vi.fn(actual.onPrTeamsUpdated),
+    };
+});
 
 function paginatedResponse(items: InboxItem[], total?: number): object {
     return {
@@ -519,5 +529,140 @@ describe("PrList", () => {
         expect(
             screen.queryByRole("button", { name: "Next page" }),
         ).not.toBeInTheDocument();
+    });
+
+    it("activitySentence includes approval text for APPROVED review", async () => {
+        globalThis.fetch = mockFetch(
+            paginatedResponse([
+                makeItem({
+                    new_commits: 0,
+                    new_comments: [],
+                    new_reviews: [{ reviewer: "alice", state: "APPROVED" }],
+                }),
+            ]),
+        );
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("alice approved")).toBeInTheDocument();
+        });
+    });
+
+    it("activitySentence includes changes requested text for CHANGES_REQUESTED review", async () => {
+        globalThis.fetch = mockFetch(
+            paginatedResponse([
+                makeItem({
+                    new_commits: 0,
+                    new_comments: [],
+                    new_reviews: [
+                        { reviewer: "bob", state: "CHANGES_REQUESTED" },
+                    ],
+                }),
+            ]),
+        );
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(
+                screen.getByText("bob requested changes"),
+            ).toBeInTheDocument();
+        });
+    });
+
+    it("activitySentence includes both commits and approval when both present", async () => {
+        globalThis.fetch = mockFetch(
+            paginatedResponse([
+                makeItem({
+                    new_commits: 2,
+                    new_comments: [],
+                    new_reviews: [{ reviewer: "alice", state: "APPROVED" }],
+                }),
+            ]),
+        );
+
+        render(PrList);
+
+        await waitFor(() => {
+            const activityEl = screen.getByText(
+                /alice pushed 2 commits · alice approved/,
+            );
+            expect(activityEl).toBeInTheDocument();
+        });
+    });
+
+    it("activitySentence does not include reviews when new_reviews is null", async () => {
+        globalThis.fetch = mockFetch(
+            paginatedResponse([
+                makeItem({
+                    new_commits: 0,
+                    new_comments: [],
+                    new_reviews: null,
+                }),
+            ]),
+        );
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(
+                screen.getByText("No new activity since your last visit"),
+            ).toBeInTheDocument();
+        });
+
+        expect(screen.queryByText(/approved/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/requested changes/)).not.toBeInTheDocument();
+    });
+
+    it("onPrInfoUpdated SSE handler updates new_reviews on matching item", async () => {
+        // Capture the callback registered by PrList via a mock
+        let capturedInfoCallback: ((data: unknown) => void) | null = null;
+        vi.mocked(onPrInfoUpdated).mockImplementation((cb) => {
+            capturedInfoCallback = cb as (data: unknown) => void;
+            return () => {};
+        });
+
+        globalThis.fetch = mockFetch(
+            paginatedResponse([
+                makeItem({
+                    id: "n1",
+                    pr_id: 42,
+                    repository: "owner/repo",
+                    author: "alice",
+                    new_commits: 0,
+                    new_comments: [],
+                    new_reviews: null,
+                }),
+            ]),
+        );
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("owner/repo")).toBeInTheDocument();
+        });
+
+        // Initially no review activity (new_reviews: null means first visit, but
+        // new_commits is 0 so it shows "No new activity")
+        expect(
+            screen.getByText("No new activity since your last visit"),
+        ).toBeInTheDocument();
+
+        // Fire the SSE payload with new_reviews
+        expect(capturedInfoCallback).not.toBeNull();
+        capturedInfoCallback!({
+            pr_id: 42,
+            repository: "owner/repo",
+            author: "alice",
+            pr_status: "open",
+            new_commits: 0,
+            new_comments: [],
+            new_reviews: [{ reviewer: "alice", state: "APPROVED" }],
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText("alice approved")).toBeInTheDocument();
+        });
     });
 });
