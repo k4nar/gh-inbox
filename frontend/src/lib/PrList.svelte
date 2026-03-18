@@ -255,7 +255,7 @@ function initials(login: string): string {
     <div class="list-header">
         <span class="list-title">{viewTitle}</span>
         <span class="list-count"
-            >{count}
+            >{totalCount}
             {#if currentView !== "archived"}
                 · {unreadCount} unread
             {/if}</span
@@ -472,7 +472,7 @@ function initials(login: string): string {
         {/if}
         <div class="statusbar-spacer"></div>
         <span class="statusbar-count"
-            >{count}
+            >{totalCount}
             PRs
             {#if currentView !== "archived"}
                 · {unreadCount} unread
