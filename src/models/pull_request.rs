@@ -16,6 +16,8 @@ pub struct GithubPullRequest {
     pub additions: Option<i64>,
     pub deletions: Option<i64>,
     pub changed_files: Option<i64>,
+    #[serde(default)]
+    pub labels: Vec<GithubLabel>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,4 +88,20 @@ pub struct GithubCommitDetail {
 pub struct GithubCommitAuthor {
     pub name: String,
     pub date: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubLabel {
+    pub name: String,
+    pub color: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubReview {
+    pub id: i64,
+    pub user: GithubUser,
+    pub state: String,
+    pub body: String,
+    pub submitted_at: String,
+    pub html_url: String,
 }
