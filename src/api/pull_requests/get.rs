@@ -99,6 +99,9 @@ pub async fn get_pr(
         new_reviews: Some(vec![]),
     }));
 
+    let labels: Vec<LabelResponse> =
+        serde_json::from_str(&pr.labels).map_err(|e| AppError::Internal(e.to_string()))?;
+
     let body_html = render_markdown(&pr.body);
     let pull_request = PullRequestResponse {
         inner: pr,
@@ -141,9 +144,6 @@ pub async fn get_pr(
             html_url: r.html_url,
         })
         .collect();
-
-    let labels: Vec<LabelResponse> = serde_json::from_str(&pull_request.inner.labels)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
 
     Ok(Json(PrDetailResponse {
         pull_request,
