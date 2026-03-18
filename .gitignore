@@ -58,5 +58,8 @@ yarn-error.log*
 docs/superpowers
 .superpowers/
 
+# Git worktrees
+.worktrees/
+
 # Local only files
 IDEAS.md
