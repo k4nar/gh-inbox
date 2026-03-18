@@ -136,7 +136,7 @@ async function fetchNotifications(
 }
 
 // Single effect: reset to page 1 when view changes, otherwise refetch current page.
-let lastView = $state(currentView);
+let lastView = $state("inbox");
 $effect(() => {
     void refreshKey;
     const viewChanged = currentView !== lastView;
