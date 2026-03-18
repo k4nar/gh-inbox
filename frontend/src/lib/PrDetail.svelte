@@ -6,8 +6,10 @@ import { timeAgo } from "./timeago.ts";
 import type {
     CheckRun,
     Commit,
+    Label,
     Notification,
     PrDetailResponse,
+    Review,
     Thread,
 } from "./types.ts";
 
@@ -21,6 +23,8 @@ let {
 
 let detail = $state<PrDetailResponse | null>(null);
 let threads: Thread[] = $state([]);
+let reviews = $state<Review[]>([]);
+let labels = $state<Label[]>([]);
 let loading = $state(true);
 let error: string | null = $state(null);
 let showCiTooltip = $state(false);
@@ -42,6 +46,8 @@ async function loadDetail(): Promise<void> {
         detail = await apiFetch<PrDetailResponse>(
             `/api/pull-requests/${owner}/${repo}/${number}`,
         );
+        reviews = detail.reviews ?? [];
+        labels = detail.labels ?? [];
         threads = await apiFetch<Thread[]>(
             `/api/pull-requests/${owner}/${repo}/${number}/threads`,
         );
@@ -145,9 +151,26 @@ let oldThreads = $derived(
     threads.filter((t) => (threadNewCounts.get(t.thread_id) ?? 0) === 0),
 );
 
+let newReviews = $derived(reviews.filter((r) => isNew(r.submitted_at)));
+let oldReviews = $derived(reviews.filter((r) => !isNew(r.submitted_at)));
+
+let expandedReviews = $state<Set<number>>(new Set());
+
+function toggleReview(id: number): void {
+    const next = new Set(expandedReviews);
+    if (next.has(id)) {
+        next.delete(id);
+    } else {
+        next.add(id);
+    }
+    expandedReviews = next;
+}
+
 let hasNewItems = $derived(
     previousViewedAt !== null &&
-        (newCommits.length > 0 || newThreads.length > 0),
+        (newCommits.length > 0 ||
+            newThreads.length > 0 ||
+            newReviews.length > 0),
 );
 
 let ciActiveRuns = $derived(
@@ -237,6 +260,14 @@ let diffSinceUrl = $derived(
         <!-- Status bar -->
         <div class="status-bar">
             <span class="state-pill {pill.cls}">{pill.label}</span>
+            {#each labels as label}
+                <span
+                    class="label-chip"
+                    style="border-left: 3px solid #{label.color}"
+                >
+                    {label.name}
+                </span>
+            {/each}
             <img
                 class="status-avatar"
                 src={avatarUrl(pr.author)}
@@ -342,6 +373,46 @@ let diffSinceUrl = $derived(
                         </a>
                     {/each}
 
+                    {#each newReviews as review (review.id)}
+                        <div class="timeline-item review-item">
+                            <div class="review-header">
+                                <img
+                                    class="avatar avatar-sm"
+                                    src="https://github.com/{review.reviewer}.png?size=18"
+                                    alt={review.reviewer}
+                                    width="18"
+                                    height="18"
+                                >
+                                <span class="reviewer-name"
+                                    >{review.reviewer}</span
+                                >
+                                <span
+                                    class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : 'pill-changes'}"
+                                >
+                                    {review.state === 'APPROVED' ? 'Approved' : 'Changes requested'}
+                                </span>
+                                <span class="timestamp"
+                                    >{timeAgo(review.submitted_at)}</span
+                                >
+                                <span class="new-badge">New</span>
+                                {#if review.body}
+                                    <button
+                                        type="button"
+                                        class="review-toggle"
+                                        onclick={() => toggleReview(review.id)}
+                                    >
+                                        {expandedReviews.has(review.id) ? '▲' : '▼'}
+                                    </button>
+                                {/if}
+                            </div>
+                            {#if review.body && expandedReviews.has(review.id)}
+                                <div class="review-body">
+                                    <p>{review.body}</p>
+                                </div>
+                            {/if}
+                        </div>
+                    {/each}
+
                     {#each newThreads as thread (thread.thread_id)}
                         <CommentThread
                             {thread}
@@ -384,6 +455,45 @@ let diffSinceUrl = $derived(
                             </a>
                         {/each}
 
+                        {#each oldReviews as review (review.id)}
+                            <div class="timeline-item review-item">
+                                <div class="review-header">
+                                    <img
+                                        class="avatar avatar-sm"
+                                        src="https://github.com/{review.reviewer}.png?size=18"
+                                        alt={review.reviewer}
+                                        width="18"
+                                        height="18"
+                                    >
+                                    <span class="reviewer-name"
+                                        >{review.reviewer}</span
+                                    >
+                                    <span
+                                        class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : 'pill-changes'}"
+                                    >
+                                        {review.state === 'APPROVED' ? 'Approved' : 'Changes requested'}
+                                    </span>
+                                    <span class="timestamp"
+                                        >{timeAgo(review.submitted_at)}</span
+                                    >
+                                    {#if review.body}
+                                        <button
+                                            type="button"
+                                            class="review-toggle"
+                                            onclick={() => toggleReview(review.id)}
+                                        >
+                                            {expandedReviews.has(review.id) ? '▲' : '▼'}
+                                        </button>
+                                    {/if}
+                                </div>
+                                {#if review.body && expandedReviews.has(review.id)}
+                                    <div class="review-body">
+                                        <p>{review.body}</p>
+                                    </div>
+                                {/if}
+                            </div>
+                        {/each}
+
                         {#each oldThreads as thread (thread.thread_id)}
                             <CommentThread {thread} {previousViewedAt} />
                         {/each}
@@ -410,6 +520,44 @@ let diffSinceUrl = $derived(
                                 >{timeAgo(commit.committed_at)}</span
                             >
                         </a>
+                    {/each}
+                    {#each reviews as review (review.id)}
+                        <div class="timeline-item review-item">
+                            <div class="review-header">
+                                <img
+                                    class="avatar avatar-sm"
+                                    src="https://github.com/{review.reviewer}.png?size=18"
+                                    alt={review.reviewer}
+                                    width="18"
+                                    height="18"
+                                >
+                                <span class="reviewer-name"
+                                    >{review.reviewer}</span
+                                >
+                                <span
+                                    class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : 'pill-changes'}"
+                                >
+                                    {review.state === 'APPROVED' ? 'Approved' : 'Changes requested'}
+                                </span>
+                                <span class="timestamp"
+                                    >{timeAgo(review.submitted_at)}</span
+                                >
+                                {#if review.body}
+                                    <button
+                                        type="button"
+                                        class="review-toggle"
+                                        onclick={() => toggleReview(review.id)}
+                                    >
+                                        {expandedReviews.has(review.id) ? '▲' : '▼'}
+                                    </button>
+                                {/if}
+                            </div>
+                            {#if review.body && expandedReviews.has(review.id)}
+                                <div class="review-body">
+                                    <p>{review.body}</p>
+                                </div>
+                            {/if}
+                        </div>
                     {/each}
                     {#each threads as thread (thread.thread_id)}
                         <CommentThread {thread} {previousViewedAt} />
@@ -829,5 +977,114 @@ let diffSinceUrl = $derived(
     font-size: 11px;
     color: var(--fg-subtle);
     flex-shrink: 0;
+}
+
+/* Label chips */
+.label-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 7px;
+    border-radius: 2em;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--fg-muted);
+    background: var(--canvas-subtle);
+    border: 1px solid var(--border-muted);
+    flex-shrink: 0;
+}
+
+/* Review items */
+.timeline-item {
+    border-radius: 6px;
+    border: 1px solid var(--border-default);
+    overflow: hidden;
+}
+
+.review-item {
+    font-size: 12px;
+}
+
+.review-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    flex-wrap: wrap;
+}
+
+.avatar-sm {
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.reviewer-name {
+    font-weight: 600;
+    color: var(--fg-default);
+}
+
+.review-state-pill {
+    border-radius: 2em;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.pill-approved {
+    background: rgba(46, 160, 67, 0.15);
+    color: var(--success-fg, #1a7f37);
+    border: 1px solid rgba(46, 160, 67, 0.3);
+}
+
+.pill-changes {
+    background: rgba(248, 81, 73, 0.1);
+    color: var(--danger-fg);
+    border: 1px solid rgba(248, 81, 73, 0.25);
+}
+
+.timestamp {
+    font-size: 11px;
+    color: var(--fg-subtle);
+    flex-shrink: 0;
+}
+
+.new-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 2em;
+    background: var(--accent-emphasis, #0969da);
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.review-toggle {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--fg-muted);
+    cursor: pointer;
+    font-size: 10px;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+.review-toggle:hover {
+    background: var(--canvas-subtle);
+    color: var(--fg-default);
+}
+
+.review-body {
+    padding: 8px 10px;
+    border-top: 1px solid var(--border-muted);
+    background: var(--canvas-subtle);
+}
+
+.review-body p {
+    margin: 0;
+    font-size: 12px;
+    color: var(--fg-default);
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 </style>

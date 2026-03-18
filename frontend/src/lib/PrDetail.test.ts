@@ -264,3 +264,151 @@ describe("PrDetail — timeline", () => {
         });
     });
 });
+
+describe("PrDetail — labels", () => {
+    it("renders label chips in the status bar with correct color and name", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            labels: [
+                { name: "bug", color: "d73a4a" },
+                { name: "enhancement", color: "a2eeef" },
+            ],
+        };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            const chips = container.querySelectorAll(".label-chip");
+            expect(chips).toHaveLength(2);
+        });
+        const chips = container.querySelectorAll(".label-chip");
+        expect(chips[0].textContent?.trim()).toBe("bug");
+        // jsdom normalizes hex colors to rgb() in computed style;
+        // check the rendered style attribute contains the expected rgb values.
+        // #d73a4a = rgb(215, 58, 74), #a2eeef = rgb(162, 238, 239)
+        expect((chips[0] as HTMLElement).style.borderLeft).toContain(
+            "rgb(215, 58, 74)",
+        );
+        expect(chips[1].textContent?.trim()).toBe("enhancement");
+        expect((chips[1] as HTMLElement).style.borderLeft).toContain(
+            "rgb(162, 238, 239)",
+        );
+    });
+
+    it("renders no label chips when labels array is empty", async () => {
+        const { container } = renderDetail();
+        await waitFor(() => {
+            expect(container.querySelector(".state-pill")).toBeInTheDocument();
+        });
+        expect(container.querySelectorAll(".label-chip")).toHaveLength(0);
+    });
+});
+
+describe("PrDetail — reviews", () => {
+    it("renders a review with no body compactly (no body paragraph)", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            reviews: [
+                {
+                    id: 1,
+                    reviewer: "charlie",
+                    state: "APPROVED",
+                    body: "",
+                    submitted_at: "2025-06-01T08:00:00Z",
+                    html_url:
+                        "https://github.com/owner/repo/pull/42#pullrequestreview-1",
+                },
+            ],
+        };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            expect(container.querySelector(".review-item")).toBeInTheDocument();
+        });
+        const reviewItem = container.querySelector(".review-item")!;
+        expect(reviewItem.textContent).toContain("charlie");
+        expect(reviewItem.textContent).toContain("Approved");
+        expect(
+            reviewItem.querySelector(".review-body"),
+        ).not.toBeInTheDocument();
+        expect(
+            reviewItem.querySelector(".review-toggle"),
+        ).not.toBeInTheDocument();
+    });
+
+    it("renders a review with body showing a toggle but not the body by default", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            reviews: [
+                {
+                    id: 2,
+                    reviewer: "dave",
+                    state: "CHANGES_REQUESTED",
+                    body: "Please fix the typo on line 42.",
+                    submitted_at: "2025-06-01T08:00:00Z",
+                    html_url:
+                        "https://github.com/owner/repo/pull/42#pullrequestreview-2",
+                },
+            ],
+        };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            expect(container.querySelector(".review-item")).toBeInTheDocument();
+        });
+        const reviewItem = container.querySelector(".review-item")!;
+        expect(reviewItem.textContent).toContain("dave");
+        expect(reviewItem.textContent).toContain("Changes requested");
+        expect(reviewItem.querySelector(".review-toggle")).toBeInTheDocument();
+        // Body is collapsed by default
+        expect(
+            reviewItem.querySelector(".review-body"),
+        ).not.toBeInTheDocument();
+    });
+
+    it("shows New badge for a review submitted after previous_viewed_at", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            previous_viewed_at: "2025-06-01T10:00:00Z",
+            reviews: [
+                {
+                    id: 3,
+                    reviewer: "eve",
+                    state: "APPROVED",
+                    body: "",
+                    // after previous_viewed_at
+                    submitted_at: "2025-06-01T11:00:00Z",
+                    html_url:
+                        "https://github.com/owner/repo/pull/42#pullrequestreview-3",
+                },
+            ],
+        };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            expect(container.querySelector(".review-item")).toBeInTheDocument();
+        });
+        const reviewItem = container.querySelector(".review-item")!;
+        expect(reviewItem.querySelector(".new-badge")).toBeInTheDocument();
+    });
+
+    it("does not show New badge for a review submitted before previous_viewed_at", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            previous_viewed_at: "2025-06-01T10:00:00Z",
+            reviews: [
+                {
+                    id: 4,
+                    reviewer: "frank",
+                    state: "APPROVED",
+                    body: "",
+                    // before previous_viewed_at
+                    submitted_at: "2025-06-01T09:00:00Z",
+                    html_url:
+                        "https://github.com/owner/repo/pull/42#pullrequestreview-4",
+                },
+            ],
+        };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            expect(container.querySelector(".review-item")).toBeInTheDocument();
+        });
+        const reviewItem = container.querySelector(".review-item")!;
+        expect(reviewItem.querySelector(".new-badge")).not.toBeInTheDocument();
+    });
+});
