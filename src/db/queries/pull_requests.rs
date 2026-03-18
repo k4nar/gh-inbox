@@ -224,23 +224,29 @@ pub async fn query_archived_enriched(
         .map_err(|e| crate::api::AppError::Internal(e.to_string()))
 }
 
-/// Query inbox (unarchived) notifications with enrichment — paginated.
+/// Query enriched notifications — paginated.
+/// `archived` selects inbox (false) or archived (true) view.
 /// Returns (items, total_count).
-pub async fn query_inbox_enriched_paginated(
+async fn query_enriched_paginated(
     pool: &SqlitePool,
+    archived: bool,
     limit: u32,
     offset: u32,
 ) -> Result<(Vec<InboxItem>, i64), crate::api::AppError> {
+    let archived_val = i32::from(archived);
+
     let rows = sqlx::query_as::<_, InboxItemRow>(&format!(
-        "{INBOX_ENRICHED_SQL} WHERE n.archived = 0 ORDER BY n.updated_at DESC LIMIT ? OFFSET ?"
+        "{INBOX_ENRICHED_SQL} WHERE n.archived = ? ORDER BY n.updated_at DESC LIMIT ? OFFSET ?"
     ))
+    .bind(archived_val)
     .bind(limit)
     .bind(offset)
     .fetch_all(pool)
     .await
     .map_err(crate::api::AppError::Database)?;
 
-    let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notifications WHERE archived = 0")
+    let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notifications WHERE archived = ?")
+        .bind(archived_val)
         .fetch_one(pool)
         .await
         .map_err(crate::api::AppError::Database)?;
@@ -254,34 +260,22 @@ pub async fn query_inbox_enriched_paginated(
     Ok((items, total.0))
 }
 
+/// Query inbox (unarchived) notifications with enrichment — paginated.
+pub async fn query_inbox_enriched_paginated(
+    pool: &SqlitePool,
+    limit: u32,
+    offset: u32,
+) -> Result<(Vec<InboxItem>, i64), crate::api::AppError> {
+    query_enriched_paginated(pool, false, limit, offset).await
+}
+
 /// Query archived notifications with enrichment — paginated.
-/// Returns (items, total_count).
 pub async fn query_archived_enriched_paginated(
     pool: &SqlitePool,
     limit: u32,
     offset: u32,
 ) -> Result<(Vec<InboxItem>, i64), crate::api::AppError> {
-    let rows = sqlx::query_as::<_, InboxItemRow>(&format!(
-        "{INBOX_ENRICHED_SQL} WHERE n.archived = 1 ORDER BY n.updated_at DESC LIMIT ? OFFSET ?"
-    ))
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(pool)
-    .await
-    .map_err(crate::api::AppError::Database)?;
-
-    let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notifications WHERE archived = 1")
-        .fetch_one(pool)
-        .await
-        .map_err(crate::api::AppError::Database)?;
-
-    let items = rows
-        .into_iter()
-        .map(to_inbox_item)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| crate::api::AppError::Internal(e.to_string()))?;
-
-    Ok((items, total.0))
+    query_enriched_paginated(pool, true, limit, offset).await
 }
 
 /// Atomically mark a set of PRs as 'fetching' teams (concurrency guard).
