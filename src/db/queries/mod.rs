@@ -4,6 +4,7 @@ mod commits;
 mod fetches;
 mod notifications;
 mod pull_requests;
+mod reviews;
 mod user_teams;
 
 pub use check_runs::{CheckRunRow, query_check_runs_for_pr, upsert_check_run};
@@ -19,4 +20,5 @@ pub use pull_requests::{
     query_archived_enriched_paginated, query_inbox_enriched_paginated, set_teams_fetching,
     update_last_viewed_at, update_teams, upsert_pull_request,
 };
+pub use reviews::{ReviewRow, query_reviews_for_pr, upsert_review};
 pub use user_teams::{get_all_user_teams, replace_user_teams};
