@@ -3,7 +3,11 @@ import { apiFetch } from "./api.ts";
 import { onPrInfoUpdated, onPrTeamsUpdated } from "./sse.svelte.ts";
 import { timeAgo } from "./timeago.ts";
 import { showError } from "./toast.svelte.ts";
-import type { InboxItem, PaginatedInbox } from "./types.ts";
+import {
+    DEFAULT_PER_PAGE,
+    type InboxItem,
+    type PaginatedInbox,
+} from "./types.ts";
 
 let {
     currentView = "inbox",
@@ -27,7 +31,7 @@ let listVersion = $state(0);
 const prefetchedIds = new Set<string>();
 let currentPage = $state(1);
 let totalCount = $state(0);
-const PER_PAGE = 25;
+const PER_PAGE = DEFAULT_PER_PAGE;
 
 const unsubTeams = onPrTeamsUpdated((pr_id, teams) => {
     const item = notifications.find((n) => n.pr_id === pr_id);

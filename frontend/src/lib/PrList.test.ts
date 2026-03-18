@@ -1,10 +1,15 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PrList from "./PrList.svelte";
-import type { InboxItem } from "./types.ts";
+import { DEFAULT_PER_PAGE, type InboxItem } from "./types.ts";
 
 function paginatedResponse(items: InboxItem[], total?: number): object {
-    return { items, total: total ?? items.length, page: 1, per_page: 25 };
+    return {
+        items,
+        total: total ?? items.length,
+        page: 1,
+        per_page: DEFAULT_PER_PAGE,
+    };
 }
 
 function makeItem(overrides: Partial<InboxItem> = {}): InboxItem {
@@ -160,7 +165,7 @@ describe("PrList", () => {
 
         await waitFor(() => {
             expect(globalThis.fetch).toHaveBeenCalledWith(
-                "/api/inbox?status=archived&page=1&per_page=25",
+                `/api/inbox?status=archived&page=1&per_page=${DEFAULT_PER_PAGE}`,
             );
         });
     });
@@ -336,9 +341,9 @@ describe("PrList", () => {
     it("renders pagination bar with page info", async () => {
         globalThis.fetch = mockFetch({
             items: MOCK_NOTIFICATIONS,
-            total: 50,
+            total: DEFAULT_PER_PAGE * 2,
             page: 1,
-            per_page: 25,
+            per_page: DEFAULT_PER_PAGE,
         });
 
         render(PrList);
@@ -357,9 +362,9 @@ describe("PrList", () => {
     it("clicking Next page fetches page 2", async () => {
         globalThis.fetch = mockFetch({
             items: MOCK_NOTIFICATIONS,
-            total: 50,
+            total: DEFAULT_PER_PAGE * 2,
             page: 1,
-            per_page: 25,
+            per_page: DEFAULT_PER_PAGE,
         });
 
         render(PrList);
@@ -370,9 +375,9 @@ describe("PrList", () => {
 
         globalThis.fetch = mockFetch({
             items: [makeItem({ id: "p2", title: "Page 2 PR" })],
-            total: 50,
+            total: DEFAULT_PER_PAGE * 2,
             page: 2,
-            per_page: 25,
+            per_page: DEFAULT_PER_PAGE,
         });
 
         await fireEvent.click(
@@ -389,9 +394,9 @@ describe("PrList", () => {
         // Page 1 response
         globalThis.fetch = mockFetch({
             items: MOCK_NOTIFICATIONS,
-            total: 27,
+            total: DEFAULT_PER_PAGE + 1,
             page: 1,
-            per_page: 25,
+            per_page: DEFAULT_PER_PAGE,
         });
 
         const { container } = render(PrList);
@@ -403,9 +408,9 @@ describe("PrList", () => {
         // Navigate to page 2 (1 item)
         globalThis.fetch = mockFetch({
             items: [makeItem({ id: "last", title: "Last item" })],
-            total: 27,
+            total: DEFAULT_PER_PAGE + 1,
             page: 2,
-            per_page: 25,
+            per_page: DEFAULT_PER_PAGE,
         });
         await fireEvent.click(
             screen.getByRole("button", { name: "Next page" }),
@@ -428,9 +433,9 @@ describe("PrList", () => {
                 json: () =>
                     Promise.resolve({
                         items: MOCK_NOTIFICATIONS,
-                        total: 26,
+                        total: DEFAULT_PER_PAGE,
                         page: 1,
-                        per_page: 25,
+                        per_page: DEFAULT_PER_PAGE,
                     }),
             });
         globalThis.fetch = archiveFetch as unknown as typeof fetch;
@@ -447,9 +452,9 @@ describe("PrList", () => {
         // Start on page 1
         globalThis.fetch = mockFetch({
             items: MOCK_NOTIFICATIONS,
-            total: 50,
+            total: DEFAULT_PER_PAGE * 2,
             page: 1,
-            per_page: 25,
+            per_page: DEFAULT_PER_PAGE,
         });
 
         const { rerender } = render(PrList, {
@@ -463,9 +468,9 @@ describe("PrList", () => {
         // Navigate to page 2
         globalThis.fetch = mockFetch({
             items: [makeItem({ id: "p2", title: "Page 2 PR" })],
-            total: 50,
+            total: DEFAULT_PER_PAGE * 2,
             page: 2,
-            per_page: 25,
+            per_page: DEFAULT_PER_PAGE,
         });
         await fireEvent.click(
             screen.getByRole("button", { name: "Next page" }),
@@ -478,9 +483,9 @@ describe("PrList", () => {
         // SSE refresh (refreshKey changes) — should refetch page 2, not reset to 1
         const fetchSpy = mockFetch({
             items: [makeItem({ id: "p2-refreshed", title: "Refreshed P2" })],
-            total: 50,
+            total: DEFAULT_PER_PAGE * 2,
             page: 2,
-            per_page: 25,
+            per_page: DEFAULT_PER_PAGE,
         });
         globalThis.fetch = fetchSpy;
 

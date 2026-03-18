@@ -88,6 +88,8 @@ export interface InboxItem {
     teams: string[] | null; // null = loading (show shimmer)
 }
 
+export const DEFAULT_PER_PAGE = 20;
+
 export interface PaginatedInbox {
     items: InboxItem[];
     total: number;
