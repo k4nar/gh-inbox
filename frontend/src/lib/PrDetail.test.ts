@@ -1,7 +1,16 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PrDetail from "./PrDetail.svelte";
+import { onPrInfoUpdated } from "./sse.svelte.ts";
 import type { PrDetailResponse } from "./types.ts";
+
+vi.mock("./sse.svelte.ts", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("./sse.svelte.ts")>();
+    return {
+        ...actual,
+        onPrInfoUpdated: vi.fn(actual.onPrInfoUpdated),
+    };
+});
 
 function makeComment(overrides: object = {}) {
     return {
@@ -410,5 +419,78 @@ describe("PrDetail — reviews", () => {
         });
         const reviewItem = container.querySelector(".review-item")!;
         expect(reviewItem.querySelector(".new-badge")).not.toBeInTheDocument();
+    });
+});
+
+describe("PrDetail — SSE reload", () => {
+    it("reloads when pr:info_updated fires for the current PR", async () => {
+        let capturedCallback: ((data: object) => void) | null = null;
+        vi.mocked(onPrInfoUpdated).mockImplementation((cb) => {
+            capturedCallback = cb as (data: object) => void;
+            return () => {};
+        });
+
+        const fetchMock = mockFetch();
+        globalThis.fetch = fetchMock;
+        render(PrDetail, {
+            props: {
+                notification: {
+                    repository: "owner/repo",
+                    pr_id: 42,
+                    title: "Fix bug in parser",
+                },
+                onClose: vi.fn(),
+            },
+        });
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+        capturedCallback!({
+            pr_id: 42,
+            repository: "owner/repo",
+            author: "alice",
+            pr_status: "open",
+            new_commits: 1,
+            new_comments: null,
+            new_reviews: null,
+        });
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    });
+
+    it("does not reload when pr:info_updated fires for a different PR", async () => {
+        let capturedCallback: ((data: object) => void) | null = null;
+        vi.mocked(onPrInfoUpdated).mockImplementation((cb) => {
+            capturedCallback = cb as (data: object) => void;
+            return () => {};
+        });
+
+        const fetchMock = mockFetch();
+        globalThis.fetch = fetchMock;
+        render(PrDetail, {
+            props: {
+                notification: {
+                    repository: "owner/repo",
+                    pr_id: 42,
+                    title: "Fix bug in parser",
+                },
+                onClose: vi.fn(),
+            },
+        });
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+        capturedCallback!({
+            pr_id: 99,
+            repository: "owner/repo",
+            author: "bob",
+            pr_status: "open",
+            new_commits: 1,
+            new_comments: null,
+            new_reviews: null,
+        });
+
+        await new Promise((r) => setTimeout(r, 50));
+        expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 });

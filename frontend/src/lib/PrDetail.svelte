@@ -2,6 +2,7 @@
 import "./markdown.css";
 import { apiFetch } from "./api.ts";
 import CommentThread from "./CommentThread.svelte";
+import { onPrInfoUpdated } from "./sse.svelte.ts";
 import { timeAgo } from "./timeago.ts";
 import type {
     CheckRun,
@@ -33,6 +34,16 @@ $effect(() => {
     if (notification?.pr_id && notification?.repository) {
         loadDetail();
     }
+});
+
+$effect(() => {
+    const prId = notification?.pr_id;
+    const repo = notification?.repository;
+    return onPrInfoUpdated((data) => {
+        if (data.pr_id === prId && data.repository === repo) {
+            loadDetail();
+        }
+    });
 });
 
 async function loadDetail(): Promise<void> {
