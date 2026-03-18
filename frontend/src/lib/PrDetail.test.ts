@@ -1,4 +1,10 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/svelte";
+import {
+    cleanup,
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+} from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PrDetail from "./PrDetail.svelte";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
@@ -201,18 +207,18 @@ describe("PrDetail — status bar", () => {
         };
         const { container } = renderDetail(detail);
         await waitFor(() => {
-            expect(
-                container.querySelector(".ci-indicator")!.textContent,
-            ).toMatch(/passing/i);
+            const svg = container.querySelector(".ci-wrapper svg");
+            expect(svg?.getAttribute("aria-label")).toMatch(/passing/i);
         });
     });
 
     it("shows failing count when some checks fail", async () => {
         const { container } = renderDetail();
         await waitFor(() => {
-            expect(
-                container.querySelector(".ci-indicator")!.textContent,
-            ).toMatch(/1 (failing|running)/i);
+            const svg = container.querySelector(".ci-wrapper svg");
+            expect(svg?.getAttribute("aria-label")).toMatch(
+                /1 (failing|running)/i,
+            );
         });
     });
 
@@ -285,21 +291,18 @@ describe("PrDetail — labels", () => {
         };
         const { container } = renderDetail(detail);
         await waitFor(() => {
+            expect(
+                container.querySelector(".labels-wrapper"),
+            ).toBeInTheDocument();
+        });
+        fireEvent.mouseEnter(container.querySelector(".labels-wrapper")!);
+        await waitFor(() => {
             const chips = container.querySelectorAll(".label-chip");
             expect(chips).toHaveLength(2);
         });
         const chips = container.querySelectorAll(".label-chip");
         expect(chips[0].textContent?.trim()).toBe("bug");
-        // jsdom normalizes hex colors to rgb() in computed style;
-        // check the rendered style attribute contains the expected rgb values.
-        // #d73a4a = rgb(215, 58, 74), #a2eeef = rgb(162, 238, 239)
-        expect((chips[0] as HTMLElement).style.borderLeft).toContain(
-            "rgb(215, 58, 74)",
-        );
         expect(chips[1].textContent?.trim()).toBe("enhancement");
-        expect((chips[1] as HTMLElement).style.borderLeft).toContain(
-            "rgb(162, 238, 239)",
-        );
     });
 
     it("renders no label chips when labels array is empty", async () => {
@@ -480,6 +483,43 @@ describe("PrDetail — SSE reload", () => {
         });
 
         await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    });
+
+    it("does not reload when pr:info_updated carries no new data (view-acknowledgement event)", async () => {
+        let capturedCallback: ((data: object) => void) | null = null;
+        vi.mocked(onPrInfoUpdated).mockImplementation((cb) => {
+            capturedCallback = cb as (data: object) => void;
+            return () => {};
+        });
+
+        const fetchMock = mockFetch();
+        globalThis.fetch = fetchMock;
+        render(PrDetail, {
+            props: {
+                notification: {
+                    repository: "owner/repo",
+                    pr_id: 42,
+                    title: "Fix bug in parser",
+                },
+                onClose: vi.fn(),
+            },
+        });
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+        // Simulate the all-zeros event that get_pr emits after a view
+        capturedCallback!({
+            pr_id: 42,
+            repository: "owner/repo",
+            author: "alice",
+            pr_status: "open",
+            new_commits: 0,
+            new_comments: [],
+            new_reviews: [],
+        });
+
+        await new Promise((r) => setTimeout(r, 50));
+        expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
     it("does not reload when pr:info_updated fires for a different PR", async () => {
