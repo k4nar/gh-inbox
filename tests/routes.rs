@@ -142,6 +142,17 @@ const MOCK_CHECK_RUNS: &str = r#"{
     ]
 }"#;
 
+const MOCK_REVIEWS: &str = r#"[
+    {
+        "id": 9001,
+        "user": { "login": "bob" },
+        "state": "APPROVED",
+        "body": "Looks good to me!",
+        "submitted_at": "2025-06-01T14:00:00Z",
+        "html_url": "https://github.com/owner/repo/pull/42#pullrequestreview-9001"
+    }
+]"#;
+
 /// Mock GitHub that returns 500 for PATCH /notifications/threads/:id
 /// and 500 for DELETE /notifications/threads/:id
 async fn start_mock_github_with_sync_error() -> String {
@@ -310,6 +321,10 @@ fn start_mock_github_router() -> Router {
             "/repos/{owner}/{repo}/commits/{sha}/check-runs",
             get(|| async { ([("content-type", "application/json")], MOCK_CHECK_RUNS) }),
         )
+        .route(
+            "/repos/{owner}/{repo}/pulls/{number}/reviews",
+            get(|| async { ([("content-type", "application/json")], MOCK_REVIEWS) }),
+        )
 }
 
 /// Start a mock GitHub API server that returns canned responses.
@@ -436,6 +451,15 @@ async fn get_pr_detail_returns_metadata_comments_and_checks() {
     assert_eq!(check_runs.len(), 2);
     assert_eq!(check_runs[0]["name"], "CI");
     assert_eq!(check_runs[0]["conclusion"], "success");
+
+    // Reviews
+    let reviews = detail["reviews"].as_array().unwrap();
+    assert_eq!(reviews.len(), 1);
+    assert_eq!(reviews[0]["state"], "APPROVED");
+    assert_eq!(reviews[0]["reviewer"], "bob");
+
+    // Labels (empty for this PR since MOCK_PR has no labels field)
+    assert!(detail["labels"].is_array(), "labels should be an array");
 
     // On first visit, previous_viewed_at is null and last_viewed_at is null
     // (we capture last_viewed_at before calling update_last_viewed_at).
