@@ -1,3 +1,4 @@
+use crate::models::ReviewSummary;
 use sqlx::SqlitePool;
 
 /// A comment author with their new-comment count, deserialized from JSON.
@@ -25,7 +26,7 @@ pub struct InboxItem {
     // activity since last_viewed_at (None = first visit)
     pub new_commits: Option<i64>,
     pub new_comments: Option<Vec<CommentAuthorCount>>,
-    pub new_reviews: Option<Vec<crate::models::ReviewSummary>>,
+    pub new_reviews: Option<Vec<ReviewSummary>>,
     // teams (None = fetch not attempted or in progress)
     pub teams: Option<Vec<String>>,
 }
@@ -144,11 +145,10 @@ fn to_inbox_item(row: InboxItemRow) -> Result<InboxItem, serde_json::Error> {
         None => None,
         Some(json) => Some(serde_json::from_str(json)?),
     };
-    let new_reviews: Option<Vec<crate::models::ReviewSummary>> =
-        match row.new_reviews_json.as_deref() {
-            None => None,
-            Some(json) => Some(serde_json::from_str(json)?),
-        };
+    let new_reviews: Option<Vec<ReviewSummary>> = match row.new_reviews_json.as_deref() {
+        None => None,
+        Some(json) => Some(serde_json::from_str(json)?),
+    };
     let teams: Option<Vec<String>> = match row.teams_json.as_deref() {
         None | Some("fetching") => None,
         Some(json) => Some(serde_json::from_str(json)?),
@@ -818,7 +818,9 @@ mod tests {
         let (items, _) = query_inbox_enriched_paginated(&pool, 100, 0).await.unwrap();
         let item = items.iter().find(|i| i.pr_id == Some(501)).unwrap();
         assert_eq!(
-            item.new_reviews.as_ref().map(|v| v.len()),
+            item.new_reviews
+                .as_ref()
+                .map(|v: &Vec<ReviewSummary>| v.len()),
             Some(0),
             "expect Some([]) when last_viewed_at is set but no reviews after it"
         );
