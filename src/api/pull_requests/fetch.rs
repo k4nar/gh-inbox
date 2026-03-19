@@ -215,6 +215,25 @@ pub async fn cache_pr_data(
         }
     }
 
+    // Teams: intersect requested reviewer teams with the user's own teams.
+    // Only update if user_teams is populated (i.e. ensure_user_teams_fresh has run).
+    let user_teams: std::collections::HashSet<String> = queries::get_all_user_teams(pool)
+        .await?
+        .into_iter()
+        .collect();
+    if !user_teams.is_empty() {
+        let matched: Vec<&str> = data
+            .requested_reviewer_team_slugs
+            .iter()
+            .filter(|t| user_teams.contains(*t))
+            .map(String::as_str)
+            .collect();
+        let teams_json = serde_json::to_string(&matched).unwrap_or_else(|_| "[]".to_string());
+        if let Err(e) = queries::update_teams(pool, number, &teams_json).await {
+            eprintln!("[warn] update_teams failed for pr {number}: {e}");
+        }
+    }
+
     Ok(())
 }
 

@@ -17,7 +17,7 @@ pub const GITHUB_API_BASE: &str = "https://api.github.com";
 
 pub use fetch_pr_graphql::fetch_pr_graphql;
 pub use notifications::{fetch_notifications, mark_thread_done, mark_thread_read};
-pub use teams::{fetch_requested_reviewer_teams, fetch_user_teams};
+pub use teams::fetch_user_teams;
 
 #[derive(Clone)]
 pub struct GithubClient {

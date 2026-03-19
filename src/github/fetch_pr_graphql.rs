@@ -97,6 +97,17 @@ query PullRequestFull($owner: String!, $repo: String!, $number: Int!) {
           url
         }
       }
+      reviewRequests(first: 100) {
+        nodes {
+          requestedReviewer {
+            __typename
+            ... on Team {
+              slug
+              organization { login }
+            }
+          }
+        }
+      }
     }
   }
 }
@@ -127,6 +138,12 @@ struct GqlConnection<T> {
     nodes: Vec<T>,
 }
 
+impl<T> Default for GqlConnection<T> {
+    fn default() -> Self {
+        Self { nodes: Vec::new() }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct GqlPullRequest {
     number: i64,
@@ -154,6 +171,8 @@ struct GqlPullRequest {
     #[serde(rename = "headCommit")]
     head_commit: GqlConnection<GqlHeadCommitNode>,
     reviews: GqlConnection<GqlReview>,
+    #[serde(rename = "reviewRequests", default)]
+    review_requests: GqlConnection<GqlReviewRequest>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -267,6 +286,27 @@ struct GqlReview {
     url: String,
 }
 
+/// A requested reviewer — either a User or a Team (GraphQL union).
+/// Non-Team fields are absent in JSON for User entries.
+#[derive(Debug, Deserialize)]
+struct GqlRequestedReviewer {
+    #[serde(rename = "__typename")]
+    typename: String,
+    slug: Option<String>,
+    organization: Option<GqlRequestedReviewerOrg>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlRequestedReviewerOrg {
+    login: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GqlReviewRequest {
+    #[serde(rename = "requestedReviewer")]
+    requested_reviewer: Option<GqlRequestedReviewer>,
+}
+
 // -- Public result type --
 
 pub struct GraphqlPrData {
@@ -277,6 +317,8 @@ pub struct GraphqlPrData {
     pub check_runs: GithubCheckRunList,
     pub reviews: Vec<GithubReview>,
     pub review_thread_states: HashMap<i64, bool>,
+    /// Team slugs (formatted as "org/slug") requested to review this PR.
+    pub requested_reviewer_team_slugs: Vec<String>,
 }
 
 fn author_login(author: &Option<GqlAuthor>) -> String {
@@ -446,6 +488,22 @@ fn convert(gql_pr: GqlPullRequest) -> GraphqlPrData {
         })
         .collect();
 
+    let requested_reviewer_team_slugs: Vec<String> = gql_pr
+        .review_requests
+        .nodes
+        .into_iter()
+        .filter_map(|rr| {
+            let r = rr.requested_reviewer?;
+            if r.typename == "Team" {
+                let slug = r.slug?;
+                let org = r.organization?.login;
+                Some(format!("{org}/{slug}"))
+            } else {
+                None
+            }
+        })
+        .collect();
+
     GraphqlPrData {
         pull_request,
         issue_comments,
@@ -454,6 +512,7 @@ fn convert(gql_pr: GqlPullRequest) -> GraphqlPrData {
         check_runs,
         reviews,
         review_thread_states,
+        requested_reviewer_team_slugs,
     }
 }
 
@@ -621,6 +680,12 @@ mod tests {
                   "submittedAt": "2025-06-01T11:00:00Z",
                   "url": "https://github.com/owner/repo/pull/42#pullrequestreview-2"
                 }
+              ]
+            },
+            "reviewRequests": {
+              "nodes": [
+                { "requestedReviewer": { "__typename": "Team", "slug": "platform", "organization": { "login": "acme" } } },
+                { "requestedReviewer": { "__typename": "User" } }
               ]
             }
           }
