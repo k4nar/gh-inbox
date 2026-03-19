@@ -29,6 +29,7 @@ describe("CommentThread — collapsed (default)", () => {
         const thread = {
             thread_id: "conversation",
             path: null,
+            resolved: false,
             comments: [makeComment()],
         };
         render(CommentThread, { props: { thread } });
@@ -39,6 +40,7 @@ describe("CommentThread — collapsed (default)", () => {
         const thread = {
             thread_id: "review:100",
             path: "src/main.rs",
+            resolved: false,
             comments: [
                 makeComment({
                     thread_id: "review:100",
@@ -55,6 +57,7 @@ describe("CommentThread — collapsed (default)", () => {
         const thread = {
             thread_id: "conversation",
             path: null,
+            resolved: false,
             comments: [
                 makeComment({
                     id: 1,
@@ -85,6 +88,7 @@ describe("CommentThread — collapsed (default)", () => {
         const thread = {
             thread_id: "conversation",
             path: null,
+            resolved: false,
             comments: [
                 makeComment({
                     id: 1,
@@ -113,6 +117,7 @@ describe("CommentThread — collapsed (default)", () => {
         const thread = {
             thread_id: "conversation",
             path: null,
+            resolved: false,
             comments: [
                 makeComment({ id: 1, created_at: "2025-06-01T09:00:00Z" }),
                 makeComment({
@@ -130,6 +135,23 @@ describe("CommentThread — collapsed (default)", () => {
             container.querySelector(".new-count-badge")!.textContent,
         ).toContain("1");
     });
+
+    it("shows resolved badge when thread is resolved", () => {
+        const thread = {
+            thread_id: "review:100",
+            path: "src/main.rs",
+            resolved: true,
+            comments: [
+                makeComment({
+                    thread_id: "review:100",
+                    comment_type: "review_comment",
+                    path: "src/main.rs",
+                }),
+            ],
+        };
+        render(CommentThread, { props: { thread } });
+        expect(screen.getByText("✔️ Resolved")).toBeInTheDocument();
+    });
 });
 
 describe("CommentThread — expanded", () => {
@@ -137,6 +159,7 @@ describe("CommentThread — expanded", () => {
         const thread = {
             thread_id: "conversation",
             path: null,
+            resolved: false,
             comments: [
                 makeComment({ id: 1, author: "alice", body: "First comment" }),
                 makeComment({
@@ -162,6 +185,7 @@ describe("CommentThread — expanded", () => {
         const thread = {
             thread_id: "conversation",
             path: null,
+            resolved: false,
             comments: [
                 makeComment({
                     body: "Expandable comment",
@@ -191,6 +215,7 @@ describe("CommentThread — expanded", () => {
         const thread = {
             thread_id: "conversation",
             path: null,
+            resolved: false,
             comments: [makeComment({ author: "octocat" })],
         };
         const { container } = render(CommentThread, {
@@ -207,6 +232,7 @@ describe("CommentThread — expanded", () => {
         const thread = {
             thread_id: "conversation",
             path: null,
+            resolved: false,
             comments: [
                 makeComment({ id: 1, created_at: "2025-06-01T09:00:00Z" }),
                 makeComment({ id: 2, created_at: "2025-06-01T11:00:00Z" }),

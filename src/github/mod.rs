@@ -2,6 +2,7 @@ mod check_runs;
 mod commits;
 mod notifications;
 mod pull_requests;
+mod review_threads;
 mod reviews;
 pub mod sync;
 mod teams;
@@ -9,6 +10,7 @@ mod teams;
 use std::sync::Arc;
 
 use reqwest::{Method, Response};
+use serde::Serialize;
 
 pub const GITHUB_API_BASE: &str = "https://api.github.com";
 
@@ -16,6 +18,7 @@ pub use check_runs::fetch_check_runs;
 pub use commits::fetch_commits;
 pub use notifications::{fetch_notifications, mark_thread_done, mark_thread_read};
 pub use pull_requests::{fetch_issue_comments, fetch_pull_request, fetch_review_comments};
+pub use review_threads::fetch_review_thread_states;
 pub use reviews::fetch_reviews;
 pub use teams::{fetch_requested_reviewer_teams, fetch_user_teams};
 
@@ -47,31 +50,57 @@ impl GithubClient {
         self.send(Method::DELETE, path).await
     }
 
+    async fn post_json<T: Serialize + ?Sized>(
+        &self,
+        path: &str,
+        body: &T,
+    ) -> Result<Response, reqwest::Error> {
+        let builder = self.request_builder(Method::POST, path).json(body);
+        self.execute(builder, "POST", path).await
+    }
+
     async fn send(&self, method: Method, path: &str) -> Result<Response, reqwest::Error> {
+        let builder = self.request_builder(method.clone(), path);
+        self.execute(builder, method.as_str(), path).await
+    }
+
+    fn request_builder(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}{path}", self.base_url);
-
-        if cfg!(debug_assertions) {
-            eprintln!("[debug] GitHub {method} {url}");
-        }
-
-        let request = self
-            .client
-            .request(method.clone(), &url)
+        self.client
+            .request(method, &url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "gh-inbox")
-            .header("X-GitHub-Api-Version", "2026-03-10");
+            .header("X-GitHub-Api-Version", "2026-03-10")
+    }
 
-        match request.send().await {
+    async fn execute(
+        &self,
+        builder: reqwest::RequestBuilder,
+        label: &str,
+        path: &str,
+    ) -> Result<Response, reqwest::Error> {
+        if cfg!(debug_assertions) {
+            eprintln!("[debug] GitHub {label} {}{path}", self.base_url);
+        }
+
+        match builder.send().await {
             Ok(response) => {
                 if cfg!(debug_assertions) {
-                    eprintln!("[debug] GitHub {method} {url} -> {}", response.status());
+                    eprintln!(
+                        "[debug] GitHub {label} {}{path} -> {}",
+                        self.base_url,
+                        response.status()
+                    );
                 }
                 Ok(response)
             }
             Err(err) => {
                 if cfg!(debug_assertions) {
-                    eprintln!("[debug] GitHub {method} {url} -> error: {err}");
+                    eprintln!(
+                        "[debug] GitHub {label} {}{path} -> error: {err}",
+                        self.base_url
+                    );
                 }
                 Err(err)
             }

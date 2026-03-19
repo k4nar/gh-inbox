@@ -16,6 +16,7 @@ use super::CommentResponse;
 pub struct ThreadResponse {
     pub thread_id: String,
     pub path: Option<String>,
+    pub resolved: bool,
     pub comments: Vec<CommentResponse>,
 }
 
@@ -24,7 +25,17 @@ pub async fn get_threads(
     State(state): State<AppState>,
     Path((owner, repo, number)): Path<(String, String, i64)>,
 ) -> Result<Json<Vec<ThreadResponse>>, AppError> {
-    let _full_repo = format!("{owner}/{repo}");
+    let review_thread_states =
+        match crate::github::fetch_review_thread_states(&state.github, &owner, &repo, number).await
+        {
+            Ok(states) => states,
+            Err(err) => {
+                eprintln!(
+                    "[warn] fetch_review_thread_states failed for {owner}/{repo}#{number}: {err}"
+                );
+                BTreeMap::new().into_iter().collect()
+            }
+        };
     let comments = queries::query_comments_for_pr(&state.pool, number).await?;
 
     let mut threads: BTreeMap<String, Vec<CommentRow>> = BTreeMap::new();
@@ -40,6 +51,11 @@ pub async fn get_threads(
         .into_iter()
         .map(|(thread_id, comments)| {
             let path = comments.iter().find_map(|c| c.path.clone());
+            let resolved = thread_id
+                .strip_prefix("review:")
+                .and_then(|id| id.parse::<i64>().ok())
+                .and_then(|id| review_thread_states.get(&id).copied())
+                .unwrap_or(false);
             let comments = comments
                 .into_iter()
                 .map(|c| {
@@ -53,6 +69,7 @@ pub async fn get_threads(
             ThreadResponse {
                 thread_id,
                 path,
+                resolved,
                 comments,
             }
         })

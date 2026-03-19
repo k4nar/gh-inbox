@@ -117,6 +117,28 @@ const MOCK_REVIEW_COMMENTS: &str = r#"[
     }
 ]"#;
 
+const MOCK_REVIEW_THREADS: &str = r#"{
+    "data": {
+        "repository": {
+            "pullRequest": {
+                "reviewThreads": {
+                    "nodes": [
+                        {
+                            "isResolved": true,
+                            "comments": {
+                                "nodes": [
+                                    { "databaseId": 2001 },
+                                    { "databaseId": 2002 }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+    }
+}"#;
+
 const MOCK_COMMITS: &str = r#"[
     {
         "sha": "abc123def456",
@@ -324,6 +346,12 @@ fn start_mock_github_router() -> Router {
         .route(
             "/repos/{owner}/{repo}/pulls/{number}/reviews",
             get(|| async { ([("content-type", "application/json")], MOCK_REVIEWS) }),
+        )
+        .route(
+            "/graphql",
+            axum::routing::post(|| async {
+                ([("content-type", "application/json")], MOCK_REVIEW_THREADS)
+            }),
         )
 }
 
@@ -603,6 +631,7 @@ async fn get_pr_threads_groups_comments() {
         .unwrap();
     assert_eq!(conv["comments"].as_array().unwrap().len(), 1);
     assert!(conv["path"].is_null());
+    assert_eq!(conv["resolved"], false);
 
     // Find the review thread
     let review = threads
@@ -611,6 +640,7 @@ async fn get_pr_threads_groups_comments() {
         .unwrap();
     assert_eq!(review["comments"].as_array().unwrap().len(), 2);
     assert_eq!(review["path"], "src/main.rs");
+    assert_eq!(review["resolved"], true);
 
     // Each comment in each thread should have body_html
     if !threads.is_empty() {

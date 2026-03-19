@@ -75,6 +75,7 @@ export interface Commit {
 export interface Thread {
     thread_id: string;
     path: string | null;
+    resolved: boolean;
     comments: Comment[];
 }
 

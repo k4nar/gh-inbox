@@ -105,6 +105,10 @@ function firstLine(text: string): string {
             <span class="thread-path">Conversation</span>
         {/if}
 
+        {#if thread.resolved}
+            <span class="resolved-badge">✔️ Resolved</span>
+        {/if}
+
         {#if !expanded}
             {#if newCount > 0}
                 <span class="new-count-badge">{newCount} new</span>
@@ -329,6 +333,19 @@ function firstLine(text: string): string {
     color: var(--accent-fg);
     background: rgba(47, 129, 247, 0.15);
     border: 1px solid rgba(47, 129, 247, 0.4);
+    border-radius: 2em;
+    padding: 0 6px;
+    line-height: 18px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.resolved-badge {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--fg-muted);
+    background: transparent;
+    border: 1px solid var(--border-default);
     border-radius: 2em;
     padding: 0 6px;
     line-height: 18px;
