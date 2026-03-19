@@ -234,6 +234,47 @@ describe("PrDetail — status bar", () => {
 });
 
 describe("PrDetail — timeline", () => {
+    it("shows description expanded on first visit", async () => {
+        const detail = { ...BASE_DETAIL, previous_viewed_at: null };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            expect(
+                container.querySelector(".description-content"),
+            ).toBeInTheDocument();
+        });
+        expect(container.textContent).toContain("This fixes the parser bug.");
+    });
+
+    it("shows description collapsed when previously viewed", async () => {
+        const { container } = renderDetail();
+        await waitFor(() => {
+            expect(
+                container.querySelector(".description-header"),
+            ).toBeInTheDocument();
+        });
+        expect(
+            container.querySelector(".description-content"),
+        ).not.toBeInTheDocument();
+    });
+
+    it("shows fallback text when PR has no description", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            previous_viewed_at: null,
+            pull_request: {
+                ...BASE_DETAIL.pull_request,
+                body: "",
+                body_html: "",
+            },
+        };
+        renderDetail(detail);
+        await waitFor(() => {
+            expect(
+                screen.getByText("No description provided."),
+            ).toBeInTheDocument();
+        });
+    });
+
     it("shows Since last visit divider when there are new items", async () => {
         const { container } = renderDetail();
         await waitFor(() => {

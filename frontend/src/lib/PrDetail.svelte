@@ -186,6 +186,32 @@ function toggleReview(id: number): void {
     expandedReviews = next;
 }
 
+// Description toggling logic: expand by default if PR hasn't been viewed
+let expandedDescription = $state(true);
+
+$effect(() => {
+    // If previousViewedAt is not null (PR has been viewed), collapse the description by default
+    if (previousViewedAt !== null) {
+        expandedDescription = false;
+    } else {
+        expandedDescription = true;
+    }
+});
+
+function toggleDescription(): void {
+    expandedDescription = !expandedDescription;
+}
+
+function hasRenderableDescription(
+    pr: PrDetailResponse["pull_request"],
+): boolean {
+    if (pr.body.trim().length > 0) return true;
+    const htmlWithoutEmptyParagraphs = pr.body_html
+        .replace(/<p>\s*<\/p>/gi, "")
+        .trim();
+    return htmlWithoutEmptyParagraphs.length > 0;
+}
+
 let hasNewItems = $derived(
     previousViewedAt !== null &&
         (newCommits.length > 0 ||
@@ -503,6 +529,48 @@ let diffSinceUrl = $derived(
         {/snippet}
 
         <div class="timeline">
+            <div class="timeline-item description-item">
+                <button
+                    type="button"
+                    class="description-header"
+                    onclick={toggleDescription}
+                    aria-expanded={expandedDescription}
+                >
+                    <span class="description-title">Description</span>
+                    <span
+                        class="thread-chevron"
+                        class:open={expandedDescription}
+                    >
+                        <svg
+                            aria-hidden="true"
+                            width="12"
+                            height="12"
+                            viewBox="0 0 16 16"
+                            fill="currentColor"
+                        >
+                            <path
+                                d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z"
+                            />
+                        </svg>
+                    </span>
+                </button>
+                {#if expandedDescription}
+                    <div
+                        class="description-content"
+                        class:description-content--new={!previousViewedAt}
+                    >
+                        {#if hasRenderableDescription(pr)}
+                            <div class="comment-body markdown">
+                                {@html pr.body_html}
+                            </div>
+                        {:else}
+                            <p class="description-empty">
+                                No description provided.
+                            </p>
+                        {/if}
+                    </div>
+                {/if}
+            </div>
             {#if hasNewItems}
                 <!-- "Since your last visit" zone -->
                 <div class="divider divider-new">
@@ -1248,5 +1316,64 @@ let diffSinceUrl = $derived(
     white-space: pre-wrap;
     word-break: break-word;
     color: var(--fg-default);
+}
+
+/* Description section */
+.description-item {
+    font-size: 12px;
+    margin-bottom: 10px;
+}
+
+.description-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    background: var(--canvas-subtle);
+    font-size: 12px;
+    color: var(--fg-muted);
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    border: none;
+    border-radius: 6px 6px 0 0;
+    text-decoration: none;
+}
+
+.description-header:hover {
+    background: var(--canvas-inset, var(--canvas-subtle));
+    color: var(--fg-default);
+}
+
+.description-title {
+    font-weight: 600;
+    color: var(--fg-default);
+}
+
+.description-content {
+    padding: 0 10px 10px 10px;
+    border: 1px solid var(--border-default);
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    background: var(--canvas-default);
+}
+
+.description-content--new {
+    background: rgba(47, 129, 247, 0.02);
+    border-left: 3px solid var(--accent-fg);
+    border-top: 1px solid var(--border-default);
+    padding-left: 7px;
+}
+
+.description-content .comment-body {
+    padding-left: 0;
+    margin-top: 8px;
+}
+
+.description-empty {
+    margin: 8px 0 0;
+    color: var(--fg-muted);
+    font-size: 12px;
 }
 </style>
