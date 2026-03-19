@@ -120,6 +120,32 @@ describe("SSE utility", () => {
             pr_status: "open",
             new_commits: 2,
             new_comments: [{ author: "alice", count: 1 }],
+            new_reviews: null,
+        };
+        MockEventSource.instance.simulateEvent("pr:info_updated", payload);
+        expect(callback).toHaveBeenCalledOnce();
+        expect(callback).toHaveBeenCalledWith(payload);
+        disconnectSSE();
+    });
+
+    it("pr:info_updated payload includes new_reviews when present", async () => {
+        const { connectSSE, onPrInfoUpdated, disconnectSSE } = await import(
+            "./sse.svelte.ts"
+        );
+        connectSSE();
+        const callback = vi.fn();
+        onPrInfoUpdated(callback);
+        const payload = {
+            pr_id: 8,
+            repository: "acme/api",
+            author: "carol",
+            pr_status: "open",
+            new_commits: 0,
+            new_comments: null,
+            new_reviews: [
+                { reviewer: "alice", state: "APPROVED" },
+                { reviewer: "bob", state: "CHANGES_REQUESTED" },
+            ],
         };
         MockEventSource.instance.simulateEvent("pr:info_updated", payload);
         expect(callback).toHaveBeenCalledOnce();

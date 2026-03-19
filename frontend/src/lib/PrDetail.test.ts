@@ -1,7 +1,22 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/svelte";
+import {
+    cleanup,
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+} from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PrDetail from "./PrDetail.svelte";
+import { onPrInfoUpdated } from "./sse.svelte.ts";
 import type { PrDetailResponse } from "./types.ts";
+
+vi.mock("./sse.svelte.ts", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("./sse.svelte.ts")>();
+    return {
+        ...actual,
+        onPrInfoUpdated: vi.fn(actual.onPrInfoUpdated),
+    };
+});
 
 function makeComment(overrides: object = {}) {
     return {
@@ -63,6 +78,8 @@ const BASE_DETAIL: PrDetailResponse = {
         { name: "CI / lint", status: "in_progress", conclusion: null },
     ],
     previous_viewed_at: "2025-06-01T10:00:00Z",
+    reviews: [],
+    labels: [],
 };
 
 const BASE_THREADS = [
@@ -190,18 +207,18 @@ describe("PrDetail — status bar", () => {
         };
         const { container } = renderDetail(detail);
         await waitFor(() => {
-            expect(
-                container.querySelector(".ci-indicator")!.textContent,
-            ).toMatch(/passing/i);
+            const svg = container.querySelector(".ci-wrapper svg");
+            expect(svg?.getAttribute("aria-label")).toMatch(/passing/i);
         });
     });
 
     it("shows failing count when some checks fail", async () => {
         const { container } = renderDetail();
         await waitFor(() => {
-            expect(
-                container.querySelector(".ci-indicator")!.textContent,
-            ).toMatch(/1 (failing|running)/i);
+            const svg = container.querySelector(".ci-wrapper svg");
+            expect(svg?.getAttribute("aria-label")).toMatch(
+                /1 (failing|running)/i,
+            );
         });
     });
 
@@ -260,5 +277,288 @@ describe("PrDetail — timeline", () => {
         await waitFor(() => {
             expect(screen.getByText("Conversation")).toBeInTheDocument();
         });
+    });
+});
+
+describe("PrDetail — labels", () => {
+    it("renders label chips in the status bar with correct color and name", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            labels: [
+                { name: "bug", color: "d73a4a" },
+                { name: "enhancement", color: "a2eeef" },
+            ],
+        };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            expect(
+                container.querySelector(".labels-wrapper"),
+            ).toBeInTheDocument();
+        });
+        fireEvent.mouseEnter(container.querySelector(".labels-wrapper")!);
+        await waitFor(() => {
+            const chips = container.querySelectorAll(".label-chip");
+            expect(chips).toHaveLength(2);
+        });
+        const chips = container.querySelectorAll(".label-chip");
+        expect(chips[0].textContent?.trim()).toBe("bug");
+        expect(chips[1].textContent?.trim()).toBe("enhancement");
+    });
+
+    it("renders no label chips when labels array is empty", async () => {
+        const { container } = renderDetail();
+        await waitFor(() => {
+            expect(container.querySelector(".state-pill")).toBeInTheDocument();
+        });
+        expect(container.querySelectorAll(".label-chip")).toHaveLength(0);
+    });
+});
+
+describe("PrDetail — reviews", () => {
+    it("renders a review with no body compactly (no body paragraph)", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            reviews: [
+                {
+                    id: 1,
+                    reviewer: "charlie",
+                    state: "APPROVED",
+                    body: "",
+                    submitted_at: "2025-06-01T08:00:00Z",
+                    html_url:
+                        "https://github.com/owner/repo/pull/42#pullrequestreview-1",
+                },
+            ],
+        };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            expect(container.querySelector(".review-item")).toBeInTheDocument();
+        });
+        const reviewItem = container.querySelector(".review-item")!;
+        expect(reviewItem.textContent).toContain("charlie");
+        expect(reviewItem.textContent).toContain("Approved");
+        expect(
+            reviewItem.querySelector(".review-comment"),
+        ).not.toBeInTheDocument();
+        expect(
+            reviewItem.querySelector(".thread-chevron"),
+        ).not.toBeInTheDocument();
+    });
+
+    it("renders a review with body showing a toggle but not the body by default", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            reviews: [
+                {
+                    id: 2,
+                    reviewer: "dave",
+                    state: "CHANGES_REQUESTED",
+                    body: "Please fix the typo on line 42.",
+                    submitted_at: "2025-06-01T08:00:00Z",
+                    html_url:
+                        "https://github.com/owner/repo/pull/42#pullrequestreview-2",
+                },
+            ],
+        };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            expect(container.querySelector(".review-item")).toBeInTheDocument();
+        });
+        const reviewItem = container.querySelector(".review-item")!;
+        expect(reviewItem.textContent).toContain("dave");
+        expect(reviewItem.textContent).toContain("Changes requested");
+        expect(reviewItem.querySelector(".thread-chevron")).toBeInTheDocument();
+        // Body is collapsed by default
+        expect(
+            reviewItem.querySelector(".review-comment"),
+        ).not.toBeInTheDocument();
+    });
+
+    it("shows New badge for a review submitted after previous_viewed_at", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            previous_viewed_at: "2025-06-01T10:00:00Z",
+            reviews: [
+                {
+                    id: 3,
+                    reviewer: "eve",
+                    state: "APPROVED",
+                    body: "",
+                    // after previous_viewed_at
+                    submitted_at: "2025-06-01T11:00:00Z",
+                    html_url:
+                        "https://github.com/owner/repo/pull/42#pullrequestreview-3",
+                },
+            ],
+        };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            expect(container.querySelector(".review-item")).toBeInTheDocument();
+        });
+        const reviewItem = container.querySelector(".review-item")!;
+        expect(
+            reviewItem.querySelector(".new-count-badge"),
+        ).toBeInTheDocument();
+    });
+
+    it("renders a dismissed review with Dismissed pill", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            reviews: [
+                {
+                    id: 5,
+                    reviewer: "grace",
+                    state: "DISMISSED",
+                    body: "",
+                    submitted_at: "2025-06-01T08:00:00Z",
+                    html_url:
+                        "https://github.com/owner/repo/pull/42#pullrequestreview-5",
+                },
+            ],
+        };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            expect(container.querySelector(".review-item")).toBeInTheDocument();
+        });
+        const pill = container.querySelector(".pill-dismissed");
+        expect(pill).toBeInTheDocument();
+        expect(pill!.textContent).toBe("Dismissed");
+    });
+
+    it("does not show New badge for a review submitted before previous_viewed_at", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            previous_viewed_at: "2025-06-01T10:00:00Z",
+            reviews: [
+                {
+                    id: 4,
+                    reviewer: "frank",
+                    state: "APPROVED",
+                    body: "",
+                    // before previous_viewed_at
+                    submitted_at: "2025-06-01T09:00:00Z",
+                    html_url:
+                        "https://github.com/owner/repo/pull/42#pullrequestreview-4",
+                },
+            ],
+        };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            expect(container.querySelector(".review-item")).toBeInTheDocument();
+        });
+        const reviewItem = container.querySelector(".review-item")!;
+        expect(
+            reviewItem.querySelector(".new-count-badge"),
+        ).not.toBeInTheDocument();
+    });
+});
+
+describe("PrDetail — SSE reload", () => {
+    it("reloads when pr:info_updated fires for the current PR", async () => {
+        let capturedCallback: ((data: object) => void) | null = null;
+        vi.mocked(onPrInfoUpdated).mockImplementation((cb) => {
+            capturedCallback = cb as (data: object) => void;
+            return () => {};
+        });
+
+        const fetchMock = mockFetch();
+        globalThis.fetch = fetchMock;
+        render(PrDetail, {
+            props: {
+                notification: {
+                    repository: "owner/repo",
+                    pr_id: 42,
+                    title: "Fix bug in parser",
+                },
+                onClose: vi.fn(),
+            },
+        });
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+        capturedCallback!({
+            pr_id: 42,
+            repository: "owner/repo",
+            author: "alice",
+            pr_status: "open",
+            new_commits: 1,
+            new_comments: null,
+            new_reviews: null,
+        });
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    });
+
+    it("does not reload when pr:info_updated carries no new data (view-acknowledgement event)", async () => {
+        let capturedCallback: ((data: object) => void) | null = null;
+        vi.mocked(onPrInfoUpdated).mockImplementation((cb) => {
+            capturedCallback = cb as (data: object) => void;
+            return () => {};
+        });
+
+        const fetchMock = mockFetch();
+        globalThis.fetch = fetchMock;
+        render(PrDetail, {
+            props: {
+                notification: {
+                    repository: "owner/repo",
+                    pr_id: 42,
+                    title: "Fix bug in parser",
+                },
+                onClose: vi.fn(),
+            },
+        });
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+        // Simulate the all-zeros event that get_pr emits after a view
+        capturedCallback!({
+            pr_id: 42,
+            repository: "owner/repo",
+            author: "alice",
+            pr_status: "open",
+            new_commits: 0,
+            new_comments: [],
+            new_reviews: [],
+        });
+
+        await new Promise((r) => setTimeout(r, 50));
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not reload when pr:info_updated fires for a different PR", async () => {
+        let capturedCallback: ((data: object) => void) | null = null;
+        vi.mocked(onPrInfoUpdated).mockImplementation((cb) => {
+            capturedCallback = cb as (data: object) => void;
+            return () => {};
+        });
+
+        const fetchMock = mockFetch();
+        globalThis.fetch = fetchMock;
+        render(PrDetail, {
+            props: {
+                notification: {
+                    repository: "owner/repo",
+                    pr_id: 42,
+                    title: "Fix bug in parser",
+                },
+                onClose: vi.fn(),
+            },
+        });
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+        capturedCallback!({
+            pr_id: 99,
+            repository: "owner/repo",
+            author: "bob",
+            pr_status: "open",
+            new_commits: 1,
+            new_comments: null,
+            new_reviews: null,
+        });
+
+        await new Promise((r) => setTimeout(r, 50));
+        expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 });

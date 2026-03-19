@@ -72,6 +72,7 @@ mod tests {
             draft: false,
             merged_at: None,
             teams: None,
+            labels: String::from("[]"),
         }
     }
 

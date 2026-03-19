@@ -26,6 +26,22 @@ pub struct CommentResponse {
     pub body_html: String,
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct ReviewResponse {
+    pub id: i64,
+    pub reviewer: String,
+    pub state: String,
+    pub body: String,
+    pub submitted_at: String,
+    pub html_url: String,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct LabelResponse {
+    pub name: String,
+    pub color: String,
+}
+
 /// Response payload for GET /api/pull-requests/:owner/:repo/:number
 #[derive(Debug, Serialize)]
 pub struct PrDetailResponse {
@@ -34,6 +50,8 @@ pub struct PrDetailResponse {
     pub commits: Vec<CommitRow>,
     pub check_runs: Vec<CheckRunResponse>,
     pub previous_viewed_at: Option<String>,
+    pub reviews: Vec<ReviewResponse>,
+    pub labels: Vec<LabelResponse>,
 }
 
 #[derive(Debug, Serialize)]
@@ -78,7 +96,11 @@ pub async fn get_pr(
         pr_status,
         new_commits: Some(0),
         new_comments: Some(vec![]),
+        new_reviews: Some(vec![]),
     }));
+
+    let labels: Vec<LabelResponse> =
+        serde_json::from_str(&pr.labels).map_err(|e| AppError::Internal(e.to_string()))?;
 
     let body_html = render_markdown(&pr.body);
     let pull_request = PullRequestResponse {
@@ -110,11 +132,26 @@ pub async fn get_pr(
         })
         .collect();
 
+    let reviews: Vec<ReviewResponse> = queries::query_reviews_for_pr(&state.pool, number)
+        .await?
+        .into_iter()
+        .map(|r| ReviewResponse {
+            id: r.id,
+            reviewer: r.reviewer,
+            state: r.state,
+            body: r.body,
+            submitted_at: r.submitted_at,
+            html_url: r.html_url,
+        })
+        .collect();
+
     Ok(Json(PrDetailResponse {
         pull_request,
         comments,
         commits,
         check_runs,
         previous_viewed_at,
+        reviews,
+        labels,
     }))
 }

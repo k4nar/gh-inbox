@@ -50,6 +50,20 @@ export interface CheckRun {
     conclusion: string | null;
 }
 
+export interface Review {
+    id: number;
+    reviewer: string;
+    state: string; // "APPROVED" | "CHANGES_REQUESTED"
+    body: string;
+    submitted_at: string;
+    html_url: string;
+}
+
+export interface Label {
+    name: string;
+    color: string;
+}
+
 export interface Commit {
     sha: string;
     pr_id: number;
@@ -70,6 +84,8 @@ export interface PrDetailResponse {
     commits: Commit[];
     check_runs: CheckRun[];
     previous_viewed_at: string | null;
+    reviews: Review[];
+    labels: Label[];
 }
 
 export interface InboxItem {
@@ -86,6 +102,7 @@ export interface InboxItem {
     new_commits: number | null; // null = first visit (never opened)
     new_comments: { author: string; count: number }[] | null; // null = first visit
     teams: string[] | null; // null = loading (show shimmer)
+    new_reviews: { reviewer: string; state: string }[] | null;
 }
 
 export const DEFAULT_PER_PAGE = 20;
