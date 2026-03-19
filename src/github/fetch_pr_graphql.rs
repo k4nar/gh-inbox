@@ -339,12 +339,6 @@ fn convert_pr_state(gql_state: &str) -> String {
 
 fn convert(gql_pr: GqlPullRequest) -> GraphqlPrData {
     let state = convert_pr_state(&gql_pr.state);
-    let merged_at = if gql_pr.state == "MERGED" {
-        // If GraphQL says MERGED, ensure merged_at is set (use the value from the field)
-        gql_pr.merged_at.or_else(|| Some(String::new()))
-    } else {
-        gql_pr.merged_at
-    };
 
     let pull_request = GithubPullRequest {
         number: gql_pr.number,
@@ -359,7 +353,7 @@ fn convert(gql_pr: GqlPullRequest) -> GraphqlPrData {
             sha: gql_pr.head_ref_oid,
         },
         draft: gql_pr.is_draft,
-        merged_at,
+        merged_at: gql_pr.merged_at,
         additions: gql_pr.additions,
         deletions: gql_pr.deletions,
         changed_files: gql_pr.changed_files,
