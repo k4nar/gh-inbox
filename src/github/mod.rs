@@ -72,28 +72,10 @@ impl GithubClient {
         label: &str,
         path: &str,
     ) -> Result<Response, reqwest::Error> {
-        if cfg!(debug_assertions) {
-            eprintln!("[debug] GitHub {label} {}{path}", self.base_url);
-        }
-
         match builder.send().await {
-            Ok(response) => {
-                if cfg!(debug_assertions) {
-                    eprintln!(
-                        "[debug] GitHub {label} {}{path} -> {}",
-                        self.base_url,
-                        response.status()
-                    );
-                }
-                Ok(response)
-            }
+            Ok(response) => Ok(response),
             Err(err) => {
-                if cfg!(debug_assertions) {
-                    eprintln!(
-                        "[debug] GitHub {label} {}{path} -> error: {err}",
-                        self.base_url
-                    );
-                }
+                tracing::debug!(method = label, path, base_url = %self.base_url, error = %err, "GitHub request failed");
                 Err(err)
             }
         }

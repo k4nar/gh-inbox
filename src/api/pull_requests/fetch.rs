@@ -211,7 +211,7 @@ pub async fn cache_pr_data(
             html_url: r.html_url.clone(),
         };
         if let Err(e) = queries::upsert_review(pool, &row).await {
-            eprintln!("[warn] upsert_review failed for review {}: {e}", row.id);
+            tracing::warn!(review_id = row.id, error = %e, "upsert_review failed");
         }
     }
 
@@ -230,7 +230,7 @@ pub async fn cache_pr_data(
             .collect();
         let teams_json = serde_json::to_string(&matched).unwrap_or_else(|_| "[]".to_string());
         if let Err(e) = queries::update_teams(pool, number, &teams_json).await {
-            eprintln!("[warn] update_teams failed for pr {number}: {e}");
+            tracing::warn!(pr_number = number, error = %e, "update_teams failed");
         }
     }
 

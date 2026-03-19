@@ -54,15 +54,17 @@ async fn do_prefetch(
     // Ensure user teams are fresh once for the entire batch instead of once per claimed PR,
     // avoiding N sequential DB reads when many rows are visible.
     if let Err(e) = ensure_user_teams_fresh(pool, github).await {
-        eprintln!("prefetch: could not refresh user teams: {e}");
+        tracing::warn!(error = %e, "prefetch: could not refresh user teams");
         // Non-fatal — continue; team badges may be stale but PR info still fetches.
     }
 
     for item in items {
         if let Err(e) = fetch_one(pool, github, tx, &item).await {
-            eprintln!(
-                "prefetch error for {}/#{}: {e}",
-                item.repository, item.pr_number
+            tracing::warn!(
+                repository = %item.repository,
+                pr_number = item.pr_number,
+                error = %e,
+                "prefetch error"
             );
             // Continue to next item — one failure must not abort the batch.
         }
