@@ -395,40 +395,110 @@ let diffSinceUrl = $derived(
 
         {#snippet reviewItem(review: import("./types.ts").Review, showBadge: boolean)}
             <div class="timeline-item review-item">
-                <div class="review-header">
-                    <img
-                        class="avatar avatar-sm"
-                        src={avatarUrl(review.reviewer)}
-                        alt={review.reviewer}
-                        width="18"
-                        height="18"
+                {#if review.body}
+                    <button
+                        type="button"
+                        class="review-thread-header"
+                        onclick={() => toggleReview(review.id)}
+                        aria-expanded={expandedReviews.has(review.id)}
                     >
-                    <span class="reviewer-name">{review.reviewer}</span>
-                    <span
-                        class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : review.state === 'CHANGES_REQUESTED' ? 'pill-changes' : 'pill-dismissed'}"
-                    >
-                        {review.state === 'APPROVED' ? 'Approved' : review.state === 'CHANGES_REQUESTED' ? 'Changes requested' : 'Dismissed'}
-                    </span>
-                    <span class="timestamp"
-                        >{timeAgo(review.submitted_at)}</span
-                    >
-                    {#if showBadge}
-                        <span class="new-badge">New</span>
-                    {/if}
-                    {#if review.body}
-                        <button
-                            type="button"
-                            class="review-toggle"
-                            onclick={() => toggleReview(review.id)}
+                        <img
+                            class="avatar avatar-sm"
+                            src={avatarUrl(review.reviewer)}
+                            alt={review.reviewer}
+                            width="18"
+                            height="18"
                         >
-                            {expandedReviews.has(review.id) ? '▲' : '▼'}
-                        </button>
-                    {/if}
-                </div>
+                        <span class="reviewer-name">{review.reviewer}</span>
+                        <span
+                            class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : review.state === 'CHANGES_REQUESTED' ? 'pill-changes' : 'pill-dismissed'}"
+                        >
+                            {review.state === 'APPROVED' ? 'Approved' : review.state === 'CHANGES_REQUESTED' ? 'Changes requested' : 'Dismissed'}
+                        </span>
+                        <span class="timestamp"
+                            >{timeAgo(review.submitted_at)}</span
+                        >
+                        {#if showBadge}
+                            <span class="new-count-badge">New</span>
+                        {/if}
+                        <span
+                            class="thread-chevron"
+                            class:open={expandedReviews.has(review.id)}
+                        >
+                            <svg
+                                aria-hidden="true"
+                                width="12"
+                                height="12"
+                                viewBox="0 0 16 16"
+                                fill="currentColor"
+                            >
+                                <path
+                                    d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z"
+                                />
+                            </svg>
+                        </span>
+                    </button>
+                {:else}
+                    <a
+                        class="review-thread-header review-thread-header--link"
+                        href={review.html_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        <img
+                            class="avatar avatar-sm"
+                            src={avatarUrl(review.reviewer)}
+                            alt={review.reviewer}
+                            width="18"
+                            height="18"
+                        >
+                        <span class="reviewer-name">{review.reviewer}</span>
+                        <span
+                            class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : review.state === 'CHANGES_REQUESTED' ? 'pill-changes' : 'pill-dismissed'}"
+                        >
+                            {review.state === 'APPROVED' ? 'Approved' : review.state === 'CHANGES_REQUESTED' ? 'Changes requested' : 'Dismissed'}
+                        </span>
+                        <span class="timestamp"
+                            >{timeAgo(review.submitted_at)}</span
+                        >
+                        {#if showBadge}
+                            <span class="new-count-badge">New</span>
+                        {/if}
+                        <span class="review-link-icon" aria-hidden="true"
+                            >↗</span
+                        >
+                    </a>
+                {/if}
                 {#if review.body && expandedReviews.has(review.id)}
-                    <div class="review-body">
-                        <p>{review.body}</p>
-                    </div>
+                    <a
+                        class="review-comment"
+                        class:review-comment--new={showBadge}
+                        href={review.html_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        <div class="comment-header">
+                            <img
+                                class="comment-avatar"
+                                src={avatarUrl(review.reviewer)}
+                                alt={review.reviewer}
+                                width="18"
+                                height="18"
+                            >
+                            <span class="comment-author"
+                                >{review.reviewer}</span
+                            >
+                            <span class="comment-date"
+                                >· {timeAgo(review.submitted_at)}</span
+                            >
+                            <span class="comment-link-icon" aria-hidden="true"
+                                >↗</span
+                            >
+                        </div>
+                        <div class="comment-body">
+                            <p>{review.body}</p>
+                        </div>
+                    </a>
                 {/if}
             </div>
         {/snippet}
@@ -1003,12 +1073,30 @@ let diffSinceUrl = $derived(
     font-size: 12px;
 }
 
-.review-header {
+.review-thread-header {
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 7px 10px;
-    flex-wrap: wrap;
+    background: var(--canvas-subtle);
+    font-size: 12px;
+    color: var(--fg-muted);
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    border: none;
+    border-radius: 0;
+    text-decoration: none;
+}
+
+.review-thread-header:hover {
+    background: var(--canvas-inset, var(--canvas-subtle));
+    color: var(--fg-default);
+}
+
+.review-thread-header--link {
+    cursor: default;
 }
 
 .avatar-sm {
@@ -1054,43 +1142,112 @@ let diffSinceUrl = $derived(
     flex-shrink: 0;
 }
 
-.new-badge {
+.new-count-badge {
     font-size: 10px;
     font-weight: 600;
-    padding: 1px 5px;
+    color: var(--accent-fg);
+    background: rgba(47, 129, 247, 0.15);
+    border: 1px solid rgba(47, 129, 247, 0.4);
     border-radius: 2em;
-    background: var(--accent-emphasis, #0969da);
-    color: #fff;
+    padding: 0 6px;
+    line-height: 18px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.thread-chevron {
+    flex-shrink: 0;
+    transition: transform 0.15s;
+    color: var(--fg-muted);
+    margin-left: auto;
+}
+
+.thread-chevron.open {
+    transform: rotate(180deg);
+}
+
+.new-count-badge + .thread-chevron {
+    margin-left: 0;
+}
+
+.review-link-icon {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--fg-muted);
+    opacity: 0;
+    transition: opacity 0.1s;
+}
+
+.review-thread-header:hover .review-link-icon {
+    opacity: 1;
+}
+
+.review-comment {
+    display: block;
+    padding: 9px 10px;
+    border-top: 1px solid var(--border-muted);
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+}
+
+.review-comment:hover {
+    background: var(--canvas-subtle);
+}
+
+.review-comment--new {
+    background: rgba(47, 129, 247, 0.04);
+    border-left: 3px solid var(--accent-fg);
+}
+
+.review-comment--new:hover {
+    background: rgba(47, 129, 247, 0.09);
+}
+
+.comment-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 5px;
+}
+
+.comment-avatar {
+    border-radius: 50%;
     flex-shrink: 0;
 }
 
-.review-toggle {
-    margin-left: auto;
-    background: none;
-    border: none;
-    color: var(--fg-muted);
-    cursor: pointer;
-    font-size: 10px;
-    padding: 2px 4px;
-    border-radius: 4px;
-}
-
-.review-toggle:hover {
-    background: var(--canvas-subtle);
-    color: var(--fg-default);
-}
-
-.review-body {
-    padding: 8px 10px;
-    border-top: 1px solid var(--border-muted);
-    background: var(--canvas-subtle);
-}
-
-.review-body p {
-    margin: 0;
+.comment-author {
     font-size: 12px;
+    font-weight: 600;
     color: var(--fg-default);
+}
+
+.comment-date {
+    font-size: 11px;
+    color: var(--fg-subtle);
+}
+
+.comment-link-icon {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--fg-muted);
+    opacity: 0;
+    transition: opacity 0.1s;
+}
+
+.review-comment:hover .comment-link-icon {
+    opacity: 1;
+}
+
+.comment-body {
+    padding-left: 24px;
+    font-size: 13px;
+}
+
+.comment-body p {
+    margin: 0;
     white-space: pre-wrap;
     word-break: break-word;
+    color: var(--fg-default);
 }
 </style>

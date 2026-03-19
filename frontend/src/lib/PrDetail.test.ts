@@ -338,10 +338,10 @@ describe("PrDetail — reviews", () => {
         expect(reviewItem.textContent).toContain("charlie");
         expect(reviewItem.textContent).toContain("Approved");
         expect(
-            reviewItem.querySelector(".review-body"),
+            reviewItem.querySelector(".review-comment"),
         ).not.toBeInTheDocument();
         expect(
-            reviewItem.querySelector(".review-toggle"),
+            reviewItem.querySelector(".thread-chevron"),
         ).not.toBeInTheDocument();
     });
 
@@ -367,10 +367,10 @@ describe("PrDetail — reviews", () => {
         const reviewItem = container.querySelector(".review-item")!;
         expect(reviewItem.textContent).toContain("dave");
         expect(reviewItem.textContent).toContain("Changes requested");
-        expect(reviewItem.querySelector(".review-toggle")).toBeInTheDocument();
+        expect(reviewItem.querySelector(".thread-chevron")).toBeInTheDocument();
         // Body is collapsed by default
         expect(
-            reviewItem.querySelector(".review-body"),
+            reviewItem.querySelector(".review-comment"),
         ).not.toBeInTheDocument();
     });
 
@@ -396,7 +396,9 @@ describe("PrDetail — reviews", () => {
             expect(container.querySelector(".review-item")).toBeInTheDocument();
         });
         const reviewItem = container.querySelector(".review-item")!;
-        expect(reviewItem.querySelector(".new-badge")).toBeInTheDocument();
+        expect(
+            reviewItem.querySelector(".new-count-badge"),
+        ).toBeInTheDocument();
     });
 
     it("renders a dismissed review with Dismissed pill", async () => {
@@ -445,7 +447,9 @@ describe("PrDetail — reviews", () => {
             expect(container.querySelector(".review-item")).toBeInTheDocument();
         });
         const reviewItem = container.querySelector(".review-item")!;
-        expect(reviewItem.querySelector(".new-badge")).not.toBeInTheDocument();
+        expect(
+            reviewItem.querySelector(".new-count-badge"),
+        ).not.toBeInTheDocument();
     });
 });
 
