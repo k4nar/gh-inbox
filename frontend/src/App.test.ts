@@ -233,6 +233,34 @@ describe("App", () => {
         });
     });
 
+    it("closes the PR detail panel when clicking the active notification again", async () => {
+        render(App);
+
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+
+        const listRow = screen
+            .getByText("Fix bug in parser")
+            .closest(".pr-item") as HTMLDivElement;
+
+        await fireEvent.click(listRow);
+
+        await waitFor(() => {
+            expect(
+                screen.getByLabelText("Resize PR detail panel"),
+            ).toBeInTheDocument();
+        });
+
+        await fireEvent.click(listRow);
+
+        await waitFor(() => {
+            expect(
+                screen.queryByLabelText("Resize PR detail panel"),
+            ).not.toBeInTheDocument();
+        });
+    });
+
     it("shows the next item after archiving the selected notification", async () => {
         const { container } = render(App);
 

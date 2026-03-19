@@ -21,6 +21,11 @@ let selectedNotification: InboxItem | null = $state(null);
 let refreshKey = $state(0);
 
 function handleSelect(notification: InboxItem | null): void {
+    if (notification && selectedNotification?.id === notification.id) {
+        selectedNotification = null;
+        return;
+    }
+
     selectedNotification = notification;
 }
 
