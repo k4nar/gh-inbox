@@ -548,6 +548,7 @@ function initials(login: string): string {
 }
 .pr-list {
     flex: 1;
+    min-width: var(--pr-list-min-w);
     overflow-y: auto;
 }
 .empty-state {

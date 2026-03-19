@@ -1,13 +1,12 @@
 <script lang="ts">
-import "./markdown.css";
 import { apiFetch } from "./api.ts";
 import CiWheel from "./CiWheel.svelte";
 import CommentThread from "./CommentThread.svelte";
+import "./markdown.css";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
 import { timeAgo } from "./timeago.ts";
 import type {
     CheckRun,
-    Commit,
     Label,
     Notification,
     PrDetailResponse,
@@ -638,8 +637,8 @@ let diffSinceUrl = $derived(
     flex-direction: column;
     overflow: hidden;
     border-left: 1px solid var(--border-default);
-    min-width: 400px;
-    max-width: 600px;
+    min-width: 0;
+    width: 100%;
 }
 
 .detail-header {

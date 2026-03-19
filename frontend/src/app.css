@@ -24,6 +24,8 @@
     --attention-fg: #d29922;
     --done-fg: #a371f7;
     --sidebar-w: 240px;
+    --pr-list-min-w: 360px;
+    --pr-detail-min-w: 400px;
 }
 
 body {

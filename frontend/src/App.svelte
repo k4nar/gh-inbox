@@ -2,6 +2,7 @@
 import { onMount } from "svelte";
 import PrDetail from "./lib/PrDetail.svelte";
 import PrList from "./lib/PrList.svelte";
+import ResizableDetailPanel from "./lib/ResizableDetailPanel.svelte";
 import Sidebar from "./lib/Sidebar.svelte";
 import {
     connectSSE,
@@ -41,6 +42,7 @@ onMount(() => {
         showError("Failed to sync with GitHub");
         console.error("GitHub sync error:", message);
     });
+
     return () => {
         unsubNotifications();
         unsubGithubError();
@@ -59,7 +61,12 @@ onMount(() => {
         {refreshKey}
     />
     {#if selectedNotification}
-        <PrDetail notification={selectedNotification} onClose={handleClose} />
+        <ResizableDetailPanel>
+            <PrDetail
+                notification={selectedNotification}
+                onClose={handleClose}
+            />
+        </ResizableDetailPanel>
     {/if}
 </div>
 <Toast />
