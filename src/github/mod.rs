@@ -1,10 +1,5 @@
-mod check_runs;
-mod commits;
 pub mod fetch_pr_graphql;
 mod notifications;
-mod pull_requests;
-mod review_threads;
-mod reviews;
 pub mod sync;
 mod teams;
 
