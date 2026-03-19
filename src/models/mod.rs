@@ -4,8 +4,9 @@ mod sync_event;
 
 pub use notification::Notification;
 pub use pull_request::{
-    GithubCheckRun, GithubCheckRunList, GithubCommit, GithubIssueComment, GithubLabel,
-    GithubPullRequest, GithubReview, GithubReviewComment,
+    GithubCheckRun, GithubCheckRunList, GithubCommit, GithubCommitAuthor, GithubCommitDetail,
+    GithubHead, GithubIssueComment, GithubLabel, GithubPullRequest, GithubReview,
+    GithubReviewComment, GithubUser,
 };
 pub use sync_event::{
     GithubSyncErrorData, NewNotificationsData, PrInfoUpdatedData, PrNewComment, PrStatus,

@@ -1,20 +1,5 @@
-use crate::models::GithubCheckRunList;
-
-use super::GithubClient;
-
-pub async fn fetch_check_runs(
-    github: &GithubClient,
-    owner: &str,
-    repo: &str,
-    sha: &str,
-) -> Result<GithubCheckRunList, reqwest::Error> {
-    github
-        .get(&format!("/repos/{owner}/{repo}/commits/{sha}/check-runs"))
-        .await?
-        .error_for_status()?
-        .json()
-        .await
-}
+// REST fetch functions removed — PR data now comes via GraphQL (fetch_pr_graphql.rs).
+// Model types (GithubCheckRun, GithubCheckRunList) remain in src/models/pull_request.rs.
 
 #[cfg(test)]
 mod tests {

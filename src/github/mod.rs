@@ -1,5 +1,6 @@
 mod check_runs;
 mod commits;
+pub mod fetch_pr_graphql;
 mod notifications;
 mod pull_requests;
 mod review_threads;
@@ -14,12 +15,8 @@ use serde::Serialize;
 
 pub const GITHUB_API_BASE: &str = "https://api.github.com";
 
-pub use check_runs::fetch_check_runs;
-pub use commits::fetch_commits;
+pub use fetch_pr_graphql::fetch_pr_graphql;
 pub use notifications::{fetch_notifications, mark_thread_done, mark_thread_read};
-pub use pull_requests::{fetch_issue_comments, fetch_pull_request, fetch_review_comments};
-pub use review_threads::fetch_review_thread_states;
-pub use reviews::fetch_reviews;
 pub use teams::{fetch_requested_reviewer_teams, fetch_user_teams};
 
 #[derive(Clone)]

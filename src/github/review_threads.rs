@@ -1,124 +1,50 @@
-use std::collections::HashMap;
-
-use serde::Deserialize;
-use serde_json::json;
-
-use super::GithubClient;
-
-const REVIEW_THREAD_STATES_QUERY: &str = r#"
-query ReviewThreadStates($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    pullRequest(number: $number) {
-      reviewThreads(first: 100) {
-        nodes {
-          isResolved
-          comments(first: 100) {
-            nodes {
-              databaseId
-            }
-          }
-        }
-      }
-    }
-  }
-}
-"#;
-
-#[derive(Debug, Deserialize)]
-struct ReviewThreadStatesResponse {
-    data: ReviewThreadStatesData,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReviewThreadStatesData {
-    repository: Option<ReviewThreadRepository>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReviewThreadRepository {
-    #[serde(rename = "pullRequest")]
-    pull_request: Option<ReviewThreadPullRequest>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReviewThreadPullRequest {
-    #[serde(rename = "reviewThreads")]
-    review_threads: ReviewThreadConnection,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReviewThreadConnection {
-    nodes: Vec<ReviewThreadNode>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReviewThreadNode {
-    #[serde(rename = "isResolved")]
-    is_resolved: bool,
-    comments: ReviewThreadCommentConnection,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReviewThreadCommentConnection {
-    nodes: Vec<ReviewThreadCommentNode>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReviewThreadCommentNode {
-    #[serde(rename = "databaseId")]
-    database_id: Option<i64>,
-}
-
-pub async fn fetch_review_thread_states(
-    github: &GithubClient,
-    owner: &str,
-    repo: &str,
-    number: i64,
-) -> Result<HashMap<i64, bool>, reqwest::Error> {
-    let response: ReviewThreadStatesResponse = github
-        .post_json(
-            "/graphql",
-            &json!({
-                "query": REVIEW_THREAD_STATES_QUERY,
-                "variables": {
-                    "owner": owner,
-                    "repo": repo,
-                    "number": number,
-                },
-            }),
-        )
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
-
-    let Some(repository) = response.data.repository else {
-        return Ok(HashMap::new());
-    };
-    let Some(pull_request) = repository.pull_request else {
-        return Ok(HashMap::new());
-    };
-
-    let states = pull_request
-        .review_threads
-        .nodes
-        .into_iter()
-        .filter_map(|thread| {
-            let root_comment_id = thread
-                .comments
-                .nodes
-                .into_iter()
-                .find_map(|comment| comment.database_id);
-            root_comment_id.map(|comment_id| (comment_id, thread.is_resolved))
-        })
-        .collect();
-
-    Ok(states)
-}
+// The separate review thread states query has been superseded by the unified
+// GraphQL query in fetch_pr_graphql.rs, which fetches isResolved alongside all
+// other PR data. This module retains only the deserialization test.
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::collections::HashMap;
+
+    use serde::Deserialize;
+
+    #[derive(Debug, Deserialize)]
+    struct ReviewThreadStatesResponse {
+        data: ReviewThreadStatesData,
+    }
+    #[derive(Debug, Deserialize)]
+    struct ReviewThreadStatesData {
+        repository: Option<ReviewThreadRepository>,
+    }
+    #[derive(Debug, Deserialize)]
+    struct ReviewThreadRepository {
+        #[serde(rename = "pullRequest")]
+        pull_request: Option<ReviewThreadPullRequest>,
+    }
+    #[derive(Debug, Deserialize)]
+    struct ReviewThreadPullRequest {
+        #[serde(rename = "reviewThreads")]
+        review_threads: ReviewThreadConnection,
+    }
+    #[derive(Debug, Deserialize)]
+    struct ReviewThreadConnection {
+        nodes: Vec<ReviewThreadNode>,
+    }
+    #[derive(Debug, Deserialize)]
+    struct ReviewThreadNode {
+        #[serde(rename = "isResolved")]
+        is_resolved: bool,
+        comments: ReviewThreadCommentConnection,
+    }
+    #[derive(Debug, Deserialize)]
+    struct ReviewThreadCommentConnection {
+        nodes: Vec<ReviewThreadCommentNode>,
+    }
+    #[derive(Debug, Deserialize)]
+    struct ReviewThreadCommentNode {
+        #[serde(rename = "databaseId")]
+        database_id: Option<i64>,
+    }
 
     #[test]
     fn parses_review_thread_states() {

@@ -3,6 +3,7 @@ use sqlx::SqlitePool;
 use crate::api::AppError;
 use crate::db::queries::{self, CheckRunRow, CommentRow, CommitRow, PullRequestRow, ReviewRow};
 use crate::github;
+use crate::github::fetch_pr_graphql::GraphqlPrData;
 use crate::models::{GithubCheckRun, PrStatus};
 
 /// Minimum seconds between full PR fetches (all 5 endpoints) for the detail view.
@@ -61,39 +62,57 @@ pub async fn fetch_and_cache_pr(
         return Ok(None);
     }
 
-    // Fetch PR metadata
-    let gh_pr = github::fetch_pull_request(github, owner, repo, number).await?;
+    // Single GraphQL call replaces 6+ REST calls
+    let data = github::fetch_pr_graphql(github, owner, repo, number).await?;
 
-    let head_sha = gh_pr.head.sha.clone();
-    let author = gh_pr.user.login.clone();
-    let pr_status = derive_pr_status(gh_pr.merged_at.as_deref(), &gh_pr.state, gh_pr.draft);
+    cache_pr_data(pool, &data, &full_repo, number).await?;
+
+    let author = data.pull_request.user.login.clone();
+    let pr_status = derive_pr_status(
+        data.pull_request.merged_at.as_deref(),
+        &data.pull_request.state,
+        data.pull_request.draft,
+    );
+
+    queries::set_last_fetched_now(pool, &resource_key).await?;
+
+    Ok(Some(PrFetchResult { author, pr_status }))
+}
+
+/// Cache all PR data from a GraphQL response into SQLite.
+pub async fn cache_pr_data(
+    pool: &SqlitePool,
+    data: &GraphqlPrData,
+    full_repo: &str,
+    number: i64,
+) -> Result<(), AppError> {
+    let gh_pr = &data.pull_request;
 
     let labels_json = serde_json::to_string(&gh_pr.labels).unwrap_or_else(|_| String::from("[]"));
 
     let pr_row = PullRequestRow {
         id: gh_pr.number,
-        title: gh_pr.title,
-        repo: full_repo.clone(),
-        author: author.clone(),
-        url: gh_pr.html_url,
+        title: gh_pr.title.clone(),
+        repo: full_repo.to_string(),
+        author: gh_pr.user.login.clone(),
+        url: gh_pr.html_url.clone(),
         ci_status: None,
-        last_viewed_at: None, // ON CONFLICT clause preserves existing value
-        body: gh_pr.body.unwrap_or_default(),
-        state: gh_pr.state,
-        head_sha: head_sha.clone(),
+        last_viewed_at: None,
+        body: gh_pr.body.clone().unwrap_or_default(),
+        state: gh_pr.state.clone(),
+        head_sha: gh_pr.head.sha.clone(),
         additions: gh_pr.additions.unwrap_or(0),
         deletions: gh_pr.deletions.unwrap_or(0),
         changed_files: gh_pr.changed_files.unwrap_or(0),
         draft: gh_pr.draft,
-        merged_at: gh_pr.merged_at,
-        teams: None, // ON CONFLICT clause preserves existing teams value
+        merged_at: gh_pr.merged_at.clone(),
+        teams: None,
         labels: labels_json,
     };
     queries::upsert_pull_request(pool, &pr_row).await?;
 
-    // Fetch issue comments (top-level conversation)
-    let issue_comments = github::fetch_issue_comments(github, owner, repo, number).await?;
-    for c in &issue_comments {
+    // Issue comments
+    for c in &data.issue_comments {
         let row = CommentRow {
             id: c.id,
             pr_id: number,
@@ -107,17 +126,26 @@ pub async fn fetch_and_cache_pr(
             in_reply_to_id: None,
             html_url: Some(c.html_url.clone()),
             diff_hunk: None,
+            resolved: false,
         };
         queries::upsert_comment(pool, &row).await?;
     }
 
-    // Fetch review comments (inline on code)
-    let review_comments = github::fetch_review_comments(github, owner, repo, number).await?;
-    for c in &review_comments {
+    // Review comments
+    for c in &data.review_comments {
         let thread_id = match c.in_reply_to_id {
             Some(parent_id) => format!("review:{parent_id}"),
             None => format!("review:{}", c.id),
         };
+        let resolved = data
+            .review_thread_states
+            .get(&c.id)
+            .or_else(|| {
+                c.in_reply_to_id
+                    .and_then(|pid| data.review_thread_states.get(&pid))
+            })
+            .copied()
+            .unwrap_or(false);
         let row = CommentRow {
             id: c.id,
             pr_id: number,
@@ -131,13 +159,13 @@ pub async fn fetch_and_cache_pr(
             in_reply_to_id: c.in_reply_to_id,
             html_url: Some(c.html_url.clone()),
             diff_hunk: c.diff_hunk.clone(),
+            resolved,
         };
         queries::upsert_comment(pool, &row).await?;
     }
 
-    // Fetch commits
-    let gh_commits = github::fetch_commits(github, owner, repo, number).await?;
-    for c in &gh_commits {
+    // Commits
+    for c in &data.commits {
         let first_line = c.commit.message.lines().next().unwrap_or("").to_string();
         let row = CommitRow {
             sha: c.sha.clone(),
@@ -149,20 +177,18 @@ pub async fn fetch_and_cache_pr(
         queries::upsert_commit(pool, &row).await?;
     }
 
-    // Fetch check runs for the head SHA
-    let check_run_list = github::fetch_check_runs(github, owner, repo, &head_sha).await?;
-
-    let ci_status = derive_ci_status(&check_run_list.check_runs);
+    // Check runs
+    let ci_status = derive_ci_status(&data.check_runs.check_runs);
     if ci_status.is_some() {
         sqlx::query("UPDATE pull_requests SET ci_status = ? WHERE id = ? AND repo = ?")
             .bind(&ci_status)
             .bind(number)
-            .bind(&full_repo)
+            .bind(full_repo)
             .execute(pool)
             .await?;
     }
 
-    for cr in &check_run_list.check_runs {
+    for cr in &data.check_runs.check_runs {
         let row = CheckRunRow {
             id: cr.id,
             pr_id: number,
@@ -173,98 +199,79 @@ pub async fn fetch_and_cache_pr(
         queries::upsert_check_run(pool, &row).await?;
     }
 
-    // Fetch and cache reviews — failure is non-fatal; log and continue.
-    match github::fetch_reviews(github, owner, repo, number).await {
-        Ok(reviews) => {
-            for r in &reviews {
-                let row = ReviewRow {
-                    id: r.id,
-                    pr_id: number,
-                    reviewer: r.user.login.clone(),
-                    state: r.state.clone(),
-                    body: r.body.clone(),
-                    submitted_at: r.submitted_at.clone(),
-                    html_url: r.html_url.clone(),
-                };
-                if let Err(e) = queries::upsert_review(pool, &row).await {
-                    eprintln!("[warn] upsert_review failed for review {}: {e}", row.id);
-                }
-            }
-        }
-        Err(err) => {
-            eprintln!("[warn] fetch_reviews failed for {full_repo}#{number}: {err}");
+    // Reviews
+    for r in &data.reviews {
+        let row = ReviewRow {
+            id: r.id,
+            pr_id: number,
+            reviewer: r.user.login.clone(),
+            state: r.state.clone(),
+            body: r.body.clone(),
+            submitted_at: r.submitted_at.clone(),
+            html_url: r.html_url.clone(),
+        };
+        if let Err(e) = queries::upsert_review(pool, &row).await {
+            eprintln!("[warn] upsert_review failed for review {}: {e}", row.id);
         }
     }
 
-    queries::set_last_fetched_now(pool, &resource_key).await?;
-
-    Ok(Some(PrFetchResult { author, pr_status }))
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use axum::routing::get;
-    use axum::{Router, extract::Path};
+    use axum::Router;
+    use axum::routing::post;
     use tokio::net::TcpListener;
 
     use super::*;
     use crate::db::queries;
     use crate::github::GithubClient;
 
-    /// Start a mock GitHub API server that handles all endpoints needed by `fetch_and_cache_pr`.
-    /// `reviews_json` controls what the reviews endpoint returns.
+    fn graphql_response(reviews_json: &str, labels_json: &str) -> String {
+        format!(
+            r#"{{
+              "data": {{
+                "repository": {{
+                  "pullRequest": {{
+                    "number": 42,
+                    "title": "Test PR",
+                    "body": "body text",
+                    "state": "OPEN",
+                    "isDraft": false,
+                    "mergedAt": null,
+                    "additions": 10,
+                    "deletions": 2,
+                    "changedFiles": 1,
+                    "url": "https://github.com/owner/repo/pull/42",
+                    "author": {{ "login": "alice" }},
+                    "headRefOid": "deadbeef",
+                    "labels": {{ "nodes": {labels_json} }},
+                    "comments": {{ "nodes": [] }},
+                    "reviewThreads": {{ "nodes": [] }},
+                    "allCommits": {{ "nodes": [] }},
+                    "headCommit": {{ "nodes": [{{ "commit": {{ "statusCheckRollup": null }} }}] }},
+                    "reviews": {{ "nodes": {reviews_json} }}
+                  }}
+                }}
+              }}
+            }}"#
+        )
+    }
+
     async fn start_mock(
         reviews_json: &'static str,
-        pr_labels_json: &'static str,
+        labels_json: &'static str,
     ) -> (String, SqlitePool) {
-        let pr_response = format!(
-            r#"{{
-                "number": 42,
-                "title": "Test PR",
-                "body": "body text",
-                "state": "open",
-                "draft": false,
-                "merged_at": null,
-                "user": {{ "login": "alice" }},
-                "html_url": "https://github.com/owner/repo/pull/42",
-                "head": {{ "sha": "deadbeef" }},
-                "additions": 10,
-                "deletions": 2,
-                "changed_files": 1,
-                "labels": {pr_labels_json}
-            }}"#
-        );
+        let response = graphql_response(reviews_json, labels_json);
 
-        let app = Router::new()
-            .route(
-                "/repos/owner/repo/pulls/42",
-                get(move || async move { ([("content-type", "application/json")], pr_response) }),
-            )
-            .route(
-                "/repos/owner/repo/issues/42/comments",
-                get(|| async { ([("content-type", "application/json")], "[]") }),
-            )
-            .route(
-                "/repos/owner/repo/pulls/42/comments",
-                get(|| async { ([("content-type", "application/json")], "[]") }),
-            )
-            .route(
-                "/repos/owner/repo/pulls/42/commits",
-                get(|| async { ([("content-type", "application/json")], "[]") }),
-            )
-            .route(
-                "/repos/owner/repo/commits/{sha}/check-runs",
-                get(|Path(_sha): Path<String>| async {
-                    (
-                        [("content-type", "application/json")],
-                        r#"{"total_count":0,"check_runs":[]}"#,
-                    )
-                }),
-            )
-            .route(
-                "/repos/owner/repo/pulls/42/reviews",
-                get(move || async move { ([("content-type", "application/json")], reviews_json) }),
-            );
+        let app = Router::new().route(
+            "/graphql",
+            post(move || {
+                let response = response.clone();
+                async move { ([("content-type", "application/json")], response) }
+            }),
+        );
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -278,12 +285,12 @@ mod tests {
     #[tokio::test]
     async fn fetch_and_cache_pr_stores_review() {
         let reviews_json = r#"[{
-            "id": 1,
-            "user": { "login": "bob" },
+            "databaseId": 1,
+            "author": { "login": "bob" },
             "state": "APPROVED",
             "body": "LGTM",
-            "submitted_at": "2025-06-01T10:00:00Z",
-            "html_url": "https://github.com/owner/repo/pull/42#pullrequestreview-1"
+            "submittedAt": "2025-06-01T10:00:00Z",
+            "url": "https://github.com/owner/repo/pull/42#pullrequestreview-1"
         }]"#;
 
         let (base, pool) = start_mock(reviews_json, "[]").await;
@@ -319,7 +326,6 @@ mod tests {
             .unwrap()
             .expect("PR should be in DB");
 
-        // labels field should contain the serialized JSON array
         assert!(
             pr.labels.contains("bug"),
             "labels JSON should contain 'bug'"
@@ -335,75 +341,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn fetch_and_cache_pr_continues_on_reviews_error() {
-        // Spin up a mock server that has no reviews route (will 404), everything else is fine.
-        let pr_response = r#"{
-            "number": 99,
-            "title": "PR without reviews endpoint",
-            "body": null,
-            "state": "open",
-            "draft": false,
-            "merged_at": null,
-            "user": { "login": "charlie" },
-            "html_url": "https://github.com/owner/repo/pull/99",
-            "head": { "sha": "cafebabe" },
-            "additions": 0,
-            "deletions": 0,
-            "changed_files": 0,
-            "labels": []
-        }"#;
-
-        let app = Router::new()
-            .route(
-                "/repos/owner/repo/pulls/99",
-                get(move || async move { ([("content-type", "application/json")], pr_response) }),
-            )
-            .route(
-                "/repos/owner/repo/issues/99/comments",
-                get(|| async { ([("content-type", "application/json")], "[]") }),
-            )
-            .route(
-                "/repos/owner/repo/pulls/99/comments",
-                get(|| async { ([("content-type", "application/json")], "[]") }),
-            )
-            .route(
-                "/repos/owner/repo/pulls/99/commits",
-                get(|| async { ([("content-type", "application/json")], "[]") }),
-            )
-            .route(
-                "/repos/owner/repo/commits/{sha}/check-runs",
-                get(|Path(_sha): Path<String>| async {
-                    (
-                        [("content-type", "application/json")],
-                        r#"{"total_count":0,"check_runs":[]}"#,
-                    )
-                }),
-            );
-        // Note: no reviews route — will result in a 404 error from the server.
-
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let base = format!("http://{addr}");
-        let pool = crate::db::init_with_path(":memory:").await;
-
+    async fn fetch_and_cache_pr_with_no_reviews() {
+        let (base, pool) = start_mock("[]", "[]").await;
         let github = GithubClient::new(std::sync::Arc::from("tok"), base);
 
-        // Should succeed even though reviews endpoint is missing
-        let result = fetch_and_cache_pr(&pool, &github, "owner", "repo", 99).await;
-        assert!(
-            result.is_ok(),
-            "fetch_and_cache_pr should not fail when reviews endpoint errors"
-        );
+        let result = fetch_and_cache_pr(&pool, &github, "owner", "repo", 42).await;
+        assert!(result.is_ok());
 
-        // PR should still be in the DB
-        let pr = queries::get_pull_request(&pool, "owner/repo", 99)
+        let pr = queries::get_pull_request(&pool, "owner/repo", 42)
             .await
             .unwrap();
-        assert!(
-            pr.is_some(),
-            "PR should be cached even when reviews fetch fails"
-        );
+        assert!(pr.is_some(), "PR should be cached");
+
+        let reviews = queries::query_reviews_for_pr(&pool, 42).await.unwrap();
+        assert!(reviews.is_empty());
     }
 }
 

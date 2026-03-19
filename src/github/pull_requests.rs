@@ -1,48 +1,5 @@
-use crate::models::{GithubIssueComment, GithubPullRequest, GithubReviewComment};
-
-use super::GithubClient;
-
-pub async fn fetch_pull_request(
-    github: &GithubClient,
-    owner: &str,
-    repo: &str,
-    number: i64,
-) -> Result<GithubPullRequest, reqwest::Error> {
-    github
-        .get(&format!("/repos/{owner}/{repo}/pulls/{number}"))
-        .await?
-        .error_for_status()?
-        .json()
-        .await
-}
-
-pub async fn fetch_issue_comments(
-    github: &GithubClient,
-    owner: &str,
-    repo: &str,
-    number: i64,
-) -> Result<Vec<GithubIssueComment>, reqwest::Error> {
-    github
-        .get(&format!("/repos/{owner}/{repo}/issues/{number}/comments"))
-        .await?
-        .error_for_status()?
-        .json()
-        .await
-}
-
-pub async fn fetch_review_comments(
-    github: &GithubClient,
-    owner: &str,
-    repo: &str,
-    number: i64,
-) -> Result<Vec<GithubReviewComment>, reqwest::Error> {
-    github
-        .get(&format!("/repos/{owner}/{repo}/pulls/{number}/comments"))
-        .await?
-        .error_for_status()?
-        .json()
-        .await
-}
+// REST fetch functions removed — PR data now comes via GraphQL (fetch_pr_graphql.rs).
+// Model types remain in src/models/pull_request.rs.
 
 #[cfg(test)]
 mod tests {

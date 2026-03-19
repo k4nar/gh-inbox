@@ -1,35 +1,19 @@
-use crate::models::GithubReview;
-
-use super::GithubClient;
-
-const ALLOWED_STATES: &[&str] = &["APPROVED", "CHANGES_REQUESTED", "DISMISSED"];
-
-pub fn parse_reviews(json: &str) -> Result<Vec<GithubReview>, serde_json::Error> {
-    let all: Vec<GithubReview> = serde_json::from_str(json)?;
-    Ok(all
-        .into_iter()
-        .filter(|r| ALLOWED_STATES.contains(&r.state.as_str()))
-        .collect())
-}
-
-pub async fn fetch_reviews(
-    github: &GithubClient,
-    owner: &str,
-    repo: &str,
-    number: i64,
-) -> Result<Vec<GithubReview>, Box<dyn std::error::Error + Send + Sync>> {
-    let json = github
-        .get(&format!("/repos/{owner}/{repo}/pulls/{number}/reviews"))
-        .await?
-        .error_for_status()?
-        .text()
-        .await?;
-    Ok(parse_reviews(&json)?)
-}
+// REST fetch functions removed — PR data now comes via GraphQL (fetch_pr_graphql.rs).
+// Model type (GithubReview) remains in src/models/pull_request.rs.
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::models::GithubReview;
+
+    const ALLOWED_STATES: &[&str] = &["APPROVED", "CHANGES_REQUESTED", "DISMISSED"];
+
+    fn parse_reviews(json: &str) -> Result<Vec<GithubReview>, serde_json::Error> {
+        let all: Vec<GithubReview> = serde_json::from_str(json)?;
+        Ok(all
+            .into_iter()
+            .filter(|r| ALLOWED_STATES.contains(&r.state.as_str()))
+            .collect())
+    }
 
     #[test]
     fn parse_valid_approved_review() {

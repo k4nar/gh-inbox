@@ -23,19 +23,8 @@ pub struct ThreadResponse {
 /// GET /api/pull-requests/:owner/:repo/:number/threads
 pub async fn get_threads(
     State(state): State<AppState>,
-    Path((owner, repo, number)): Path<(String, String, i64)>,
+    Path((_owner, _repo, number)): Path<(String, String, i64)>,
 ) -> Result<Json<Vec<ThreadResponse>>, AppError> {
-    let review_thread_states =
-        match crate::github::fetch_review_thread_states(&state.github, &owner, &repo, number).await
-        {
-            Ok(states) => states,
-            Err(err) => {
-                eprintln!(
-                    "[warn] fetch_review_thread_states failed for {owner}/{repo}#{number}: {err}"
-                );
-                BTreeMap::new().into_iter().collect()
-            }
-        };
     let comments = queries::query_comments_for_pr(&state.pool, number).await?;
 
     let mut threads: BTreeMap<String, Vec<CommentRow>> = BTreeMap::new();
@@ -51,11 +40,8 @@ pub async fn get_threads(
         .into_iter()
         .map(|(thread_id, comments)| {
             let path = comments.iter().find_map(|c| c.path.clone());
-            let resolved = thread_id
-                .strip_prefix("review:")
-                .and_then(|id| id.parse::<i64>().ok())
-                .and_then(|id| review_thread_states.get(&id).copied())
-                .unwrap_or(false);
+            // Use the resolved flag from the root comment (first in thread)
+            let resolved = comments.first().map(|c| c.resolved).unwrap_or(false);
             let comments = comments
                 .into_iter()
                 .map(|c| {
