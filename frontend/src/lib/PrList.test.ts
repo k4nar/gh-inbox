@@ -434,15 +434,20 @@ describe("PrList", () => {
         });
 
         // Archive the last item — after API call, refetch should go to page 1
-        const archiveFetch = vi
-            .fn()
-            .mockResolvedValueOnce({
+        const archiveFetch = vi.fn((input: string | URL | Request) => {
+            const url = String(input);
+
+            if (url.includes("/archive")) {
+                return Promise.resolve({
+                    ok: true,
+                    status: 204,
+                    json: () => Promise.resolve(undefined),
+                });
+            }
+
+            return Promise.resolve({
                 ok: true,
-                status: 204,
-                json: () => Promise.resolve(undefined),
-            })
-            .mockResolvedValueOnce({
-                ok: true,
+                status: 200,
                 json: () =>
                     Promise.resolve({
                         items: MOCK_NOTIFICATIONS,
@@ -451,6 +456,7 @@ describe("PrList", () => {
                         per_page: DEFAULT_PER_PAGE,
                     }),
             });
+        });
         globalThis.fetch = archiveFetch as unknown as typeof fetch;
 
         const archiveBtn = container.querySelector('button[title="Archive"]')!;
