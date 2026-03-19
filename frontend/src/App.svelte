@@ -14,13 +14,13 @@ import {
 import Toast from "./lib/Toast.svelte";
 import Topbar from "./lib/Topbar.svelte";
 import { showError } from "./lib/toast.svelte.ts";
-import type { Notification } from "./lib/types.ts";
+import type { InboxItem } from "./lib/types.ts";
 
 let currentView = $state("inbox");
-let selectedNotification: Notification | null = $state(null);
+let selectedNotification: InboxItem | null = $state(null);
 let refreshKey = $state(0);
 
-function handleSelect(notification: Notification): void {
+function handleSelect(notification: InboxItem | null): void {
     selectedNotification = notification;
 }
 
@@ -57,6 +57,7 @@ onMount(() => {
     <PrList
         {currentView}
         onSelect={handleSelect}
+        onSelectionChange={handleSelect}
         selectedId={selectedNotification?.id}
         {refreshKey}
     />

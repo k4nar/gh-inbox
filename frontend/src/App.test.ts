@@ -1,4 +1,10 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/svelte";
+import {
+    cleanup,
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+} from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.svelte";
 import type { PaginatedInbox, PrDetailResponse } from "./lib/types.ts";
@@ -31,48 +37,102 @@ const BASE_INBOX: PaginatedInbox = {
             teams: [],
             new_reviews: [],
         },
+        {
+            id: "notif-2",
+            pr_id: 10,
+            title: "Refactor auth module",
+            repository: "org/api",
+            reason: "mention",
+            unread: false,
+            archived: false,
+            updated_at: "2025-06-01T11:00:00Z",
+            author: "bob",
+            pr_status: "draft",
+            new_commits: 0,
+            new_comments: [],
+            teams: [],
+            new_reviews: [],
+        },
     ],
-    total: 1,
+    total: 2,
     page: 1,
     per_page: 20,
 };
 
-const BASE_DETAIL: PrDetailResponse = {
-    pull_request: {
-        id: 42,
-        title: "Fix bug in parser",
-        repo: "owner/repo",
-        author: "alice",
-        url: "https://github.com/owner/repo/pull/42",
-        ci_status: "success",
-        last_viewed_at: "2025-06-01T10:00:00Z",
-        body: "This fixes the parser bug.",
-        body_html: "<p>This fixes the parser bug.</p>",
-        state: "open",
-        head_sha: "abc123",
-        additions: 10,
-        deletions: 3,
-        changed_files: 2,
-        draft: false,
-        merged_at: null,
-    },
-    comments: [],
-    commits: [
-        {
-            sha: "abc123",
-            pr_id: 42,
-            message: "Initial commit",
+const DETAIL_BY_PR: Record<number, PrDetailResponse> = {
+    42: {
+        pull_request: {
+            id: 42,
+            title: "Fix bug in parser",
+            repo: "owner/repo",
             author: "alice",
-            committed_at: "2025-06-01T08:00:00Z",
+            url: "https://github.com/owner/repo/pull/42",
+            ci_status: "success",
+            last_viewed_at: "2025-06-01T10:00:00Z",
+            body: "This fixes the parser bug.",
+            body_html: "<p>This fixes the parser bug.</p>",
+            state: "open",
+            head_sha: "abc123",
+            additions: 10,
+            deletions: 3,
+            changed_files: 2,
+            draft: false,
+            merged_at: null,
         },
-    ],
-    check_runs: [],
-    previous_viewed_at: null,
-    reviews: [],
-    labels: [],
+        comments: [],
+        commits: [
+            {
+                sha: "abc123",
+                pr_id: 42,
+                message: "Initial commit",
+                author: "alice",
+                committed_at: "2025-06-01T08:00:00Z",
+            },
+        ],
+        check_runs: [],
+        previous_viewed_at: null,
+        reviews: [],
+        labels: [],
+    },
+    10: {
+        pull_request: {
+            id: 10,
+            title: "Refactor auth module",
+            repo: "org/api",
+            author: "bob",
+            url: "https://github.com/org/api/pull/10",
+            ci_status: "pending",
+            last_viewed_at: "2025-06-01T09:00:00Z",
+            body: "This refactors the auth module.",
+            body_html: "<p>This refactors the auth module.</p>",
+            state: "open",
+            head_sha: "def456",
+            additions: 25,
+            deletions: 9,
+            changed_files: 4,
+            draft: true,
+            merged_at: null,
+        },
+        comments: [],
+        commits: [
+            {
+                sha: "def456",
+                pr_id: 10,
+                message: "Follow-up cleanup",
+                author: "bob",
+                committed_at: "2025-06-01T07:00:00Z",
+            },
+        ],
+        check_runs: [],
+        previous_viewed_at: null,
+        reviews: [],
+        labels: [],
+    },
 };
 
 function installFetchMock(): void {
+    let archivedIds = new Set<string>();
+
     globalThis.fetch = vi.fn((input: string | URL | Request) => {
         const url = String(input);
 
@@ -82,9 +142,26 @@ function installFetchMock(): void {
             ) as Promise<Response>;
         }
 
-        if (url.includes("/api/inbox?")) {
+        if (url.includes("/api/inbox/") && url.endsWith("/archive")) {
+            const archivedId = url.split("/").at(-2);
+            if (archivedId) {
+                archivedIds = new Set([...archivedIds, archivedId]);
+            }
             return Promise.resolve(
-                Response.json(BASE_INBOX),
+                new Response(null, { status: 204 }),
+            ) as Promise<Response>;
+        }
+
+        if (url.includes("/api/inbox?")) {
+            const items = BASE_INBOX.items.filter(
+                (item) => !archivedIds.has(item.id),
+            );
+            return Promise.resolve(
+                Response.json({
+                    ...BASE_INBOX,
+                    items,
+                    total: items.length,
+                }),
             ) as Promise<Response>;
         }
 
@@ -93,8 +170,9 @@ function installFetchMock(): void {
         }
 
         if (url.includes("/api/pull-requests/")) {
+            const number = Number(url.split("/").at(-1));
             return Promise.resolve(
-                Response.json(BASE_DETAIL),
+                Response.json(DETAIL_BY_PR[number]),
             ) as Promise<Response>;
         }
 
@@ -152,6 +230,29 @@ describe("App", () => {
             expect(
                 screen.getByLabelText("Resize PR detail panel"),
             ).toBeInTheDocument();
+        });
+    });
+
+    it("shows the next item after archiving the selected notification", async () => {
+        const { container } = render(App);
+
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+
+        screen.getByText("Fix bug in parser").click();
+
+        await waitFor(() => {
+            expect(screen.getByText("Initial commit")).toBeInTheDocument();
+        });
+
+        const archiveButtons = container.querySelectorAll(
+            'button[title="Archive"]',
+        );
+        await fireEvent.click(archiveButtons[0] as HTMLButtonElement);
+
+        await waitFor(() => {
+            expect(screen.getAllByText("Refactor auth module")).toHaveLength(2);
         });
     });
 });

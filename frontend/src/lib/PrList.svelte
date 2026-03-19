@@ -12,11 +12,13 @@ import {
 let {
     currentView = "inbox",
     onSelect = (_notification: InboxItem) => {},
+    onSelectionChange = (_notification: InboxItem | null) => {},
     selectedId = null,
     refreshKey = 0,
 }: {
     currentView?: string;
     onSelect?: (notification: InboxItem) => void;
+    onSelectionChange?: (notification: InboxItem | null) => void;
     selectedId?: string | null;
     refreshKey?: number;
 } = $props();
@@ -124,7 +126,7 @@ $effect(() => {
 async function fetchNotifications(
     view: string,
     page: number = currentPage,
-): Promise<void> {
+): Promise<PaginatedInbox | null> {
     try {
         const result = await apiFetch<PaginatedInbox>(
             `/api/inbox?status=${view}&page=${page}&per_page=${PER_PAGE}`,
@@ -134,9 +136,11 @@ async function fetchNotifications(
         currentPage = result.page;
         prefetchedIds.clear();
         listVersion++;
+        return result;
     } catch (err) {
         console.error("Failed to fetch notifications:", err);
         showError("Failed to load notifications");
+        return null;
     }
 }
 
@@ -176,9 +180,35 @@ async function handleSelect(notif: InboxItem): Promise<void> {
     onSelect(notif);
 }
 
+function getAdjacentNotification(
+    items: InboxItem[],
+    removedId: string,
+): InboxItem | null {
+    const removedIndex = items.findIndex((item) => item.id === removedId);
+    if (removedIndex === -1) return null;
+    return items[removedIndex + 1] ?? items[removedIndex - 1] ?? null;
+}
+
+function resolveNextSelection(
+    removedNotification: InboxItem,
+    previousItems: InboxItem[],
+    refreshedItems: InboxItem[] | null,
+): InboxItem | null {
+    const adjacent = getAdjacentNotification(
+        previousItems,
+        removedNotification.id,
+    );
+    if (adjacent === null) {
+        return refreshedItems?.[0] ?? null;
+    }
+
+    return refreshedItems?.find((item) => item.id === adjacent.id) ?? adjacent;
+}
+
 async function handleArchive(e: MouseEvent, notif: InboxItem): Promise<void> {
     e.stopPropagation();
     const prevNotifications = [...notifications];
+    const archivedWasSelected = selectedId === notif.id;
     notifications = notifications.filter((n) => n.id !== notif.id);
     try {
         await apiFetch(`/api/inbox/${notif.id}/archive`, { method: "POST" });
@@ -187,11 +217,23 @@ async function handleArchive(e: MouseEvent, notif: InboxItem): Promise<void> {
             notifications.length === 0 && currentPage > 1
                 ? currentPage - 1
                 : currentPage;
-        await fetchNotifications(currentView, page);
+        const result = await fetchNotifications(currentView, page);
+        if (archivedWasSelected) {
+            onSelectionChange(
+                resolveNextSelection(
+                    notif,
+                    prevNotifications,
+                    result?.items ?? null,
+                ),
+            );
+        }
     } catch (err) {
         console.error("Failed to archive:", err);
         showError("Failed to archive notification");
         notifications = prevNotifications;
+        if (archivedWasSelected) {
+            onSelectionChange(notif);
+        }
     }
 }
 
@@ -202,6 +244,7 @@ function goToPage(page: number): void {
 async function handleUnarchive(e: MouseEvent, notif: InboxItem): Promise<void> {
     e.stopPropagation();
     const prevNotifications = [...notifications];
+    const unarchivedWasSelected = selectedId === notif.id;
     notifications = notifications.filter((n) => n.id !== notif.id);
     try {
         await apiFetch(`/api/inbox/${notif.id}/unarchive`, { method: "POST" });
@@ -209,11 +252,23 @@ async function handleUnarchive(e: MouseEvent, notif: InboxItem): Promise<void> {
             notifications.length === 0 && currentPage > 1
                 ? currentPage - 1
                 : currentPage;
-        await fetchNotifications(currentView, page);
+        const result = await fetchNotifications(currentView, page);
+        if (unarchivedWasSelected) {
+            onSelectionChange(
+                resolveNextSelection(
+                    notif,
+                    prevNotifications,
+                    result?.items ?? null,
+                ),
+            );
+        }
     } catch (err) {
         console.error("Failed to unarchive:", err);
         showError("Failed to unarchive notification");
         notifications = prevNotifications;
+        if (unarchivedWasSelected) {
+            onSelectionChange(notif);
+        }
     }
 }
 
