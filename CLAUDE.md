@@ -23,7 +23,14 @@ Keep things simple.
 - All async handlers must propagate typed errors (no `.unwrap()` in handlers)
 - Frontend never holds auth tokens
 
-## Dev workflow
-- Look at the next milestone in @docs/specs/roadmap.md
-- Create a branch for each milestone
-- Commit on every working checkpoint -> The tests run with the pre-commit hooks
+## Dev tooling
+
+### Frontend
+
+- `npm test` to run the tests
+- `npm run lint:fix` to check the code with biome
+- `npm run svelte-check` to check Svelte & TS code
+
+### Backend
+
+- Use `cargo`
