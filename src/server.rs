@@ -5,7 +5,7 @@ use std::sync::atomic::AtomicBool;
 use axum::http::{StatusCode, header};
 #[cfg(not(debug_assertions))]
 use axum::response::{IntoResponse, Response};
-use axum::{Router, routing::get};
+use axum::{Router, middleware, routing::get};
 use sqlx::SqlitePool;
 use tokio::sync::broadcast;
 
@@ -95,6 +95,17 @@ async fn index() -> &'static str {
     "gh-inbox works"
 }
 
+async fn log_request(
+    request: axum::extract::Request,
+    next: middleware::Next,
+) -> axum::response::Response {
+    let method = request.method().clone();
+    let path = request.uri().path().to_owned();
+    let response = next.run(request).await;
+    tracing::debug!(method = %method, path, status = response.status().as_u16());
+    response
+}
+
 pub fn app(pool: SqlitePool, token: Arc<str>) -> (Router, AppState) {
     app_with_base_url(pool, token, github::GITHUB_API_BASE.to_string())
 }
@@ -122,5 +133,10 @@ pub fn app_with_base_url(
     #[cfg(debug_assertions)]
     let router = router.route("/", get(index));
 
-    (router.with_state(state.clone()), state)
+    (
+        router
+            .layer(middleware::from_fn(log_request))
+            .with_state(state.clone()),
+        state,
+    )
 }

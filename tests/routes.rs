@@ -70,67 +70,123 @@ const MOCK_NOTIFICATIONS: &str = r#"[
 ]"#;
 
 const MOCK_PR: &str = r#"{
-    "number": 42,
-    "title": "Add feature X",
-    "body": "This adds feature X.",
-    "state": "open",
-    "user": { "login": "alice" },
-    "html_url": "https://github.com/owner/repo/pull/42",
-    "head": { "sha": "abc123def456" },
-    "additions": 15,
-    "deletions": 3,
-    "changed_files": 4
-}"#;
-
-const MOCK_ISSUE_COMMENTS: &str = r#"[
-    {
-        "id": 1001,
-        "user": { "login": "bob" },
-        "body": "Looks good overall!",
-        "created_at": "2025-06-01T11:00:00Z",
-        "html_url": "https://github.com/owner/repo/pull/42#issuecomment-1001"
-    }
-]"#;
-
-const MOCK_REVIEW_COMMENTS: &str = r#"[
-    {
-        "id": 2001,
-        "user": { "login": "carol" },
-        "body": "Nit: rename this variable",
-        "created_at": "2025-06-01T12:00:00Z",
-        "path": "src/main.rs",
-        "position": 10,
-        "in_reply_to_id": null,
-        "pull_request_review_id": 50,
-        "html_url": "https://github.com/owner/repo/pull/42#discussion_r2001"
-    },
-    {
-        "id": 2002,
-        "user": { "login": "alice" },
-        "body": "Done!",
-        "created_at": "2025-06-01T13:00:00Z",
-        "path": "src/main.rs",
-        "position": 10,
-        "in_reply_to_id": 2001,
-        "pull_request_review_id": 51,
-        "html_url": "https://github.com/owner/repo/pull/42#discussion_r2002"
-    }
-]"#;
-
-const MOCK_REVIEW_THREADS: &str = r#"{
     "data": {
         "repository": {
             "pullRequest": {
+                "number": 42,
+                "title": "Add feature X",
+                "body": "This adds feature X.",
+                "state": "OPEN",
+                "isDraft": false,
+                "mergedAt": null,
+                "additions": 15,
+                "deletions": 3,
+                "changedFiles": 4,
+                "url": "https://github.com/owner/repo/pull/42",
+                "author": { "login": "alice" },
+                "headRefOid": "abc123def456",
+                "labels": { "nodes": [] },
+                "comments": {
+                    "nodes": [
+                        {
+                            "databaseId": 1001,
+                            "author": { "login": "bob" },
+                            "body": "Looks good overall!",
+                            "createdAt": "2025-06-01T11:00:00Z",
+                            "url": "https://github.com/owner/repo/pull/42#issuecomment-1001"
+                        }
+                    ]
+                },
                 "reviewThreads": {
                     "nodes": [
                         {
                             "isResolved": true,
                             "comments": {
                                 "nodes": [
-                                    { "databaseId": 2001 },
-                                    { "databaseId": 2002 }
+                                    {
+                                        "databaseId": 2001,
+                                        "author": { "login": "carol" },
+                                        "body": "Nit: rename this variable",
+                                        "createdAt": "2025-06-01T12:00:00Z",
+                                        "path": "src/main.rs",
+                                        "position": 10,
+                                        "replyTo": null,
+                                        "pullRequestReview": { "databaseId": 50 },
+                                        "url": "https://github.com/owner/repo/pull/42#discussion_r2001",
+                                        "diffHunk": null
+                                    },
+                                    {
+                                        "databaseId": 2002,
+                                        "author": { "login": "alice" },
+                                        "body": "Done!",
+                                        "createdAt": "2025-06-01T13:00:00Z",
+                                        "path": "src/main.rs",
+                                        "position": 10,
+                                        "replyTo": { "databaseId": 2001 },
+                                        "pullRequestReview": { "databaseId": 51 },
+                                        "url": "https://github.com/owner/repo/pull/42#discussion_r2002",
+                                        "diffHunk": null
+                                    }
                                 ]
                             }
+                        }
+                    ]
+                },
+                "allCommits": {
+                    "nodes": [
+                        {
+                            "commit": {
+                                "oid": "abc123def456",
+                                "message": "Add feature X\n\nDetailed description",
+                                "author": { "name": "Alice", "date": "2025-06-01T09:00:00Z" }
+                            }
+                        },
+                        {
+                            "commit": {
+                                "oid": "def789ghi012",
+                                "message": "Fix tests",
+                                "author": { "name": "Alice", "date": "2025-06-01T10:00:00Z" }
+                            }
+                        }
+                    ]
+                },
+                "headCommit": {
+                    "nodes": [
+                        {
+                            "commit": {
+                                "statusCheckRollup": {
+                                    "contexts": {
+                                        "nodes": [
+                                            {
+                                                "__typename": "CheckRun",
+                                                "databaseId": 1,
+                                                "name": "CI",
+                                                "status": "COMPLETED",
+                                                "conclusion": "SUCCESS"
+                                            },
+                                            {
+                                                "__typename": "CheckRun",
+                                                "databaseId": 2,
+                                                "name": "Lint",
+                                                "status": "COMPLETED",
+                                                "conclusion": "SUCCESS"
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                },
+                "reviews": {
+                    "nodes": [
+                        {
+                            "databaseId": 9001,
+                            "author": { "login": "bob" },
+                            "state": "APPROVED",
+                            "body": "Looks good to me!",
+                            "submittedAt": "2025-06-01T14:00:00Z",
+                            "url": "https://github.com/owner/repo/pull/42#pullrequestreview-9001"
                         }
                     ]
                 }
@@ -138,42 +194,6 @@ const MOCK_REVIEW_THREADS: &str = r#"{
         }
     }
 }"#;
-
-const MOCK_COMMITS: &str = r#"[
-    {
-        "sha": "abc123def456",
-        "commit": {
-            "message": "Add feature X\n\nDetailed description",
-            "author": { "name": "Alice", "date": "2025-06-01T09:00:00Z" }
-        }
-    },
-    {
-        "sha": "def789ghi012",
-        "commit": {
-            "message": "Fix tests",
-            "author": { "name": "Alice", "date": "2025-06-01T10:00:00Z" }
-        }
-    }
-]"#;
-
-const MOCK_CHECK_RUNS: &str = r#"{
-    "total_count": 2,
-    "check_runs": [
-        { "id": 1, "name": "CI", "status": "completed", "conclusion": "success" },
-        { "id": 2, "name": "Lint", "status": "completed", "conclusion": "success" }
-    ]
-}"#;
-
-const MOCK_REVIEWS: &str = r#"[
-    {
-        "id": 9001,
-        "user": { "login": "bob" },
-        "state": "APPROVED",
-        "body": "Looks good to me!",
-        "submitted_at": "2025-06-01T14:00:00Z",
-        "html_url": "https://github.com/owner/repo/pull/42#pullrequestreview-9001"
-    }
-]"#;
 
 /// Mock GitHub that returns 500 for PATCH /notifications/threads/:id
 /// and 500 for DELETE /notifications/threads/:id
@@ -324,34 +344,8 @@ fn start_mock_github_router() -> Router {
             get(|| async { ([("content-type", "application/json")], MOCK_NOTIFICATIONS) }),
         )
         .route(
-            "/repos/{owner}/{repo}/pulls/{number}",
-            get(|| async { ([("content-type", "application/json")], MOCK_PR) }),
-        )
-        .route(
-            "/repos/{owner}/{repo}/issues/{number}/comments",
-            get(|| async { ([("content-type", "application/json")], MOCK_ISSUE_COMMENTS) }),
-        )
-        .route(
-            "/repos/{owner}/{repo}/pulls/{number}/comments",
-            get(|| async { ([("content-type", "application/json")], MOCK_REVIEW_COMMENTS) }),
-        )
-        .route(
-            "/repos/{owner}/{repo}/pulls/{number}/commits",
-            get(|| async { ([("content-type", "application/json")], MOCK_COMMITS) }),
-        )
-        .route(
-            "/repos/{owner}/{repo}/commits/{sha}/check-runs",
-            get(|| async { ([("content-type", "application/json")], MOCK_CHECK_RUNS) }),
-        )
-        .route(
-            "/repos/{owner}/{repo}/pulls/{number}/reviews",
-            get(|| async { ([("content-type", "application/json")], MOCK_REVIEWS) }),
-        )
-        .route(
             "/graphql",
-            axum::routing::post(|| async {
-                ([("content-type", "application/json")], MOCK_REVIEW_THREADS)
-            }),
+            axum::routing::post(|| async { ([("content-type", "application/json")], MOCK_PR) }),
         )
 }
 

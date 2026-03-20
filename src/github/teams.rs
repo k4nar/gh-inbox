@@ -13,17 +13,6 @@ struct GithubOrg {
     login: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct ReviewersResponse {
-    teams: Vec<ReviewerTeam>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ReviewerTeam {
-    slug: String,
-    // org is not in the reviewer response; we derive it from the repo owner
-}
-
 /// Fetch the teams the authenticated user belongs to.
 /// Returns full slugs in "{org}/{team}" format.
 ///
@@ -43,29 +32,6 @@ pub async fn fetch_user_teams(github: &GithubClient) -> Result<Vec<String>, reqw
         .collect())
 }
 
-/// Fetch the teams requested to review a specific PR.
-/// Returns team slugs as "{owner}/{team}" (owner = repo org login).
-pub async fn fetch_requested_reviewer_teams(
-    github: &GithubClient,
-    owner: &str,
-    repo: &str,
-    pr_number: i64,
-) -> Result<Vec<String>, reqwest::Error> {
-    let response: ReviewersResponse = github
-        .get(&format!(
-            "/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers"
-        ))
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
-    Ok(response
-        .teams
-        .into_iter()
-        .map(|t| format!("{owner}/{}", t.slug))
-        .collect())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,15 +41,6 @@ mod tests {
         teams
             .into_iter()
             .map(|t| format!("{}/{}", t.organization.login, t.slug))
-            .collect()
-    }
-
-    fn parse_reviewer_teams(json: &str, owner: &str) -> Vec<String> {
-        let response: ReviewersResponse = serde_json::from_str(json).unwrap();
-        response
-            .teams
-            .into_iter()
-            .map(|t| format!("{owner}/{}", t.slug))
             .collect()
     }
 
@@ -100,20 +57,6 @@ mod tests {
     #[test]
     fn parse_user_teams_empty() {
         let result = parse_user_teams("[]");
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn parse_reviewer_teams_valid() {
-        let json = r#"{"users": [], "teams": [{"slug": "platform"}, {"slug": "infra"}]}"#;
-        let result = parse_reviewer_teams(json, "acme");
-        assert_eq!(result, vec!["acme/platform", "acme/infra"]);
-    }
-
-    #[test]
-    fn parse_reviewer_teams_no_teams() {
-        let json = r#"{"users": [{"login": "alice"}], "teams": []}"#;
-        let result = parse_reviewer_teams(json, "acme");
         assert!(result.is_empty());
     }
 }

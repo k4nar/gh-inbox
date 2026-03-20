@@ -1,9 +1,5 @@
-mod check_runs;
-mod commits;
+pub mod fetch_pr_graphql;
 mod notifications;
-mod pull_requests;
-mod review_threads;
-mod reviews;
 pub mod sync;
 mod teams;
 
@@ -14,13 +10,9 @@ use serde::Serialize;
 
 pub const GITHUB_API_BASE: &str = "https://api.github.com";
 
-pub use check_runs::fetch_check_runs;
-pub use commits::fetch_commits;
+pub use fetch_pr_graphql::fetch_pr_graphql;
 pub use notifications::{fetch_notifications, mark_thread_done, mark_thread_read};
-pub use pull_requests::{fetch_issue_comments, fetch_pull_request, fetch_review_comments};
-pub use review_threads::fetch_review_thread_states;
-pub use reviews::fetch_reviews;
-pub use teams::{fetch_requested_reviewer_teams, fetch_user_teams};
+pub use teams::fetch_user_teams;
 
 #[derive(Clone)]
 pub struct GithubClient {
@@ -80,28 +72,10 @@ impl GithubClient {
         label: &str,
         path: &str,
     ) -> Result<Response, reqwest::Error> {
-        if cfg!(debug_assertions) {
-            eprintln!("[debug] GitHub {label} {}{path}", self.base_url);
-        }
-
         match builder.send().await {
-            Ok(response) => {
-                if cfg!(debug_assertions) {
-                    eprintln!(
-                        "[debug] GitHub {label} {}{path} -> {}",
-                        self.base_url,
-                        response.status()
-                    );
-                }
-                Ok(response)
-            }
+            Ok(response) => Ok(response),
             Err(err) => {
-                if cfg!(debug_assertions) {
-                    eprintln!(
-                        "[debug] GitHub {label} {}{path} -> error: {err}",
-                        self.base_url
-                    );
-                }
+                tracing::debug!(method = label, path, base_url = %self.base_url, error = %err, "GitHub request failed");
                 Err(err)
             }
         }

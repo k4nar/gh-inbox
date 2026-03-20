@@ -61,7 +61,7 @@ pub async fn get_events(
         }
         Err(_) => {
             // Lagged — skip missed messages
-            eprintln!("SSE client lagged, skipping missed events");
+            tracing::warn!("SSE client lagged, skipping missed events");
             None
         }
     });

@@ -6,11 +6,24 @@ use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                let default = if cfg!(debug_assertions) {
+                    "debug"
+                } else {
+                    "info"
+                };
+                tracing_subscriber::EnvFilter::new(default)
+            }),
+        )
+        .init();
+
     let pool = db::init().await;
-    println!("Database initialized");
+    tracing::info!("database initialized");
 
     let token = acquire_token();
-    println!("GitHub token acquired");
+    tracing::info!("GitHub token acquired");
 
     let addr = match std::env::var("GH_INBOX_PORT") {
         Ok(port) => format!("127.0.0.1:{port}"),
@@ -24,7 +37,7 @@ async fn main() {
     let addr: SocketAddr = listener.local_addr().expect("failed to get local address");
     let url = format!("http://{addr}");
 
-    println!("Listening on {url}");
+    tracing::info!(url, "listening");
 
     let mut vite_child: Option<std::process::Child> = None;
 
@@ -36,15 +49,15 @@ async fn main() {
             .spawn()
         {
             Ok(child) => {
-                println!("Vite dev server starting…");
+                tracing::info!("Vite dev server starting");
                 vite_child = Some(child);
             }
-            Err(e) => eprintln!("Could not start Vite dev server: {e}"),
+            Err(e) => tracing::warn!("could not start Vite dev server: {e}"),
         }
     } else {
         // Prod mode: open the browser directly to the backend
         if let Err(e) = open::that(&url) {
-            eprintln!("Failed to open browser: {e}");
+            tracing::warn!("failed to open browser: {e}");
         }
     }
 

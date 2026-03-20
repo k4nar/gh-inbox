@@ -191,6 +191,7 @@ pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>) {
         match sync_notifications(&state).await {
             Ok(count) => {
                 if count > 0 {
+                    tracing::info!(count, "new notifications fetched");
                     let _ = tx.send(SyncEvent::NewNotifications { count });
                 }
                 let _ = tx.send(SyncEvent::SyncStatus {
@@ -198,7 +199,7 @@ pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>) {
                 });
             }
             Err(e) => {
-                eprintln!("Sync error: {e:?}");
+                tracing::warn!(error = %e, "notification sync failed");
                 let _ = tx.send(SyncEvent::SyncStatus {
                     status: SyncStatusKind::Errored {
                         message: format!("{e:?}"),

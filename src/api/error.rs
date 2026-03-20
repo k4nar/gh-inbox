@@ -56,7 +56,7 @@ impl IntoResponse for AppError {
             AppError::Internal(msg) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
         };
 
-        eprintln!("{message}");
+        tracing::warn!("{message}");
         (status, message).into_response()
     }
 }

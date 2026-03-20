@@ -6,7 +6,7 @@ use sqlx::SqlitePool;
 use tokio::sync::broadcast::Sender;
 
 use crate::api::AppError;
-use crate::api::inbox::teams::{ensure_user_teams_fresh, fetch_teams_for_pr};
+use crate::api::inbox::teams::ensure_user_teams_fresh;
 use crate::api::pull_requests::fetch::{derive_pr_status_from_row, fetch_and_cache_pr};
 use crate::db::queries;
 use crate::github;
@@ -54,15 +54,17 @@ async fn do_prefetch(
     // Ensure user teams are fresh once for the entire batch instead of once per claimed PR,
     // avoiding N sequential DB reads when many rows are visible.
     if let Err(e) = ensure_user_teams_fresh(pool, github).await {
-        eprintln!("prefetch: could not refresh user teams: {e}");
+        tracing::warn!(error = %e, "prefetch: could not refresh user teams");
         // Non-fatal — continue; team badges may be stale but PR info still fetches.
     }
 
     for item in items {
         if let Err(e) = fetch_one(pool, github, tx, &item).await {
-            eprintln!(
-                "prefetch error for {}/#{}: {e}",
-                item.repository, item.pr_number
+            tracing::warn!(
+                repository = %item.repository,
+                pr_number = item.pr_number,
+                error = %e,
+                "prefetch error"
             );
             // Continue to next item — one failure must not abort the batch.
         }
@@ -122,30 +124,6 @@ async fn fetch_one(
         new_comments,
         new_reviews,
     }));
-
-    // Fetch teams for this PR now that the PR row exists.
-    // set_teams_fetching atomically claims the row (NULL → 'fetching'); if it returns
-    // this id, we own the fetch. If the row was already 'fetching' or has teams, skip.
-    let claimed = queries::set_teams_fetching(pool, &[item.pr_number])
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-    if claimed.contains(&item.pr_number) {
-        // ensure_user_teams_fresh was already called once in do_prefetch.
-        if let Err(e) = fetch_teams_for_pr(pool, github, tx, item.pr_number, &item.repository).await
-        {
-            eprintln!(
-                "prefetch team error for {}/#{}: {e}",
-                item.repository, item.pr_number
-            );
-            // Reset so the next inbox load can retry.
-            let _ = sqlx::query(
-                "UPDATE pull_requests SET teams = NULL WHERE id = ? AND teams = 'fetching'",
-            )
-            .bind(item.pr_number)
-            .execute(pool)
-            .await;
-        }
-    }
 
     Ok(())
 }
