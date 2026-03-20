@@ -80,7 +80,7 @@ const DETAIL_BY_PR: Record<number, PrDetailResponse> = {
             draft: false,
             merged_at: null,
         },
-        comments: [],
+        threads: [],
         commits: [
             {
                 sha: "abc123",
@@ -114,7 +114,7 @@ const DETAIL_BY_PR: Record<number, PrDetailResponse> = {
             draft: true,
             merged_at: null,
         },
-        comments: [],
+        threads: [],
         commits: [
             {
                 sha: "def456",
@@ -164,10 +164,6 @@ function installFetchMock(): void {
                     total: items.length,
                 }),
             ) as Promise<Response>;
-        }
-
-        if (url.includes("/threads")) {
-            return Promise.resolve(Response.json([])) as Promise<Response>;
         }
 
         if (url.includes("/api/pull-requests/")) {

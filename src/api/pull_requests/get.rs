@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use axum::Json;
 use axum::extract::{Path, State};
 use serde::Serialize;
@@ -42,11 +44,20 @@ pub struct LabelResponse {
     pub color: String,
 }
 
+/// A thread of comments grouped by thread_id.
+#[derive(Debug, Serialize)]
+pub struct ThreadResponse {
+    pub thread_id: String,
+    pub path: Option<String>,
+    pub resolved: bool,
+    pub comments: Vec<CommentResponse>,
+}
+
 /// Response payload for GET /api/pull-requests/:owner/:repo/:number
 #[derive(Debug, Serialize)]
 pub struct PrDetailResponse {
     pub pull_request: PullRequestResponse,
-    pub comments: Vec<CommentResponse>,
+    pub threads: Vec<ThreadResponse>,
     pub commits: Vec<CommitRow>,
     pub check_runs: Vec<CheckRunResponse>,
     pub previous_viewed_at: Option<String>,
@@ -59,6 +70,39 @@ pub struct CheckRunResponse {
     pub name: String,
     pub status: String,
     pub conclusion: Option<String>,
+}
+
+fn build_threads(comments: Vec<CommentRow>) -> Vec<ThreadResponse> {
+    let mut map: BTreeMap<String, Vec<CommentRow>> = BTreeMap::new();
+    for c in comments {
+        let tid = c
+            .thread_id
+            .clone()
+            .unwrap_or_else(|| format!("orphan:{}", c.id));
+        map.entry(tid).or_default().push(c);
+    }
+    map.into_iter()
+        .map(|(thread_id, comments)| {
+            let path = comments.iter().find_map(|c| c.path.clone());
+            let resolved = comments.first().map(|c| c.resolved).unwrap_or(false);
+            let comments = comments
+                .into_iter()
+                .map(|c| {
+                    let body_html = render_markdown(&c.body);
+                    CommentResponse {
+                        inner: c,
+                        body_html,
+                    }
+                })
+                .collect();
+            ThreadResponse {
+                thread_id,
+                path,
+                resolved,
+                comments,
+            }
+        })
+        .collect()
 }
 
 /// GET /api/pull-requests/:owner/:repo/:number
@@ -114,18 +158,7 @@ pub async fn get_pr(
         body_html,
     };
 
-    let comments: Vec<CommentResponse> = queries::query_comments_for_pr(&state.pool, number)
-        .await?
-        .into_iter()
-        .map(|c| {
-            let body_html = render_markdown(&c.body);
-            CommentResponse {
-                inner: c,
-                body_html,
-            }
-        })
-        .collect();
-
+    let threads = build_threads(queries::query_comments_for_pr(&state.pool, number).await?);
     let commits = queries::query_commits_for_pr(&state.pool, number).await?;
 
     let check_runs: Vec<CheckRunResponse> = queries::query_check_runs_for_pr(&state.pool, number)
@@ -153,7 +186,7 @@ pub async fn get_pr(
 
     Ok(Json(PrDetailResponse {
         pull_request,
-        comments,
+        threads,
         commits,
         check_runs,
         previous_viewed_at,

@@ -81,7 +81,7 @@ export interface Thread {
 
 export interface PrDetailResponse {
     pull_request: PullRequest;
-    comments: Comment[];
+    threads: Thread[];
     commits: Commit[];
     check_runs: CheckRun[];
     previous_viewed_at: string | null;

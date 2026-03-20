@@ -65,9 +65,7 @@ async function loadDetail(): Promise<void> {
         );
         reviews = detail.reviews ?? [];
         labels = detail.labels ?? [];
-        threads = await apiFetch<Thread[]>(
-            `/api/pull-requests/${owner}/${repo}/${number}/threads`,
-        );
+        threads = detail.threads ?? [];
     } catch (e) {
         error = e instanceof Error ? e.message : String(e);
     } finally {
