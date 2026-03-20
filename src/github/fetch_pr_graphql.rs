@@ -118,8 +118,15 @@ const ALLOWED_REVIEW_STATES: &[&str] = &["APPROVED", "CHANGES_REQUESTED", "DISMI
 // -- GraphQL response types (file-local) --
 
 #[derive(Debug, Deserialize)]
+struct GqlError {
+    message: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct GqlResponse {
     data: Option<GqlData>,
+    #[serde(default)]
+    errors: Vec<GqlError>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -533,11 +540,14 @@ pub async fn fetch_pr_graphql(
         .json()
         .await?;
 
-    let gql_pr = response
-        .data
+    let GqlResponse { data, errors } = response;
+    let gql_pr = data
         .and_then(|d| d.repository)
         .and_then(|r| r.pull_request)
         .ok_or_else(|| {
+            for e in &errors {
+                tracing::warn!(error = %e.message, owner, repo, number, "GraphQL error");
+            }
             AppError::NotFound(format!(
                 "Pull request {owner}/{repo}#{number} not found via GraphQL"
             ))
