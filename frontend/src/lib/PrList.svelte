@@ -317,8 +317,8 @@ function avatarUrl(login: string): string {
     return `https://github.com/${login}.png?size=64`;
 }
 
-function initials(login: string): string {
-    return login.charAt(0).toUpperCase();
+function initials(login: string | null): string {
+    return login ? login.charAt(0).toUpperCase() : "?";
 }
 </script>
 
@@ -403,7 +403,7 @@ function initials(login: string): string {
                                         alt={notif.author}
                                         onerror={(e) => {
                                             const el = e.currentTarget as HTMLElement;
-                                            el.outerHTML = `<div class="author-avatar author-avatar-initials">${initials(notif.author!)}</div>`;
+                                            el.outerHTML = `<div class="author-avatar author-avatar-initials">${initials(notif.author)}</div>`;
                                         }}
                                     >
                                     <span class="author-name"
