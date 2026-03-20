@@ -115,10 +115,10 @@ async fn fetch_one(
     };
 
     let ci_status = pr_row.ci_status.clone();
-    let teams: Option<Vec<String>> = match pr_row.teams.as_deref() {
-        None | Some("fetching") => None,
-        Some(json) => serde_json::from_str(json).ok(),
-    };
+    let teams: Option<Vec<String>> = pr_row
+        .teams
+        .as_deref()
+        .and_then(|json| serde_json::from_str(json).ok());
 
     // Query actual activity counts (respects last_viewed_at).
     let (new_commits, new_comments_json): (Option<i64>, Option<String>) =

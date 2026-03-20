@@ -89,10 +89,10 @@ pub async fn get_pr(
     };
 
     // Send SSE so the inbox list immediately reflects 0 new activity and correct metadata.
-    let teams: Option<Vec<String>> = match pr.teams.as_deref() {
-        None | Some("fetching") => None,
-        Some(json) => serde_json::from_str(json).ok(),
-    };
+    let teams: Option<Vec<String>> = pr
+        .teams
+        .as_deref()
+        .and_then(|json| serde_json::from_str(json).ok());
     let _ = state.tx.send(SyncEvent::PrInfoUpdated(PrInfoUpdatedData {
         pr_id: number,
         repository: full_repo.clone(),

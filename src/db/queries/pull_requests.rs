@@ -130,10 +130,11 @@ pub async fn update_last_viewed_at(pool: &SqlitePool, pr_id: i64) -> sqlx::Resul
 }
 
 fn to_inbox_item(row: InboxItemRow) -> Result<InboxItem, serde_json::Error> {
-    let teams: Option<Vec<String>> = match row.teams_json.as_deref() {
-        None | Some("fetching") => None,
-        Some(json) => Some(serde_json::from_str(json)?),
-    };
+    let teams: Option<Vec<String>> = row
+        .teams_json
+        .as_deref()
+        .map(serde_json::from_str)
+        .transpose()?;
     Ok(InboxItem {
         id: row.id,
         pr_id: row.pr_id,
@@ -217,27 +218,6 @@ pub async fn query_archived_enriched_paginated(
     offset: u32,
 ) -> Result<(Vec<InboxItem>, i64), crate::api::AppError> {
     query_enriched_paginated(pool, true, limit, offset).await
-}
-
-/// Atomically mark a set of PRs as 'fetching' teams (concurrency guard).
-/// Only transitions rows from NULL → 'fetching'. Returns the IDs that were actually changed.
-pub async fn set_teams_fetching(pool: &SqlitePool, pr_ids: &[i64]) -> sqlx::Result<Vec<i64>> {
-    if pr_ids.is_empty() {
-        return Ok(vec![]);
-    }
-    let mut changed = vec![];
-    for &id in pr_ids {
-        let result = sqlx::query(
-            "UPDATE pull_requests SET teams = 'fetching' WHERE id = ? AND teams IS NULL",
-        )
-        .bind(id)
-        .execute(pool)
-        .await?;
-        if result.rows_affected() > 0 {
-            changed.push(id);
-        }
-    }
-    Ok(changed)
 }
 
 /// Query new-commits and new-comments-json for a specific PR since its last_viewed_at.
@@ -629,17 +609,6 @@ mod tests {
             .unwrap();
         assert_eq!(items.len(), 2);
         assert_eq!(total, 3);
-    }
-
-    #[tokio::test]
-    async fn set_teams_fetching_is_idempotent() {
-        let pool = test_pool().await;
-        upsert_pull_request(&pool, &sample(300)).await.unwrap();
-        let changed = set_teams_fetching(&pool, &[300]).await.unwrap();
-        assert_eq!(changed, vec![300]);
-        // Second call: already 'fetching', should not count
-        let changed2 = set_teams_fetching(&pool, &[300]).await.unwrap();
-        assert!(changed2.is_empty());
     }
 
     #[tokio::test]

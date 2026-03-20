@@ -263,10 +263,10 @@ async fn auto_fetch_viewport_prs(
                 {
                     let pr_status = derive_pr_status_from_row(&pr_row);
                     let ci_status = pr_row.ci_status.clone();
-                    let teams: Option<Vec<String>> = match pr_row.teams.as_deref() {
-                        None | Some("fetching") => None,
-                        Some(json) => serde_json::from_str(json).ok(),
-                    };
+                    let teams: Option<Vec<String>> = pr_row
+                        .teams
+                        .as_deref()
+                        .and_then(|json| serde_json::from_str(json).ok());
 
                     let (new_commits, new_comments_json) =
                         queries::get_pr_activity(&state.pool, pr_id, &notif.repository)
