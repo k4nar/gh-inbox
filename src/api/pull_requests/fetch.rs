@@ -179,12 +179,7 @@ pub async fn cache_pr_data(
 
     // Check runs
     let ci_status = derive_ci_status(&data.check_runs.check_runs);
-    sqlx::query("UPDATE pull_requests SET ci_status = ? WHERE id = ? AND repo = ?")
-        .bind(&ci_status)
-        .bind(number)
-        .bind(full_repo)
-        .execute(pool)
-        .await?;
+    queries::update_ci_status(pool, number, full_repo, ci_status.as_deref()).await?;
 
     for cr in &data.check_runs.check_runs {
         let row = CheckRunRow {

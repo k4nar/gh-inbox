@@ -319,6 +319,22 @@ pub async fn update_teams(pool: &SqlitePool, pr_id: i64, teams_json: &str) -> sq
     Ok(())
 }
 
+/// Update the CI status for a PR. Passing `None` clears it.
+pub async fn update_ci_status(
+    pool: &SqlitePool,
+    pr_id: i64,
+    repo: &str,
+    ci_status: Option<&str>,
+) -> sqlx::Result<()> {
+    sqlx::query("UPDATE pull_requests SET ci_status = ? WHERE id = ? AND repo = ?")
+        .bind(ci_status)
+        .bind(pr_id)
+        .bind(repo)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -890,5 +906,53 @@ mod tests {
         assert_eq!(reviews.len(), 1);
         assert_eq!(reviews[0].reviewer, "dave");
         assert_eq!(reviews[0].state, "APPROVED");
+    }
+
+    #[tokio::test]
+    async fn update_ci_status_sets_clears_and_ignores_wrong_repo() {
+        let pool = test_pool().await;
+        let mut pr = sample(42);
+        pr.ci_status = None;
+        upsert_pull_request(&pool, &pr).await.unwrap();
+
+        // Set a value
+        update_ci_status(&pool, 42, "owner/repo", Some("pending"))
+            .await
+            .unwrap();
+        let row = get_pull_request(&pool, "owner/repo", 42)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.ci_status.as_deref(), Some("pending"));
+
+        // Update to a different value
+        update_ci_status(&pool, 42, "owner/repo", Some("success"))
+            .await
+            .unwrap();
+        let row = get_pull_request(&pool, "owner/repo", 42)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.ci_status.as_deref(), Some("success"));
+
+        // Clear it
+        update_ci_status(&pool, 42, "owner/repo", None)
+            .await
+            .unwrap();
+        let row = get_pull_request(&pool, "owner/repo", 42)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(row.ci_status.is_none());
+
+        // Wrong repo — should not affect the row
+        update_ci_status(&pool, 42, "other/repo", Some("failure"))
+            .await
+            .unwrap();
+        let row = get_pull_request(&pool, "owner/repo", 42)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(row.ci_status.is_none());
     }
 }
