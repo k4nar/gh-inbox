@@ -26,12 +26,24 @@ pub struct PrefetchItem {
 
 /// POST /api/inbox/prefetch — spawn background fetch for the listed visible PR items.
 /// Returns 202 immediately; results arrive via `pr:info_updated` SSE events.
+/// Also updates the viewport set so the sync loop can auto-fetch these PRs.
 pub async fn post_prefetch(
     State(state): State<AppState>,
     Json(req): Json<PrefetchRequest>,
 ) -> Result<StatusCode, AppError> {
     if req.items.is_empty() {
         return Ok(StatusCode::ACCEPTED);
+    }
+
+    // Update viewport set (replace, not accumulate).
+    {
+        let new_viewport: std::collections::HashSet<(String, i64)> = req
+            .items
+            .iter()
+            .map(|item| (item.repository.clone(), item.pr_number))
+            .collect();
+        let mut viewport = state.viewport_prs.write().await;
+        *viewport = new_viewport;
     }
 
     let pool = state.pool.clone();
@@ -90,15 +102,22 @@ async fn fetch_one(
         .await
         .map_err(|e| format!("{e:?}"))?;
 
+    // Read the full PR row for ci_status, teams, and (if throttled) author/status.
+    let pr_row = queries::get_pull_request(pool, &item.repository, item.pr_number).await?;
+    let pr_row = match pr_row {
+        Some(row) => row,
+        None => return Ok(()), // Not yet in DB — nothing to broadcast.
+    };
+
     let (author, pr_status) = match fetch_result {
         Some(r) => (r.author, r.pr_status),
-        None => {
-            // Throttled — data is fresh in SQLite already; read it for the SSE broadcast.
-            match queries::get_pull_request(pool, &item.repository, item.pr_number).await? {
-                Some(pr) => (pr.author.clone(), derive_pr_status_from_row(&pr)),
-                None => return Ok(()), // Not yet in DB — nothing to broadcast.
-            }
-        }
+        None => (pr_row.author.clone(), derive_pr_status_from_row(&pr_row)),
+    };
+
+    let ci_status = pr_row.ci_status.clone();
+    let teams: Option<Vec<String>> = match pr_row.teams.as_deref() {
+        None | Some("fetching") => None,
+        Some(json) => serde_json::from_str(json).ok(),
     };
 
     // Query actual activity counts (respects last_viewed_at).
@@ -120,9 +139,11 @@ async fn fetch_one(
         repository: item.repository.clone(),
         author,
         pr_status,
+        ci_status,
         new_commits,
         new_comments,
         new_reviews,
+        teams,
     }));
 
     Ok(())

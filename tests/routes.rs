@@ -970,7 +970,8 @@ async fn sse_no_event_when_nothing_changed() {
     use gh_inbox::github::sync::sync_notifications;
     let changed = sync_notifications(&state).await.unwrap();
     assert_eq!(
-        changed, 0,
+        changed.len(),
+        0,
         "No changes expected when syncing identical data"
     );
 }
@@ -1067,9 +1068,11 @@ async fn sse_receives_pr_info_updated_on_prefetch() {
             repository: "owner/repo".to_string(),
             author: "alice".to_string(),
             pr_status: gh_inbox::models::PrStatus::Open,
+            ci_status: None,
             new_commits: None,
             new_comments: None,
             new_reviews: None,
+            teams: None,
         }))
         .unwrap();
 

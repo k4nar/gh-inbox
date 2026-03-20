@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
@@ -7,7 +8,7 @@ use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::{Router, middleware, routing::get};
 use sqlx::SqlitePool;
-use tokio::sync::broadcast;
+use tokio::sync::{RwLock, broadcast};
 
 use crate::api;
 use crate::github;
@@ -19,6 +20,9 @@ pub struct AppState {
     pub github: github::GithubClient,
     pub tx: broadcast::Sender<crate::models::SyncEvent>,
     pub bootstrap_done: Arc<AtomicBool>,
+    /// PRs currently visible in the frontend viewport: (repository, pr_number).
+    /// Updated by POST /api/inbox/prefetch.
+    pub viewport_prs: Arc<RwLock<HashSet<(String, i64)>>>,
 }
 
 /// In release mode, the compiled frontend is embedded in the binary.
@@ -121,6 +125,7 @@ pub fn app_with_base_url(
         github: github::GithubClient::new(token, github_base_url),
         tx,
         bootstrap_done: Arc::new(AtomicBool::new(false)),
+        viewport_prs: Arc::new(RwLock::new(HashSet::new())),
     };
 
     let router = api::router();

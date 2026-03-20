@@ -2,8 +2,9 @@ use std::time::Duration;
 
 use tokio::sync::broadcast;
 
+use crate::api::pull_requests::fetch::{derive_pr_status_from_row, fetch_and_cache_pr};
 use crate::db::queries;
-use crate::models::{SyncEvent, SyncStatusKind};
+use crate::models::{PrInfoUpdatedData, PrNewComment, SyncEvent, SyncStatusKind};
 use crate::server::AppState;
 
 /// Error type for sync operations — avoids a dependency on `api::AppError`.
@@ -34,12 +35,18 @@ impl From<sqlx::Error> for SyncError {
     }
 }
 
+/// A notification that changed during sync.
+pub struct ChangedNotification {
+    pub repository: String,
+    pub pr_id: Option<i64>,
+}
+
 /// Fetch notifications from GitHub and upsert into the database.
-/// Returns the number of notifications whose `updated_at` changed (i.e. truly new/updated).
-pub async fn sync_notifications(state: &AppState) -> Result<usize, SyncError> {
+/// Returns the changed notifications (those whose `updated_at` or `unread` changed).
+pub async fn sync_notifications(state: &AppState) -> Result<Vec<ChangedNotification>, SyncError> {
     let notifications = super::fetch_notifications(&state.github).await?;
 
-    let mut changed = 0;
+    let mut changed = Vec::new();
     for notif in &notifications {
         let pr_id = notif
             .subject
@@ -61,7 +68,10 @@ pub async fn sync_notifications(state: &AppState) -> Result<usize, SyncError> {
 
         let rows_affected = queries::upsert_notification(&state.pool, &row).await?;
         if rows_affected > 0 {
-            changed += 1;
+            changed.push(ChangedNotification {
+                repository: notif.repository.full_name.clone(),
+                pr_id,
+            });
         }
     }
 
@@ -90,6 +100,7 @@ mod tests {
             github: GithubClient::new(Arc::from("fake-token"), base_url),
             tx,
             bootstrap_done: Arc::new(AtomicBool::new(false)),
+            viewport_prs: Arc::new(tokio::sync::RwLock::new(std::collections::HashSet::new())),
         }
     }
 
@@ -135,7 +146,7 @@ mod tests {
         let state = make_state(start_mock(ONE_NOTIFICATION).await).await;
 
         let changed = sync_notifications(&state).await.unwrap();
-        assert_eq!(changed, 1);
+        assert_eq!(changed.len(), 1);
 
         let inbox = queries::query_inbox(&state.pool).await.unwrap();
         assert_eq!(inbox.len(), 1);
@@ -147,8 +158,8 @@ mod tests {
     async fn idempotent_when_data_unchanged() {
         let state = make_state(start_mock(ONE_NOTIFICATION).await).await;
 
-        assert_eq!(sync_notifications(&state).await.unwrap(), 1);
-        assert_eq!(sync_notifications(&state).await.unwrap(), 0);
+        assert_eq!(sync_notifications(&state).await.unwrap().len(), 1);
+        assert_eq!(sync_notifications(&state).await.unwrap().len(), 0);
 
         assert_eq!(queries::query_inbox(&state.pool).await.unwrap().len(), 1);
     }
@@ -175,6 +186,7 @@ mod tests {
 /// Run the background notification sync loop.
 /// Fetches notifications immediately, then every `interval` seconds.
 /// Sends events to `tx` for SSE clients.
+/// When notifications change for PRs in the viewport, auto-fetches their data.
 pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>) {
     let interval_secs: u64 = std::env::var("GH_INBOX_SYNC_INTERVAL")
         .ok()
@@ -189,10 +201,14 @@ pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>) {
         });
 
         match sync_notifications(&state).await {
-            Ok(count) => {
+            Ok(changed) => {
+                let count = changed.len();
                 if count > 0 {
                     tracing::info!(count, "new notifications fetched");
                     let _ = tx.send(SyncEvent::NewNotifications { count });
+
+                    // Auto-fetch PR data for changed notifications in the viewport.
+                    auto_fetch_viewport_prs(&state, &tx, &changed).await;
                 }
                 let _ = tx.send(SyncEvent::SyncStatus {
                     status: SyncStatusKind::Completed,
@@ -209,5 +225,82 @@ pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>) {
         }
 
         tokio::time::sleep(interval).await;
+    }
+}
+
+/// For changed notifications whose PR is currently in the viewport,
+/// fetch fresh PR data and broadcast SSE updates.
+async fn auto_fetch_viewport_prs(
+    state: &AppState,
+    tx: &broadcast::Sender<SyncEvent>,
+    changed: &[ChangedNotification],
+) {
+    let viewport = state.viewport_prs.read().await;
+    if viewport.is_empty() {
+        return;
+    }
+
+    for notif in changed {
+        let pr_id = match notif.pr_id {
+            Some(id) => id,
+            None => continue,
+        };
+        if !viewport.contains(&(notif.repository.clone(), pr_id)) {
+            continue;
+        }
+
+        let parts: Vec<&str> = notif.repository.splitn(2, '/').collect();
+        if parts.len() != 2 {
+            continue;
+        }
+        let (owner, repo_name) = (parts[0], parts[1]);
+
+        match fetch_and_cache_pr(&state.pool, &state.github, owner, repo_name, pr_id).await {
+            Ok(_) => {
+                // Read the updated PR row and broadcast SSE.
+                if let Ok(Some(pr_row)) =
+                    queries::get_pull_request(&state.pool, &notif.repository, pr_id).await
+                {
+                    let pr_status = derive_pr_status_from_row(&pr_row);
+                    let ci_status = pr_row.ci_status.clone();
+                    let teams: Option<Vec<String>> = match pr_row.teams.as_deref() {
+                        None | Some("fetching") => None,
+                        Some(json) => serde_json::from_str(json).ok(),
+                    };
+
+                    let (new_commits, new_comments_json) =
+                        queries::get_pr_activity(&state.pool, pr_id, &notif.repository)
+                            .await
+                            .unwrap_or((None, None));
+                    let new_comments: Option<Vec<PrNewComment>> = new_comments_json
+                        .as_deref()
+                        .and_then(|json| serde_json::from_str(json).ok());
+
+                    let new_reviews = queries::get_pr_review_activity(&state.pool, pr_id)
+                        .await
+                        .unwrap_or(None);
+
+                    let _ = tx.send(SyncEvent::PrInfoUpdated(PrInfoUpdatedData {
+                        pr_id,
+                        repository: notif.repository.clone(),
+                        author: pr_row.author.clone(),
+                        pr_status,
+                        ci_status,
+                        new_commits,
+                        new_comments,
+                        new_reviews,
+                        teams,
+                    }));
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    repository = %notif.repository,
+                    pr_id,
+                    error = ?e,
+                    "auto-fetch viewport PR failed"
+                );
+            }
+        }
     }
 }

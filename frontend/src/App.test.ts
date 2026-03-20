@@ -16,7 +16,6 @@ vi.mock("./lib/sse.svelte.ts", () => ({
     onGithubSyncError: vi.fn(() => () => {}),
     onNewNotifications: vi.fn(() => () => {}),
     onPrInfoUpdated: vi.fn(() => () => {}),
-    onPrTeamsUpdated: vi.fn(() => () => {}),
 }));
 
 const BASE_INBOX: PaginatedInbox = {
@@ -32,6 +31,7 @@ const BASE_INBOX: PaginatedInbox = {
             updated_at: "2025-06-01T12:00:00Z",
             author: "alice",
             pr_status: "open",
+            ci_status: null,
             new_commits: 1,
             new_comments: [],
             teams: [],
@@ -48,6 +48,7 @@ const BASE_INBOX: PaginatedInbox = {
             updated_at: "2025-06-01T11:00:00Z",
             author: "bob",
             pr_status: "draft",
+            ci_status: null,
             new_commits: 0,
             new_comments: [],
             teams: [],
