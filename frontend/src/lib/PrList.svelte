@@ -1,6 +1,6 @@
 <script lang="ts">
 import { apiFetch } from "./api.ts";
-import { onPrInfoUpdated, onPrTeamsUpdated } from "./sse.svelte.ts";
+import { onPrInfoUpdated } from "./sse.svelte.ts";
 import { timeAgo } from "./timeago.ts";
 import { showError } from "./toast.svelte.ts";
 import {
@@ -35,18 +35,6 @@ let currentPage = $state(1);
 let totalCount = $state(0);
 const PER_PAGE = DEFAULT_PER_PAGE;
 
-const unsubTeams = onPrTeamsUpdated((pr_id, teams) => {
-    const item = notifications.find((n) => n.pr_id === pr_id);
-    if (item) {
-        item.teams = teams;
-        notifications = [...notifications];
-    }
-});
-// Svelte 5 runes cleanup — return the unsubscribe fn from $effect:
-$effect(() => {
-    return unsubTeams;
-});
-
 const unsubInfo = onPrInfoUpdated((data) => {
     const item = notifications.find(
         (n) => n.pr_id === data.pr_id && n.repository === data.repository,
@@ -54,9 +42,11 @@ const unsubInfo = onPrInfoUpdated((data) => {
     if (item) {
         item.author = data.author;
         item.pr_status = data.pr_status;
+        item.ci_status = data.ci_status;
         if (data.new_commits !== null) item.new_commits = data.new_commits;
         if (data.new_comments !== null) item.new_comments = data.new_comments;
         if (data.new_reviews !== null) item.new_reviews = data.new_reviews;
+        if (data.teams !== null) item.teams = data.teams;
         notifications = [...notifications];
     }
 });

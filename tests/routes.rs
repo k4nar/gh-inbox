@@ -456,9 +456,9 @@ async fn get_pr_detail_returns_metadata_comments_and_checks() {
     assert_eq!(detail["pull_request"]["additions"], 15);
     assert_eq!(detail["pull_request"]["body"], "This adds feature X.");
 
-    // Comments (1 issue + 2 review = 3 total)
-    let comments = detail["comments"].as_array().unwrap();
-    assert_eq!(comments.len(), 3);
+    // Comments are returned grouped as threads (1 issue + 2 review = 2 threads)
+    let threads = detail["threads"].as_array().unwrap();
+    assert_eq!(threads.len(), 2);
 
     // Commits
     let commits = detail["commits"].as_array().unwrap();
@@ -506,13 +506,15 @@ async fn get_pr_detail_returns_metadata_comments_and_checks() {
             .contains("<p>This adds feature X.</p>"),
         "body_html should be rendered as a paragraph"
     );
-    // Each comment should also have body_html
-    let comments = detail["comments"].as_array().unwrap();
-    if !comments.is_empty() {
-        assert!(
-            comments[0]["body_html"].is_string(),
-            "comment body_html should be a string"
-        );
+    // Each thread comment should have body_html
+    if !threads.is_empty() {
+        let first_thread_comments = threads[0]["comments"].as_array().unwrap();
+        if !first_thread_comments.is_empty() {
+            assert!(
+                first_thread_comments[0]["body_html"].is_string(),
+                "thread comment body_html should be a string"
+            );
+        }
     }
 
     // Second visit: previous_viewed_at should now be a timestamp string.
@@ -585,10 +587,9 @@ async fn get_pr_detail_returns_check_runs_from_cache() {
 async fn get_pr_threads_groups_comments() {
     let mock_base_url = start_mock_github().await;
     let pool = gh_inbox::db::init_with_path(":memory:").await;
-    // First fetch PR detail to populate the DB
-    let (app, _state) =
-        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
-    let _ = app
+
+    let (app, _state) = gh_inbox::app_with_base_url(pool, Arc::from("fake-token"), mock_base_url);
+    let response = app
         .oneshot(
             axum::http::Request::builder()
                 .uri("/api/pull-requests/owner/repo/42")
@@ -598,22 +599,11 @@ async fn get_pr_threads_groups_comments() {
         .await
         .unwrap();
 
-    // Now fetch threads
-    let (app, _state) = gh_inbox::app_with_base_url(pool, Arc::from("fake-token"), mock_base_url);
-    let response = app
-        .oneshot(
-            axum::http::Request::builder()
-                .uri("/api/pull-requests/owner/repo/42/threads")
-                .body(axum::body::Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
     assert_eq!(response.status(), StatusCode::OK);
 
     let body = response.into_body().collect().await.unwrap().to_bytes();
-    let threads: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+    let detail: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let threads = detail["threads"].as_array().unwrap();
 
     // Should have 2 threads: "conversation" (issue comments) and "review:2001" (review comments)
     assert_eq!(threads.len(), 2);
@@ -970,7 +960,8 @@ async fn sse_no_event_when_nothing_changed() {
     use gh_inbox::github::sync::sync_notifications;
     let changed = sync_notifications(&state).await.unwrap();
     assert_eq!(
-        changed, 0,
+        changed.len(),
+        0,
         "No changes expected when syncing identical data"
     );
 }
@@ -1067,9 +1058,11 @@ async fn sse_receives_pr_info_updated_on_prefetch() {
             repository: "owner/repo".to_string(),
             author: "alice".to_string(),
             pr_status: gh_inbox::models::PrStatus::Open,
+            ci_status: None,
             new_commits: None,
             new_comments: None,
             new_reviews: None,
+            teams: None,
         }))
         .unwrap();
 

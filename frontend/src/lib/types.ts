@@ -81,7 +81,7 @@ export interface Thread {
 
 export interface PrDetailResponse {
     pull_request: PullRequest;
-    comments: Comment[];
+    threads: Thread[];
     commits: Commit[];
     check_runs: CheckRun[];
     previous_viewed_at: string | null;
@@ -100,9 +100,11 @@ export interface InboxItem {
     updated_at: string;
     author: string | null;
     pr_status: "open" | "draft" | "merged" | "closed" | null;
-    new_commits: number | null; // null = first visit (never opened)
-    new_comments: { author: string; count: number }[] | null; // null = first visit
+    ci_status: string | null;
     teams: string[] | null; // null = loading (show shimmer)
+    // Activity fields — populated via SSE pr:info_updated, not from the inbox API.
+    new_commits: number | null; // null = not yet enriched or first visit
+    new_comments: { author: string; count: number }[] | null;
     new_reviews: { reviewer: string; state: string }[] | null;
 }
 

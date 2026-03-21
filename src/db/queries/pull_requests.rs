@@ -1,14 +1,8 @@
-use crate::models::ReviewSummary;
 use sqlx::SqlitePool;
 
-/// A comment author with their new-comment count, deserialized from JSON.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct CommentAuthorCount {
-    pub author: String,
-    pub count: i64,
-}
-
-/// Enriched inbox row: notification joined with PR data + activity summary.
+/// Enriched inbox row: notification joined with PR data.
+/// Activity counts (new_commits, new_comments, new_reviews) are delivered via SSE,
+/// not from this query.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct InboxItem {
     // from notifications
@@ -23,15 +17,12 @@ pub struct InboxItem {
     // from pull_requests (None when no linked PR row)
     pub author: Option<String>,
     pub pr_status: Option<String>,
-    // activity since last_viewed_at (None = first visit)
-    pub new_commits: Option<i64>,
-    pub new_comments: Option<Vec<CommentAuthorCount>>,
-    pub new_reviews: Option<Vec<ReviewSummary>>,
+    pub ci_status: Option<String>,
     // teams (None = fetch not attempted or in progress)
     pub teams: Option<Vec<String>>,
 }
 
-/// Raw DB row before JSON deserialization of new_comments and teams.
+/// Raw DB row before JSON deserialization of teams.
 #[derive(Debug, sqlx::FromRow)]
 struct InboxItemRow {
     pub id: String,
@@ -44,9 +35,7 @@ struct InboxItemRow {
     pub updated_at: String,
     pub author: Option<String>,
     pub pr_status: Option<String>,
-    pub new_commits: Option<i64>,
-    pub new_comments_json: Option<String>,
-    pub new_reviews_json: Option<String>,
+    pub ci_status: Option<String>,
     pub teams_json: Option<String>,
 }
 
@@ -141,18 +130,11 @@ pub async fn update_last_viewed_at(pool: &SqlitePool, pr_id: i64) -> sqlx::Resul
 }
 
 fn to_inbox_item(row: InboxItemRow) -> Result<InboxItem, serde_json::Error> {
-    let new_comments: Option<Vec<CommentAuthorCount>> = match row.new_comments_json.as_deref() {
-        None => None,
-        Some(json) => Some(serde_json::from_str(json)?),
-    };
-    let new_reviews: Option<Vec<ReviewSummary>> = match row.new_reviews_json.as_deref() {
-        None => None,
-        Some(json) => Some(serde_json::from_str(json)?),
-    };
-    let teams: Option<Vec<String>> = match row.teams_json.as_deref() {
-        None | Some("fetching") => None,
-        Some(json) => Some(serde_json::from_str(json)?),
-    };
+    let teams: Option<Vec<String>> = row
+        .teams_json
+        .as_deref()
+        .map(serde_json::from_str)
+        .transpose()?;
     Ok(InboxItem {
         id: row.id,
         pr_id: row.pr_id,
@@ -164,9 +146,7 @@ fn to_inbox_item(row: InboxItemRow) -> Result<InboxItem, serde_json::Error> {
         updated_at: row.updated_at,
         author: row.author,
         pr_status: row.pr_status,
-        new_commits: row.new_commits,
-        new_comments,
-        new_reviews,
+        ci_status: row.ci_status,
         teams,
     })
 }
@@ -194,26 +174,7 @@ async fn query_enriched_paginated(
                  WHEN pr.id IS NOT NULL        THEN 'open'
                  ELSE NULL
              END as pr_status,
-             CASE WHEN pr.last_viewed_at IS NULL THEN NULL
-                  ELSE (SELECT COUNT(*) FROM commits c
-                        WHERE c.pr_id = pr.id AND c.committed_at > pr.last_viewed_at)
-             END as new_commits,
-             CASE WHEN pr.last_viewed_at IS NULL THEN NULL
-                  ELSE COALESCE((
-                      SELECT json_group_array(json_object('author', author, 'count', cnt))
-                      FROM (SELECT author, COUNT(*) as cnt FROM comments
-                            WHERE pr_id = pr.id AND created_at > pr.last_viewed_at
-                            GROUP BY author
-                            ORDER BY cnt DESC, author ASC)
-                  ), '[]')
-             END as new_comments_json,
-             CASE WHEN pr.last_viewed_at IS NULL THEN NULL
-                  ELSE COALESCE((
-                      SELECT json_group_array(json_object('reviewer', reviewer, 'state', state))
-                      FROM reviews
-                      WHERE pr_id = pr.id AND submitted_at > pr.last_viewed_at
-                  ), '[]')
-             END as new_reviews_json,
+             pr.ci_status,
              pr.teams as teams_json
          FROM notifications n
          LEFT JOIN pull_requests pr ON pr.id = n.pr_id AND pr.repo = n.repository
@@ -257,27 +218,6 @@ pub async fn query_archived_enriched_paginated(
     offset: u32,
 ) -> Result<(Vec<InboxItem>, i64), crate::api::AppError> {
     query_enriched_paginated(pool, true, limit, offset).await
-}
-
-/// Atomically mark a set of PRs as 'fetching' teams (concurrency guard).
-/// Only transitions rows from NULL → 'fetching'. Returns the IDs that were actually changed.
-pub async fn set_teams_fetching(pool: &SqlitePool, pr_ids: &[i64]) -> sqlx::Result<Vec<i64>> {
-    if pr_ids.is_empty() {
-        return Ok(vec![]);
-    }
-    let mut changed = vec![];
-    for &id in pr_ids {
-        let result = sqlx::query(
-            "UPDATE pull_requests SET teams = 'fetching' WHERE id = ? AND teams IS NULL",
-        )
-        .bind(id)
-        .execute(pool)
-        .await?;
-        if result.rows_affected() > 0 {
-            changed.push(id);
-        }
-    }
-    Ok(changed)
 }
 
 /// Query new-commits and new-comments-json for a specific PR since its last_viewed_at.
@@ -493,8 +433,6 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].author.as_deref(), Some("alice"));
         assert_eq!(items[0].pr_status.as_deref(), Some("open"));
-        assert_eq!(items[0].new_commits, Some(0));
-        assert_eq!(items[0].new_comments.as_ref().map(|v| v.len()), Some(0));
         assert!(items[0].teams.is_none()); // NULL → None
     }
 
@@ -589,52 +527,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn first_visit_shows_none_activity() {
-        let pool = test_pool().await;
-        let notif = crate::db::queries::NotificationRow {
-            id: "n4".to_string(),
-            pr_id: Some(45),
-            title: "New PR".to_string(),
-            repository: "owner/repo".to_string(),
-            reason: "review_requested".to_string(),
-            unread: true,
-            archived: false,
-            updated_at: "2025-01-04T00:00:00Z".to_string(),
-        };
-        crate::db::queries::upsert_notification(&pool, &notif)
-            .await
-            .unwrap();
-        upsert_pull_request(
-            &pool,
-            &PullRequestRow {
-                id: 45,
-                title: "New PR".to_string(),
-                repo: "owner/repo".to_string(),
-                author: "dave".to_string(),
-                url: "u".to_string(),
-                ci_status: None,
-                last_viewed_at: None, // never visited
-                body: String::new(),
-                state: "open".to_string(),
-                head_sha: "z".to_string(),
-                additions: 0,
-                deletions: 0,
-                changed_files: 0,
-                draft: false,
-                merged_at: None,
-                teams: None,
-                labels: String::from("[]"),
-            },
-        )
-        .await
-        .unwrap();
-        let (items, _) = query_inbox_enriched_paginated(&pool, 100, 0).await.unwrap();
-        let item = items.iter().find(|i| i.pr_id == Some(45)).unwrap();
-        assert!(item.new_commits.is_none());
-        assert!(item.new_comments.is_none());
-    }
-
-    #[tokio::test]
     async fn get_pr_activity_returns_none_when_never_viewed() {
         let pool = test_pool().await;
         upsert_pull_request(&pool, &sample(10)).await.unwrap(); // last_viewed_at = None
@@ -720,17 +612,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_teams_fetching_is_idempotent() {
-        let pool = test_pool().await;
-        upsert_pull_request(&pool, &sample(300)).await.unwrap();
-        let changed = set_teams_fetching(&pool, &[300]).await.unwrap();
-        assert_eq!(changed, vec![300]);
-        // Second call: already 'fetching', should not count
-        let changed2 = set_teams_fetching(&pool, &[300]).await.unwrap();
-        assert!(changed2.is_empty());
-    }
-
-    #[tokio::test]
     async fn upsert_roundtrip_labels() {
         let pool = test_pool().await;
         let mut pr = sample(400);
@@ -743,169 +624,6 @@ mod tests {
             .unwrap();
         assert!(row.labels.contains("bug"));
         assert!(row.labels.contains("enhancement"));
-    }
-
-    #[tokio::test]
-    async fn enrichment_new_reviews_null_when_first_visit() {
-        let pool = test_pool().await;
-        let notif = crate::db::queries::NotificationRow {
-            id: "rv1".to_string(),
-            pr_id: Some(500),
-            title: "Review PR".to_string(),
-            repository: "owner/repo".to_string(),
-            reason: "review_requested".to_string(),
-            unread: true,
-            archived: false,
-            updated_at: "2025-03-01T00:00:00Z".to_string(),
-        };
-        crate::db::queries::upsert_notification(&pool, &notif)
-            .await
-            .unwrap();
-        upsert_pull_request(
-            &pool,
-            &PullRequestRow {
-                id: 500,
-                title: "Review PR".to_string(),
-                repo: "owner/repo".to_string(),
-                author: "alice".to_string(),
-                url: "u".to_string(),
-                ci_status: None,
-                last_viewed_at: None, // never visited
-                body: String::new(),
-                state: "open".to_string(),
-                head_sha: "s".to_string(),
-                additions: 0,
-                deletions: 0,
-                changed_files: 0,
-                draft: false,
-                merged_at: None,
-                teams: None,
-                labels: String::from("[]"),
-            },
-        )
-        .await
-        .unwrap();
-        let (items, _) = query_inbox_enriched_paginated(&pool, 100, 0).await.unwrap();
-        let item = items.iter().find(|i| i.pr_id == Some(500)).unwrap();
-        assert!(item.new_reviews.is_none()); // NULL when never viewed
-    }
-
-    #[tokio::test]
-    async fn enrichment_new_reviews_empty_when_no_reviews_after_last_viewed() {
-        let pool = test_pool().await;
-        let notif = crate::db::queries::NotificationRow {
-            id: "rv2".to_string(),
-            pr_id: Some(501),
-            title: "Review PR 2".to_string(),
-            repository: "owner/repo".to_string(),
-            reason: "review_requested".to_string(),
-            unread: true,
-            archived: false,
-            updated_at: "2025-03-02T00:00:00Z".to_string(),
-        };
-        crate::db::queries::upsert_notification(&pool, &notif)
-            .await
-            .unwrap();
-        upsert_pull_request(
-            &pool,
-            &PullRequestRow {
-                id: 501,
-                title: "Review PR 2".to_string(),
-                repo: "owner/repo".to_string(),
-                author: "bob".to_string(),
-                url: "u".to_string(),
-                ci_status: None,
-                last_viewed_at: Some("2025-03-01T12:00:00Z".to_string()),
-                body: String::new(),
-                state: "open".to_string(),
-                head_sha: "s".to_string(),
-                additions: 0,
-                deletions: 0,
-                changed_files: 0,
-                draft: false,
-                merged_at: None,
-                teams: None,
-                labels: String::from("[]"),
-            },
-        )
-        .await
-        .unwrap();
-        // No reviews inserted → should be Some([])
-        let (items, _) = query_inbox_enriched_paginated(&pool, 100, 0).await.unwrap();
-        let item = items.iter().find(|i| i.pr_id == Some(501)).unwrap();
-        assert_eq!(
-            item.new_reviews
-                .as_ref()
-                .map(|v: &Vec<ReviewSummary>| v.len()),
-            Some(0),
-            "expect Some([]) when last_viewed_at is set but no reviews after it"
-        );
-    }
-
-    #[tokio::test]
-    async fn enrichment_new_reviews_returns_reviews_after_last_viewed() {
-        use crate::db::queries::reviews::{ReviewRow, upsert_review};
-
-        let pool = test_pool().await;
-        let notif = crate::db::queries::NotificationRow {
-            id: "rv3".to_string(),
-            pr_id: Some(502),
-            title: "Review PR 3".to_string(),
-            repository: "owner/repo".to_string(),
-            reason: "review_requested".to_string(),
-            unread: true,
-            archived: false,
-            updated_at: "2025-03-03T00:00:00Z".to_string(),
-        };
-        crate::db::queries::upsert_notification(&pool, &notif)
-            .await
-            .unwrap();
-        upsert_pull_request(
-            &pool,
-            &PullRequestRow {
-                id: 502,
-                title: "Review PR 3".to_string(),
-                repo: "owner/repo".to_string(),
-                author: "carol".to_string(),
-                url: "u".to_string(),
-                ci_status: None,
-                last_viewed_at: Some("2025-03-01T00:00:00Z".to_string()),
-                body: String::new(),
-                state: "open".to_string(),
-                head_sha: "s".to_string(),
-                additions: 0,
-                deletions: 0,
-                changed_files: 0,
-                draft: false,
-                merged_at: None,
-                teams: None,
-                labels: String::from("[]"),
-            },
-        )
-        .await
-        .unwrap();
-        // Insert a review AFTER last_viewed_at
-        upsert_review(
-            &pool,
-            &ReviewRow {
-                id: 9001,
-                pr_id: 502,
-                reviewer: "dave".to_string(),
-                state: "APPROVED".to_string(),
-                body: String::new(),
-                submitted_at: "2025-03-02T10:00:00Z".to_string(),
-                html_url: "https://github.com/owner/repo/pull/502#pullrequestreview-9001"
-                    .to_string(),
-            },
-        )
-        .await
-        .unwrap();
-        let (items, _) = query_inbox_enriched_paginated(&pool, 100, 0).await.unwrap();
-        let item = items.iter().find(|i| i.pr_id == Some(502)).unwrap();
-        let reviews = item.new_reviews.as_ref().expect("should be Some");
-        assert_eq!(reviews.len(), 1);
-        assert_eq!(reviews[0].reviewer, "dave");
-        assert_eq!(reviews[0].state, "APPROVED");
     }
 
     #[tokio::test]

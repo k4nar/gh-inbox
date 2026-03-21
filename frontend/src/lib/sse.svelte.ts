@@ -4,17 +4,16 @@ let syncStatus: SyncStatus = $state("idle");
 
 let newNotificationCallbacks: Array<() => void> = [];
 
-type TeamsUpdatedCallback = (pr_id: number, teams: string[]) => void;
-let teamsUpdatedCallbacks: TeamsUpdatedCallback[] = [];
-
 export interface PrInfoUpdatedPayload {
     pr_id: number;
     repository: string;
     author: string;
     pr_status: "open" | "draft" | "merged" | "closed";
+    ci_status: string | null;
     new_commits: number | null;
     new_comments: { author: string; count: number }[] | null;
     new_reviews: { reviewer: string; state: string }[] | null;
+    teams: string[] | null;
 }
 type PrInfoUpdatedCallback = (data: PrInfoUpdatedPayload) => void;
 let prInfoUpdatedCallbacks: PrInfoUpdatedCallback[] = [];
@@ -35,15 +34,6 @@ export function onNewNotifications(callback: () => void): () => void {
     newNotificationCallbacks.push(callback);
     return () => {
         newNotificationCallbacks = newNotificationCallbacks.filter(
-            (cb) => cb !== callback,
-        );
-    };
-}
-
-export function onPrTeamsUpdated(callback: TeamsUpdatedCallback): () => void {
-    teamsUpdatedCallbacks.push(callback);
-    return () => {
-        teamsUpdatedCallbacks = teamsUpdatedCallbacks.filter(
             (cb) => cb !== callback,
         );
     };
@@ -90,16 +80,6 @@ export function connectSSE(): void {
     eventSource.addEventListener("notifications:new", () => {
         for (const cb of newNotificationCallbacks) {
             cb();
-        }
-    });
-
-    eventSource.addEventListener("pr:teams_updated", (e) => {
-        const { pr_id, teams } = JSON.parse((e as MessageEvent).data) as {
-            pr_id: number;
-            teams: string[];
-        };
-        for (const cb of teamsUpdatedCallbacks) {
-            cb(pr_id, teams);
         }
     });
 

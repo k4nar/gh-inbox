@@ -17,7 +17,6 @@ pub enum PrStatus {
 pub enum SyncEvent {
     NewNotifications { count: usize },
     SyncStatus { status: SyncStatusKind },
-    PrTeamsUpdated(PrTeamsUpdatedData),
     PrInfoUpdated(PrInfoUpdatedData),
     GithubSyncError(GithubSyncErrorData),
 }
@@ -42,13 +41,6 @@ pub struct SyncStatusData {
     pub status: SyncStatusKind,
 }
 
-/// Payload serialized into the SSE `data:` field for PrTeamsUpdated.
-#[derive(Debug, Clone, Serialize)]
-pub struct PrTeamsUpdatedData {
-    pub pr_id: i64,
-    pub teams: Vec<String>,
-}
-
 /// Payload serialized into the SSE `data:` field for PrInfoUpdated.
 #[derive(Debug, Clone, Serialize)]
 pub struct PrInfoUpdatedData {
@@ -56,12 +48,14 @@ pub struct PrInfoUpdatedData {
     pub repository: String,
     pub author: String,
     pub pr_status: PrStatus,
+    pub ci_status: Option<String>,
     /// None means last_viewed_at is NULL (first visit); Some(n) = n new commits since last visit.
     pub new_commits: Option<i64>,
     /// None means last_viewed_at is NULL; Some([]) = no new comments.
     pub new_comments: Option<Vec<PrNewComment>>,
     /// None means last_viewed_at is NULL; Some([]) = no new reviews since last visit.
     pub new_reviews: Option<Vec<ReviewSummary>>,
+    pub teams: Option<Vec<String>>,
 }
 
 /// Payload serialized into the SSE `data:` field for GithubSyncError.

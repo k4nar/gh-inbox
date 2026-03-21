@@ -10,5 +10,5 @@ pub use pull_request::{
 };
 pub use sync_event::{
     GithubSyncErrorData, NewNotificationsData, PrInfoUpdatedData, PrNewComment, PrStatus,
-    PrTeamsUpdatedData, ReviewSummary, SyncEvent, SyncStatusData, SyncStatusKind,
+    ReviewSummary, SyncEvent, SyncStatusData, SyncStatusKind,
 };

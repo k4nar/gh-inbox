@@ -16,9 +16,9 @@ pub use notifications::{
     unarchive_notification, upsert_notification,
 };
 pub use pull_requests::{
-    CommentAuthorCount, InboxItem, PullRequestRow, get_pr_activity, get_pull_request,
-    query_archived_enriched_paginated, query_inbox_enriched_paginated, set_teams_fetching,
-    update_ci_status, update_last_viewed_at, update_teams, upsert_pull_request,
+    InboxItem, PullRequestRow, get_pr_activity, get_pull_request,
+    query_archived_enriched_paginated, query_inbox_enriched_paginated, update_ci_status,
+    update_last_viewed_at, update_teams, upsert_pull_request,
 };
 pub use reviews::{ReviewRow, get_pr_review_activity, query_reviews_for_pr, upsert_review};
 pub use user_teams::{get_all_user_teams, replace_user_teams};

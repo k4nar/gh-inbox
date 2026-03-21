@@ -10,7 +10,7 @@ async fn main() {
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
                 let default = if cfg!(debug_assertions) {
-                    "debug"
+                    "debug,sqlx=warn,html5ever=warn"
                 } else {
                     "info"
                 };

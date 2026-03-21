@@ -56,7 +56,14 @@ const BASE_DETAIL: PrDetailResponse = {
         draft: false,
         merged_at: null,
     },
-    comments: [makeComment()],
+    threads: [
+        {
+            thread_id: "conversation",
+            path: null,
+            resolved: false,
+            comments: [makeComment()],
+        },
+    ],
     commits: [
         {
             sha: "abc123",
@@ -82,31 +89,17 @@ const BASE_DETAIL: PrDetailResponse = {
     labels: [],
 };
 
-const BASE_THREADS = [
-    {
-        thread_id: "conversation",
-        path: null,
-        comments: [makeComment()],
-    },
-];
-
-function mockFetch(detail = BASE_DETAIL, threads = BASE_THREADS) {
-    return vi.fn((url: string) => {
-        if (url.includes("/threads")) {
-            return Promise.resolve({
-                ok: true,
-                json: () => Promise.resolve(threads),
-            });
-        }
-        return Promise.resolve({
+function mockFetch(detail = BASE_DETAIL) {
+    return vi.fn((_url: string) =>
+        Promise.resolve({
             ok: true,
             json: () => Promise.resolve(detail),
-        });
-    }) as unknown as typeof fetch;
+        }),
+    ) as unknown as typeof fetch;
 }
 
-function renderDetail(detail = BASE_DETAIL, threads = BASE_THREADS) {
-    globalThis.fetch = mockFetch(detail, threads);
+function renderDetail(detail = BASE_DETAIL) {
+    globalThis.fetch = mockFetch(detail);
     return render(PrDetail, {
         props: {
             notification: {
@@ -515,7 +508,7 @@ describe("PrDetail — SSE reload", () => {
             },
         });
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
         capturedCallback!({
             pr_id: 42,
@@ -527,7 +520,7 @@ describe("PrDetail — SSE reload", () => {
             new_reviews: null,
         });
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     });
 
     it("does not reload when pr:info_updated carries no new data (view-acknowledgement event)", async () => {
@@ -550,7 +543,7 @@ describe("PrDetail — SSE reload", () => {
             },
         });
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
         // Simulate the all-zeros event that get_pr emits after a view
         capturedCallback!({
@@ -564,7 +557,7 @@ describe("PrDetail — SSE reload", () => {
         });
 
         await new Promise((r) => setTimeout(r, 50));
-        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it("does not reload when pr:info_updated fires for a different PR", async () => {
@@ -587,7 +580,7 @@ describe("PrDetail — SSE reload", () => {
             },
         });
 
-        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
         capturedCallback!({
             pr_id: 99,
@@ -600,6 +593,6 @@ describe("PrDetail — SSE reload", () => {
         });
 
         await new Promise((r) => setTimeout(r, 50));
-        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 });

@@ -9,7 +9,6 @@ vi.mock("./sse.svelte.ts", async (importOriginal) => {
     return {
         ...actual,
         onPrInfoUpdated: vi.fn(actual.onPrInfoUpdated),
-        onPrTeamsUpdated: vi.fn(actual.onPrTeamsUpdated),
     };
 });
 
@@ -34,6 +33,7 @@ function makeItem(overrides: Partial<InboxItem> = {}): InboxItem {
         updated_at: "2025-01-01T00:00:00Z",
         author: "alice",
         pr_status: "open",
+        ci_status: null,
         new_commits: null,
         new_comments: null,
         teams: null,
@@ -54,6 +54,7 @@ const MOCK_NOTIFICATIONS: InboxItem[] = [
         updated_at: "2025-06-01T12:00:00Z",
         author: "alice",
         pr_status: "open",
+        ci_status: null,
         new_commits: null,
         new_comments: null,
         teams: null,
@@ -70,6 +71,7 @@ const MOCK_NOTIFICATIONS: InboxItem[] = [
         updated_at: "2025-05-30T08:00:00Z",
         author: "bob",
         pr_status: "draft",
+        ci_status: null,
         new_commits: 0,
         new_comments: [],
         teams: [],

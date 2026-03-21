@@ -118,9 +118,11 @@ describe("SSE utility", () => {
             repository: "acme/api",
             author: "bob",
             pr_status: "open",
+            ci_status: "success",
             new_commits: 2,
             new_comments: [{ author: "alice", count: 1 }],
             new_reviews: null,
+            teams: ["acme/platform"],
         };
         MockEventSource.instance.simulateEvent("pr:info_updated", payload);
         expect(callback).toHaveBeenCalledOnce();
@@ -140,32 +142,18 @@ describe("SSE utility", () => {
             repository: "acme/api",
             author: "carol",
             pr_status: "open",
+            ci_status: null,
             new_commits: 0,
             new_comments: null,
             new_reviews: [
                 { reviewer: "alice", state: "APPROVED" },
                 { reviewer: "bob", state: "CHANGES_REQUESTED" },
             ],
+            teams: null,
         };
         MockEventSource.instance.simulateEvent("pr:info_updated", payload);
         expect(callback).toHaveBeenCalledOnce();
         expect(callback).toHaveBeenCalledWith(payload);
-        disconnectSSE();
-    });
-
-    it("pr:teams_updated triggers registered callbacks with pr_id and teams", async () => {
-        const { connectSSE, onPrTeamsUpdated, disconnectSSE } = await import(
-            "./sse.svelte.ts"
-        );
-        connectSSE();
-        const callback = vi.fn();
-        onPrTeamsUpdated(callback);
-        MockEventSource.instance.simulateEvent("pr:teams_updated", {
-            pr_id: 42,
-            teams: ["acme/platform"],
-        });
-        expect(callback).toHaveBeenCalledOnce();
-        expect(callback).toHaveBeenCalledWith(42, ["acme/platform"]);
         disconnectSSE();
     });
 
