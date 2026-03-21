@@ -1,4 +1,5 @@
 <script lang="ts">
+import { Tooltip } from "bits-ui";
 import { onMount } from "svelte";
 import PrDetail from "./lib/PrDetail.svelte";
 import PrList from "./lib/PrList.svelte";
@@ -56,26 +57,28 @@ onMount(() => {
 });
 </script>
 
-<Topbar syncStatus={getSyncStatus()} />
-<div class="layout">
-    <Sidebar {currentView} onViewChange={handleViewChange} />
-    <PrList
-        {currentView}
-        onSelect={handleSelect}
-        onSelectionChange={handleSelect}
-        selectedId={selectedNotification?.id}
-        {refreshKey}
-    />
-    {#if selectedNotification}
-        <ResizableDetailPanel>
-            <PrDetail
-                notification={selectedNotification}
-                onClose={handleClose}
-            />
-        </ResizableDetailPanel>
-    {/if}
-</div>
-<Toast />
+<Tooltip.Provider delayDuration={0}>
+    <Topbar syncStatus={getSyncStatus()} />
+    <div class="layout">
+        <Sidebar {currentView} onViewChange={handleViewChange} />
+        <PrList
+            {currentView}
+            onSelect={handleSelect}
+            onSelectionChange={handleSelect}
+            selectedId={selectedNotification?.id}
+            {refreshKey}
+        />
+        {#if selectedNotification}
+            <ResizableDetailPanel>
+                <PrDetail
+                    notification={selectedNotification}
+                    onClose={handleClose}
+                />
+            </ResizableDetailPanel>
+        {/if}
+    </div>
+    <Toast />
+</Tooltip.Provider>
 
 <style>
 .layout {
