@@ -42,7 +42,7 @@ const unsubInfo = onPrInfoUpdated((data) => {
     if (item) {
         item.author = data.author;
         item.pr_status = data.pr_status;
-        if (data.ci_status !== null) item.ci_status = data.ci_status;
+        item.ci_status = data.ci_status;
         if (data.new_commits !== null) item.new_commits = data.new_commits;
         if (data.new_comments !== null) item.new_comments = data.new_comments;
         if (data.new_reviews !== null) item.new_reviews = data.new_reviews;
