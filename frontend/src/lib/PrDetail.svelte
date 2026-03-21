@@ -896,6 +896,58 @@ let diffSinceUrl = $derived(
     align-items: center;
 }
 
+.ci-tooltip-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--fg-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 6px;
+}
+
+.ci-tooltip-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 3px 0;
+    font-size: 12px;
+}
+
+.ci-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.ci-success {
+    background: var(--success-fg);
+}
+.ci-failure {
+    background: var(--danger-fg);
+}
+
+.ci-tooltip-name {
+    color: var(--fg-default);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ci-tooltip-conclusion {
+    color: var(--fg-muted);
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
+.ci-tooltip-summary {
+    border-top: 1px solid var(--border-muted);
+    margin-top: 2px;
+    padding-top: 4px;
+    color: var(--fg-muted);
+}
+
 /* Timeline */
 .timeline {
     flex: 1;
