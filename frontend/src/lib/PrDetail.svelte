@@ -29,8 +29,6 @@ let reviews = $state<Review[]>([]);
 let labels = $state<Label[]>([]);
 let loading = $state(true);
 let error: string | null = $state(null);
-let showCiTooltip = $state(false);
-
 $effect(() => {
     if (notification?.pr_id && notification?.repository) {
         loadDetail();
@@ -387,17 +385,12 @@ let diffSinceUrl = $derived(
                         </Tooltip.Root>
                     {/if}
                     {#if detail.check_runs.length > 0}
-                        <button
-                            type="button"
-                            class="ci-wrapper"
-                            onmouseenter={() => (showCiTooltip = true)}
-                            onmouseleave={() => (showCiTooltip = false)}
-                            onfocus={() => (showCiTooltip = true)}
-                            onblur={() => (showCiTooltip = false)}
-                        >
-                            <CiWheel checkRuns={detail.check_runs} />
-                            {#if showCiTooltip}
-                                <div class="ci-tooltip">
+                        <Tooltip.Root>
+                            <Tooltip.Trigger class="ci-wrapper" type="button">
+                                <CiWheel checkRuns={detail.check_runs} />
+                            </Tooltip.Trigger>
+                            <Tooltip.Portal>
+                                <Tooltip.Content class="tooltip-content">
                                     <div class="ci-tooltip-title">
                                         CI Checks
                                     </div>
@@ -427,9 +420,9 @@ let diffSinceUrl = $derived(
                                             >
                                         </div>
                                     {/if}
-                                </div>
-                            {/if}
-                        </button>
+                                </Tooltip.Content>
+                            </Tooltip.Portal>
+                        </Tooltip.Root>
                     {/if}
                 </div>
             </div>
@@ -901,71 +894,6 @@ let diffSinceUrl = $derived(
     cursor: default;
     display: inline-flex;
     align-items: center;
-}
-
-.ci-tooltip {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 6px);
-    background: var(--canvas-overlay, var(--canvas-default));
-    border: 1px solid var(--border-default);
-    border-radius: 6px;
-    padding: 8px 10px;
-    min-width: 220px;
-    z-index: 100;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-}
-
-.ci-tooltip-title {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--fg-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    margin-bottom: 6px;
-}
-
-.ci-tooltip-row {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 3px 0;
-    font-size: 12px;
-}
-
-.ci-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-
-.ci-success {
-    background: var(--success-fg);
-}
-.ci-failure {
-    background: var(--danger-fg);
-}
-
-.ci-tooltip-name {
-    color: var(--fg-default);
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.ci-tooltip-conclusion {
-    color: var(--fg-muted);
-    font-size: 11px;
-    flex-shrink: 0;
-}
-
-.ci-tooltip-summary {
-    border-top: 1px solid var(--border-muted);
-    margin-top: 2px;
-    padding-top: 4px;
-    color: var(--fg-muted);
 }
 
 /* Timeline */
