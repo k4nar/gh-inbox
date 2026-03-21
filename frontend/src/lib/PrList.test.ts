@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import PrList from "./PrListWithProvider.svelte";
+import PrList from "./PrList.test-helpers.svelte";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
 import { DEFAULT_PER_PAGE, type InboxItem } from "./types.ts";
 
