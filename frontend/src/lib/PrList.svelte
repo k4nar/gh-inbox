@@ -1,4 +1,5 @@
 <script lang="ts">
+import { Tooltip } from "bits-ui";
 import { apiFetch } from "./api.ts";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
 import { timeAgo } from "./timeago.ts";
@@ -444,43 +445,63 @@ function initials(login: string | null): string {
                         <span class="pr-date">{timeAgo(notif.updated_at)}</span>
                         <div class="pr-actions">
                             {#if currentView === "inbox"}
-                                <button
-                                    class="action-btn"
-                                    type="button"
-                                    title="Archive"
-                                    onclick={(e) => handleArchive(e, notif)}
-                                >
-                                    <svg
-                                        aria-hidden="true"
-                                        width="14"
-                                        height="14"
-                                        viewBox="0 0 16 16"
-                                        fill="currentColor"
-                                    >
-                                        <path
-                                            d="M1.75 1h12.5c.966 0 1.75.784 1.75 1.75v2.5A1.75 1.75 0 0 1 14.25 7H1.75A1.75 1.75 0 0 1 0 5.25v-2.5C0 1.784.784 1 1.75 1Zm0 1.5a.25.25 0 0 0-.25.25v2.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25v-2.5a.25.25 0 0 0-.25-.25ZM1 8.75v5.5c0 .966.784 1.75 1.75 1.75h10.5A1.75 1.75 0 0 0 15 14.25v-5.5a.75.75 0 0 0-1.5 0v5.5a.25.25 0 0 1-.25.25H2.75a.25.25 0 0 1-.25-.25v-5.5a.75.75 0 0 0-1.5 0ZM5 10.25a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1-.75-.75Z"
-                                        />
-                                    </svg>
-                                </button>
+                                <Tooltip.Provider delayDuration={0}>
+                                    <Tooltip.Root>
+                                        <Tooltip.Trigger
+                                            class="action-btn"
+                                            type="button"
+                                            aria-label="Archive"
+                                            onclick={(e) => handleArchive(e, notif)}
+                                        >
+                                            <svg
+                                                aria-hidden="true"
+                                                width="14"
+                                                height="14"
+                                                viewBox="0 0 16 16"
+                                                fill="currentColor"
+                                            >
+                                                <path
+                                                    d="M1.75 1h12.5c.966 0 1.75.784 1.75 1.75v2.5A1.75 1.75 0 0 1 14.25 7H1.75A1.75 1.75 0 0 1 0 5.25v-2.5C0 1.784.784 1 1.75 1Zm0 1.5a.25.25 0 0 0-.25.25v2.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25v-2.5a.25.25 0 0 0-.25-.25ZM1 8.75v5.5c0 .966.784 1.75 1.75 1.75h10.5A1.75 1.75 0 0 0 15 14.25v-5.5a.75.75 0 0 0-1.5 0v5.5a.25.25 0 0 1-.25.25H2.75a.25.25 0 0 1-.25-.25v-5.5a.75.75 0 0 0-1.5 0ZM5 10.25a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1-.75-.75Z"
+                                                />
+                                            </svg>
+                                        </Tooltip.Trigger>
+                                        <Tooltip.Portal>
+                                            <Tooltip.Content
+                                                class="tooltip-content"
+                                                >Archive</Tooltip.Content
+                                            >
+                                        </Tooltip.Portal>
+                                    </Tooltip.Root>
+                                </Tooltip.Provider>
                             {:else}
-                                <button
-                                    class="action-btn"
-                                    type="button"
-                                    title="Unarchive"
-                                    onclick={(e) => handleUnarchive(e, notif)}
-                                >
-                                    <svg
-                                        aria-hidden="true"
-                                        width="14"
-                                        height="14"
-                                        viewBox="0 0 16 16"
-                                        fill="currentColor"
-                                    >
-                                        <path
-                                            d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Z"
-                                        />
-                                    </svg>
-                                </button>
+                                <Tooltip.Provider delayDuration={0}>
+                                    <Tooltip.Root>
+                                        <Tooltip.Trigger
+                                            class="action-btn"
+                                            type="button"
+                                            aria-label="Unarchive"
+                                            onclick={(e) => handleUnarchive(e, notif)}
+                                        >
+                                            <svg
+                                                aria-hidden="true"
+                                                width="14"
+                                                height="14"
+                                                viewBox="0 0 16 16"
+                                                fill="currentColor"
+                                            >
+                                                <path
+                                                    d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Z"
+                                                />
+                                            </svg>
+                                        </Tooltip.Trigger>
+                                        <Tooltip.Portal>
+                                            <Tooltip.Content
+                                                class="tooltip-content"
+                                                >Unarchive</Tooltip.Content
+                                            >
+                                        </Tooltip.Portal>
+                                    </Tooltip.Root>
+                                </Tooltip.Provider>
                             {/if}
                         </div>
                     </div>

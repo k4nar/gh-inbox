@@ -205,7 +205,7 @@ describe("PrList", () => {
         });
 
         const archiveBtns = container.querySelectorAll(
-            'button[title="Archive"]',
+            'button[aria-label="Archive"]',
         );
         expect(archiveBtns).toHaveLength(2);
 
@@ -461,7 +461,9 @@ describe("PrList", () => {
         });
         globalThis.fetch = archiveFetch as unknown as typeof fetch;
 
-        const archiveBtn = container.querySelector('button[title="Archive"]')!;
+        const archiveBtn = container.querySelector(
+            'button[aria-label="Archive"]',
+        )!;
         await fireEvent.click(archiveBtn);
 
         await waitFor(() => {
