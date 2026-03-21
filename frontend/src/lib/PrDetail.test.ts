@@ -329,12 +329,12 @@ describe("PrDetail — labels", () => {
                 container.querySelector(".labels-wrapper"),
             ).toBeInTheDocument();
         });
-        fireEvent.mouseEnter(container.querySelector(".labels-wrapper")!);
+        fireEvent.pointerEnter(container.querySelector(".labels-wrapper")!);
         await waitFor(() => {
-            const chips = container.querySelectorAll(".label-chip");
+            const chips = document.querySelectorAll(".label-chip");
             expect(chips).toHaveLength(2);
         });
-        const chips = container.querySelectorAll(".label-chip");
+        const chips = document.querySelectorAll(".label-chip");
         expect(chips[0].textContent?.trim()).toBe("bug");
         expect(chips[1].textContent?.trim()).toBe("enhancement");
     });
@@ -344,7 +344,7 @@ describe("PrDetail — labels", () => {
         await waitFor(() => {
             expect(container.querySelector(".state-pill")).toBeInTheDocument();
         });
-        expect(container.querySelectorAll(".label-chip")).toHaveLength(0);
+        expect(document.querySelectorAll(".label-chip")).toHaveLength(0);
     });
 });
 
