@@ -1,4 +1,5 @@
 <script lang="ts">
+import { Tooltip } from "bits-ui";
 import { apiFetch } from "./api.ts";
 import CiWheel from "./CiWheel.svelte";
 import CommentThread from "./CommentThread.svelte";
@@ -271,25 +272,37 @@ let diffSinceUrl = $derived(
             <span class="detail-title">{notification.title}</span>
         {/if}
         {#if detail?.pull_request?.url}
-            <a
-                class="gh-link"
-                href={detail.pull_request.url}
-                target="_blank"
-                rel="noopener"
-                title="Open on GitHub"
-            >
-                <svg
-                    aria-hidden="true"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
-                >
-                    <path
-                        d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"
-                    />
-                </svg>
-            </a>
+            <Tooltip.Root>
+                <Tooltip.Trigger>
+                    {#snippet child({ props })}
+                        <a
+                            {...props}
+                            class="gh-link"
+                            href={detail?.pull_request.url}
+                            target="_blank"
+                            rel="noopener"
+                            aria-label="Open on GitHub"
+                        >
+                            <svg
+                                aria-hidden="true"
+                                width="16"
+                                height="16"
+                                viewBox="0 0 16 16"
+                                fill="currentColor"
+                            >
+                                <path
+                                    d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"
+                                />
+                            </svg>
+                        </a>
+                    {/snippet}
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                    <Tooltip.Content class="tooltip-content"
+                        >Open on GitHub</Tooltip.Content
+                    >
+                </Tooltip.Portal>
+            </Tooltip.Root>
         {/if}
     </div>
 
@@ -314,19 +327,31 @@ let diffSinceUrl = $derived(
                 >
                 <span class="status-author">{pr.author}</span>
                 <span class="status-sep">·</span>
-                <a
-                    class="diff-link"
-                    href="{detail.pull_request.url}/files"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="View diff on GitHub"
-                >
-                    <span class="additions">+{pr.additions}</span>
-                    <span class="deletions">−{pr.deletions}</span>
-                    <span class="status-files"
-                        >in {pr.changed_files} files</span
-                    >
-                </a>
+                <Tooltip.Root>
+                    <Tooltip.Trigger>
+                        {#snippet child({ props })}
+                            <a
+                                {...props}
+                                class="diff-link"
+                                href="{detail?.pull_request.url}/files"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label="View diff on GitHub"
+                            >
+                                <span class="additions">+{pr.additions}</span>
+                                <span class="deletions">−{pr.deletions}</span>
+                                <span class="status-files"
+                                    >in {pr.changed_files} files</span
+                                >
+                            </a>
+                        {/snippet}
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                        <Tooltip.Content class="tooltip-content"
+                            >View diff on GitHub</Tooltip.Content
+                        >
+                    </Tooltip.Portal>
+                </Tooltip.Root>
                 <div class="status-right">
                     {#if labels.length > 0}
                         <button

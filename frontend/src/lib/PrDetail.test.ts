@@ -6,7 +6,7 @@ import {
     waitFor,
 } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import PrDetail from "./PrDetail.svelte";
+import PrDetail from "./PrDetail.test-helpers.svelte";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
 import type { PrDetailResponse } from "./types.ts";
 
@@ -218,7 +218,7 @@ describe("PrDetail — status bar", () => {
     it("renders GitHub link in header", async () => {
         renderDetail();
         await waitFor(() => {
-            const link = screen.getByTitle("Open on GitHub");
+            const link = screen.getByRole("link", { name: "Open on GitHub" });
             expect(link.getAttribute("href")).toBe(
                 "https://github.com/owner/repo/pull/42",
             );
