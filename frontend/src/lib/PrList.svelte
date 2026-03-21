@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Tooltip } from "bits-ui";
+import { Pagination, Tooltip } from "bits-ui";
 import { apiFetch } from "./api.ts";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
 import { timeAgo } from "./timeago.ts";
@@ -506,45 +506,46 @@ function initials(login: string | null): string {
 
     <div class="statusbar">
         {#if totalPages > 1}
-            <button
-                type="button"
-                class="page-btn"
-                disabled={currentPage <= 1}
-                aria-label="Previous page"
-                onclick={() => goToPage(currentPage - 1)}
+            <Pagination.Root
+                page={currentPage}
+                count={totalCount}
+                perPage={PER_PAGE}
+                onPageChange={goToPage}
+                style="display:flex;align-items:center;gap:4px"
             >
-                <svg
-                    aria-hidden="true"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
+                <Pagination.PrevButton
+                    class="page-btn"
+                    aria-label="Previous page"
                 >
-                    <path
-                        d="M9.78 12.78a.75.75 0 0 1-1.06 0L4.47 8.53a.75.75 0 0 1 0-1.06l4.25-4.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L6.06 8l3.72 3.72a.75.75 0 0 1 0 1.06Z"
-                    />
-                </svg>
-            </button>
-            <span class="page-info">Page {currentPage} of {totalPages}</span>
-            <button
-                type="button"
-                class="page-btn"
-                disabled={currentPage >= totalPages}
-                aria-label="Next page"
-                onclick={() => goToPage(currentPage + 1)}
-            >
-                <svg
-                    aria-hidden="true"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
+                    <svg
+                        aria-hidden="true"
+                        width="12"
+                        height="12"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                    >
+                        <path
+                            d="M9.78 12.78a.75.75 0 0 1-1.06 0L4.47 8.53a.75.75 0 0 1 0-1.06l4.25-4.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L6.06 8l3.72 3.72a.75.75 0 0 1 0 1.06Z"
+                        />
+                    </svg>
+                </Pagination.PrevButton>
+                <span class="page-info"
+                    >Page {currentPage} of {totalPages}</span
                 >
-                    <path
-                        d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"
-                    />
-                </svg>
-            </button>
+                <Pagination.NextButton class="page-btn" aria-label="Next page">
+                    <svg
+                        aria-hidden="true"
+                        width="12"
+                        height="12"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                    >
+                        <path
+                            d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"
+                        />
+                    </svg>
+                </Pagination.NextButton>
+            </Pagination.Root>
         {/if}
         <div class="statusbar-spacer"></div>
         <span class="statusbar-count"
@@ -869,7 +870,7 @@ function initials(login: string | null): string {
     color: var(--fg-subtle);
     font-size: 12px;
 }
-.page-btn {
+:global(.page-btn) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -883,11 +884,11 @@ function initials(login: string | null): string {
     padding: 0;
     font-family: inherit;
 }
-.page-btn:hover:not(:disabled) {
+:global(.page-btn:hover:not(:disabled)) {
     background: var(--border-muted);
     color: var(--fg-default);
 }
-.page-btn:disabled {
+:global(.page-btn:disabled) {
     opacity: 0.4;
     cursor: default;
 }
