@@ -350,6 +350,7 @@ function initials(login: string | null): string {
                     class:read={!notif.unread}
                     class:selected={notif.id === selectedId}
                     data-notif-id={notif.id}
+                    data-ci-status={notif.ci_status ?? ""}
                     onclick={() => handleSelect(notif)}
                     role="button"
                     tabindex="0"
