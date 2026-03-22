@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Tooltip } from "bits-ui";
+import { Collapsible, Tooltip } from "bits-ui";
 import { apiFetch } from "./api.ts";
 import CiWheel from "./CiWheel.svelte";
 import CommentThread from "./CommentThread.svelte";
@@ -193,10 +193,6 @@ $effect(() => {
         expandedDescription = true;
     }
 });
-
-function toggleDescription(): void {
-    expandedDescription = !expandedDescription;
-}
 
 function hasRenderableDescription(
     pr: PrDetailResponse["pull_request"],
@@ -542,46 +538,51 @@ let diffSinceUrl = $derived(
 
         <div class="timeline">
             <div class="timeline-item description-item">
-                <button
-                    type="button"
-                    class="description-header"
-                    onclick={toggleDescription}
-                    aria-expanded={expandedDescription}
+                <Collapsible.Root
+                    open={expandedDescription}
+                    onOpenChange={(v) => (expandedDescription = v)}
                 >
-                    <span class="description-title">Description</span>
-                    <span
-                        class="thread-chevron"
-                        class:open={expandedDescription}
+                    <Collapsible.Trigger
+                        class="description-header"
+                        type="button"
                     >
-                        <svg
-                            aria-hidden="true"
-                            width="12"
-                            height="12"
-                            viewBox="0 0 16 16"
-                            fill="currentColor"
+                        <span class="description-title">Description</span>
+                        <span
+                            class="thread-chevron"
+                            class:open={expandedDescription}
                         >
-                            <path
-                                d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z"
-                            />
-                        </svg>
-                    </span>
-                </button>
-                {#if expandedDescription}
-                    <div
-                        class="description-content"
-                        class:description-content--new={!previousViewedAt}
-                    >
-                        {#if hasRenderableDescription(pr)}
-                            <div class="comment-body markdown">
-                                {@html pr.body_html}
+                            <svg
+                                aria-hidden="true"
+                                width="12"
+                                height="12"
+                                viewBox="0 0 16 16"
+                                fill="currentColor"
+                            >
+                                <path
+                                    d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z"
+                                />
+                            </svg>
+                        </span>
+                    </Collapsible.Trigger>
+                    <Collapsible.Content>
+                        {#if expandedDescription}
+                            <div
+                                class="description-content"
+                                class:description-content--new={!previousViewedAt}
+                            >
+                                {#if hasRenderableDescription(pr)}
+                                    <div class="comment-body markdown">
+                                        {@html pr.body_html}
+                                    </div>
+                                {:else}
+                                    <p class="description-empty">
+                                        No description provided.
+                                    </p>
+                                {/if}
                             </div>
-                        {:else}
-                            <p class="description-empty">
-                                No description provided.
-                            </p>
                         {/if}
-                    </div>
-                {/if}
+                    </Collapsible.Content>
+                </Collapsible.Root>
             </div>
             {#if hasNewItems}
                 <!-- "Since your last visit" zone -->
@@ -1306,7 +1307,7 @@ let diffSinceUrl = $derived(
     margin-bottom: 10px;
 }
 
-.description-header {
+:global(.description-header) {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -1323,7 +1324,7 @@ let diffSinceUrl = $derived(
     text-decoration: none;
 }
 
-.description-header:hover {
+:global(.description-header:hover) {
     background: var(--canvas-inset, var(--canvas-subtle));
     color: var(--fg-default);
 }
