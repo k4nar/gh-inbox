@@ -403,6 +403,12 @@ describe("PrList", () => {
             expect(screen.getByText("Page 2 PR")).toBeInTheDocument();
         });
         expect(screen.getByText(/Page 2 of 2/)).toBeInTheDocument();
+        expect(
+            screen.getByRole("button", { name: "Next page" }),
+        ).toBeDisabled();
+        expect(
+            screen.getByRole("button", { name: "Previous page" }),
+        ).toBeEnabled();
     });
 
     it("archive on last item of page navigates back", async () => {

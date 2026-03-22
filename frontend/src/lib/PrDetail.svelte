@@ -176,12 +176,8 @@ let expandedReviews = $state<Set<number>>(new Set());
 let expandedDescription = $state(true);
 
 $effect(() => {
-    // If previousViewedAt is not null (PR has been viewed), collapse the description by default
-    if (previousViewedAt !== null) {
-        expandedDescription = false;
-    } else {
-        expandedDescription = true;
-    }
+    // Collapse description if PR has been viewed before; expand for first visit
+    expandedDescription = previousViewedAt === null;
 });
 
 function hasRenderableDescription(
@@ -422,9 +418,8 @@ let diffSinceUrl = $derived(
                     <Collapsible.Root
                         open={expandedReviews.has(review.id)}
                         onOpenChange={(v) => {
-                            const next = new Set(expandedReviews);
-                            if (v) next.add(review.id); else next.delete(review.id);
-                            expandedReviews = next;
+                            if (v) expandedReviews.add(review.id);
+                            else expandedReviews.delete(review.id);
                         }}
                     >
                         <Collapsible.Trigger
