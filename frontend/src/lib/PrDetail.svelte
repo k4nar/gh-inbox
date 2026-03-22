@@ -172,16 +172,6 @@ let oldReviews = $derived(sortedReviews.filter((r) => !isNew(r.submitted_at)));
 
 let expandedReviews = $state<Set<number>>(new Set());
 
-function toggleReview(id: number): void {
-    const next = new Set(expandedReviews);
-    if (next.has(id)) {
-        next.delete(id);
-    } else {
-        next.add(id);
-    }
-    expandedReviews = next;
-}
-
 // Description toggling logic: expand by default if PR hasn't been viewed
 let expandedDescription = $state(true);
 
@@ -429,48 +419,91 @@ let diffSinceUrl = $derived(
         {#snippet reviewItem(review: import("./types.ts").Review, showBadge: boolean)}
             <div class="timeline-item review-item">
                 {#if review.body}
-                    <button
-                        type="button"
-                        class="review-thread-header"
-                        onclick={() => toggleReview(review.id)}
-                        aria-expanded={expandedReviews.has(review.id)}
+                    <Collapsible.Root
+                        open={expandedReviews.has(review.id)}
+                        onOpenChange={(v) => {
+                            const next = new Set(expandedReviews);
+                            if (v) next.add(review.id); else next.delete(review.id);
+                            expandedReviews = next;
+                        }}
                     >
-                        <img
-                            class="avatar avatar-sm"
-                            src={avatarUrl(review.reviewer)}
-                            alt={review.reviewer}
-                            width="18"
-                            height="18"
+                        <Collapsible.Trigger
+                            class="review-thread-header"
+                            type="button"
                         >
-                        <span class="reviewer-name">{review.reviewer}</span>
-                        <span
-                            class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : review.state === 'CHANGES_REQUESTED' ? 'pill-changes' : 'pill-dismissed'}"
-                        >
-                            {review.state === 'APPROVED' ? 'Approved' : review.state === 'CHANGES_REQUESTED' ? 'Changes requested' : 'Dismissed'}
-                        </span>
-                        <span class="timestamp"
-                            >{timeAgo(review.submitted_at)}</span
-                        >
-                        {#if showBadge}
-                            <span class="new-count-badge">New</span>
-                        {/if}
-                        <span
-                            class="thread-chevron"
-                            class:open={expandedReviews.has(review.id)}
-                        >
-                            <svg
-                                aria-hidden="true"
-                                width="12"
-                                height="12"
-                                viewBox="0 0 16 16"
-                                fill="currentColor"
+                            <img
+                                class="avatar avatar-sm"
+                                src={avatarUrl(review.reviewer)}
+                                alt={review.reviewer}
+                                width="18"
+                                height="18"
                             >
-                                <path
-                                    d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z"
-                                />
-                            </svg>
-                        </span>
-                    </button>
+                            <span class="reviewer-name">{review.reviewer}</span>
+                            <span
+                                class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : review.state === 'CHANGES_REQUESTED' ? 'pill-changes' : 'pill-dismissed'}"
+                            >
+                                {review.state === 'APPROVED' ? 'Approved' : review.state === 'CHANGES_REQUESTED' ? 'Changes requested' : 'Dismissed'}
+                            </span>
+                            <span class="timestamp"
+                                >{timeAgo(review.submitted_at)}</span
+                            >
+                            {#if showBadge}
+                                <span class="new-count-badge">New</span>
+                            {/if}
+                            <span
+                                class="thread-chevron"
+                                class:open={expandedReviews.has(review.id)}
+                            >
+                                <svg
+                                    aria-hidden="true"
+                                    width="12"
+                                    height="12"
+                                    viewBox="0 0 16 16"
+                                    fill="currentColor"
+                                >
+                                    <path
+                                        d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z"
+                                    />
+                                </svg>
+                            </span>
+                        </Collapsible.Trigger>
+                        <Collapsible.Content>
+                            {#if review.body && expandedReviews.has(review.id)}
+                                <a
+                                    class="review-comment"
+                                    class:review-comment--new={showBadge}
+                                    href={review.html_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    <div class="comment-header">
+                                        <img
+                                            class="comment-avatar"
+                                            src={avatarUrl(review.reviewer)}
+                                            alt={review.reviewer}
+                                            width="18"
+                                            height="18"
+                                        >
+                                        <span class="comment-author"
+                                            >{review.reviewer}</span
+                                        >
+                                        <span class="comment-date"
+                                            >·
+                                            {timeAgo(review.submitted_at)}</span
+                                        >
+                                        <span
+                                            class="comment-link-icon"
+                                            aria-hidden="true"
+                                            >↗</span
+                                        >
+                                    </div>
+                                    <div class="comment-body">
+                                        <p>{review.body}</p>
+                                    </div>
+                                </a>
+                            {/if}
+                        </Collapsible.Content>
+                    </Collapsible.Root>
                 {:else}
                     <a
                         class="review-thread-header review-thread-header--link"
@@ -500,37 +533,6 @@ let diffSinceUrl = $derived(
                         <span class="review-link-icon" aria-hidden="true"
                             >↗</span
                         >
-                    </a>
-                {/if}
-                {#if review.body && expandedReviews.has(review.id)}
-                    <a
-                        class="review-comment"
-                        class:review-comment--new={showBadge}
-                        href={review.html_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                    >
-                        <div class="comment-header">
-                            <img
-                                class="comment-avatar"
-                                src={avatarUrl(review.reviewer)}
-                                alt={review.reviewer}
-                                width="18"
-                                height="18"
-                            >
-                            <span class="comment-author"
-                                >{review.reviewer}</span
-                            >
-                            <span class="comment-date"
-                                >· {timeAgo(review.submitted_at)}</span
-                            >
-                            <span class="comment-link-icon" aria-hidden="true"
-                                >↗</span
-                            >
-                        </div>
-                        <div class="comment-body">
-                            <p>{review.body}</p>
-                        </div>
                     </a>
                 {/if}
             </div>
@@ -1123,7 +1125,7 @@ let diffSinceUrl = $derived(
     font-size: 12px;
 }
 
-.review-thread-header {
+:global(.review-thread-header) {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -1140,7 +1142,7 @@ let diffSinceUrl = $derived(
     text-decoration: none;
 }
 
-.review-thread-header:hover {
+:global(.review-thread-header:hover) {
     background: var(--canvas-inset, var(--canvas-subtle));
     color: var(--fg-default);
 }
