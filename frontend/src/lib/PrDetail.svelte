@@ -1230,7 +1230,7 @@ let diffSinceUrl = $derived(
     transition: opacity 0.1s;
 }
 
-.review-thread-header:hover .review-link-icon {
+:global(.review-thread-header:hover) .review-link-icon {
     opacity: 1;
 }
 
