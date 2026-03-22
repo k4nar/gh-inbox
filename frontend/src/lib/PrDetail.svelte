@@ -885,7 +885,7 @@ let diffSinceUrl = $derived(
 }
 
 /* CI indicator */
-.ci-wrapper {
+:global(.ci-wrapper) {
     position: relative;
     background: none;
     border: none;
@@ -1074,7 +1074,7 @@ let diffSinceUrl = $derived(
 }
 
 /* Labels pill */
-.labels-wrapper {
+:global(.labels-wrapper) {
     position: relative;
     background: none;
     border: none;

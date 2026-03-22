@@ -836,7 +836,7 @@ function initials(login: string | null): string {
     display: flex;
     align-items: center;
 }
-.action-btn {
+:global(.action-btn) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -850,10 +850,10 @@ function initials(login: string | null): string {
     opacity: 0;
     transition: opacity 0.1s;
 }
-.pr-item:hover .action-btn {
+.pr-item:hover :global(.action-btn) {
     opacity: 1;
 }
-.action-btn:hover {
+:global(.action-btn:hover) {
     background: var(--border-muted);
     color: var(--fg-default);
 }
