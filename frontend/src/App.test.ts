@@ -272,7 +272,7 @@ describe("App", () => {
         });
 
         const archiveButtons = container.querySelectorAll(
-            'button[title="Archive"]',
+            'button[aria-label="Archive"]',
         );
         await fireEvent.click(archiveButtons[0] as HTMLButtonElement);
 

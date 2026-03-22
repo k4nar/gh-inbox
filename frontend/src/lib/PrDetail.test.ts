@@ -6,7 +6,7 @@ import {
     waitFor,
 } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import PrDetail from "./PrDetail.svelte";
+import PrDetail from "./PrDetail.test-helpers.svelte";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
 import type { PrDetailResponse } from "./types.ts";
 
@@ -218,7 +218,7 @@ describe("PrDetail — status bar", () => {
     it("renders GitHub link in header", async () => {
         renderDetail();
         await waitFor(() => {
-            const link = screen.getByTitle("Open on GitHub");
+            const link = screen.getByRole("link", { name: "Open on GitHub" });
             expect(link.getAttribute("href")).toBe(
                 "https://github.com/owner/repo/pull/42",
             );
@@ -329,12 +329,12 @@ describe("PrDetail — labels", () => {
                 container.querySelector(".labels-wrapper"),
             ).toBeInTheDocument();
         });
-        fireEvent.mouseEnter(container.querySelector(".labels-wrapper")!);
+        fireEvent.pointerEnter(container.querySelector(".labels-wrapper")!);
         await waitFor(() => {
-            const chips = container.querySelectorAll(".label-chip");
+            const chips = document.querySelectorAll(".label-chip");
             expect(chips).toHaveLength(2);
         });
-        const chips = container.querySelectorAll(".label-chip");
+        const chips = document.querySelectorAll(".label-chip");
         expect(chips[0].textContent?.trim()).toBe("bug");
         expect(chips[1].textContent?.trim()).toBe("enhancement");
     });
@@ -344,7 +344,7 @@ describe("PrDetail — labels", () => {
         await waitFor(() => {
             expect(container.querySelector(".state-pill")).toBeInTheDocument();
         });
-        expect(container.querySelectorAll(".label-chip")).toHaveLength(0);
+        expect(document.querySelectorAll(".label-chip")).toHaveLength(0);
     });
 });
 

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import PrList from "./PrList.svelte";
+import PrList from "./PrList.test-helpers.svelte";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
 import { DEFAULT_PER_PAGE, type InboxItem } from "./types.ts";
 
@@ -205,7 +205,7 @@ describe("PrList", () => {
         });
 
         const archiveBtns = container.querySelectorAll(
-            'button[title="Archive"]',
+            'button[aria-label="Archive"]',
         );
         expect(archiveBtns).toHaveLength(2);
 
@@ -403,6 +403,12 @@ describe("PrList", () => {
             expect(screen.getByText("Page 2 PR")).toBeInTheDocument();
         });
         expect(screen.getByText(/Page 2 of 2/)).toBeInTheDocument();
+        expect(
+            screen.getByRole("button", { name: "Next page" }),
+        ).toBeDisabled();
+        expect(
+            screen.getByRole("button", { name: "Previous page" }),
+        ).toBeEnabled();
     });
 
     it("archive on last item of page navigates back", async () => {
@@ -461,7 +467,9 @@ describe("PrList", () => {
         });
         globalThis.fetch = archiveFetch as unknown as typeof fetch;
 
-        const archiveBtn = container.querySelector('button[title="Archive"]')!;
+        const archiveBtn = container.querySelector(
+            'button[aria-label="Archive"]',
+        )!;
         await fireEvent.click(archiveBtn);
 
         await waitFor(() => {

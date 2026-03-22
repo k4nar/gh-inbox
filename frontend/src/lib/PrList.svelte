@@ -1,4 +1,5 @@
 <script lang="ts">
+import { Pagination, Tooltip } from "bits-ui";
 import { apiFetch } from "./api.ts";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
 import { timeAgo } from "./timeago.ts";
@@ -444,43 +445,57 @@ function initials(login: string | null): string {
                         <span class="pr-date">{timeAgo(notif.updated_at)}</span>
                         <div class="pr-actions">
                             {#if currentView === "inbox"}
-                                <button
-                                    class="action-btn"
-                                    type="button"
-                                    title="Archive"
-                                    onclick={(e) => handleArchive(e, notif)}
-                                >
-                                    <svg
-                                        aria-hidden="true"
-                                        width="14"
-                                        height="14"
-                                        viewBox="0 0 16 16"
-                                        fill="currentColor"
+                                <Tooltip.Root>
+                                    <Tooltip.Trigger
+                                        class="action-btn"
+                                        type="button"
+                                        aria-label="Archive"
+                                        onclick={(e) => handleArchive(e, notif)}
                                     >
-                                        <path
-                                            d="M1.75 1h12.5c.966 0 1.75.784 1.75 1.75v2.5A1.75 1.75 0 0 1 14.25 7H1.75A1.75 1.75 0 0 1 0 5.25v-2.5C0 1.784.784 1 1.75 1Zm0 1.5a.25.25 0 0 0-.25.25v2.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25v-2.5a.25.25 0 0 0-.25-.25ZM1 8.75v5.5c0 .966.784 1.75 1.75 1.75h10.5A1.75 1.75 0 0 0 15 14.25v-5.5a.75.75 0 0 0-1.5 0v5.5a.25.25 0 0 1-.25.25H2.75a.25.25 0 0 1-.25-.25v-5.5a.75.75 0 0 0-1.5 0ZM5 10.25a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1-.75-.75Z"
-                                        />
-                                    </svg>
-                                </button>
+                                        <svg
+                                            aria-hidden="true"
+                                            width="14"
+                                            height="14"
+                                            viewBox="0 0 16 16"
+                                            fill="currentColor"
+                                        >
+                                            <path
+                                                d="M1.75 1h12.5c.966 0 1.75.784 1.75 1.75v2.5A1.75 1.75 0 0 1 14.25 7H1.75A1.75 1.75 0 0 1 0 5.25v-2.5C0 1.784.784 1 1.75 1Zm0 1.5a.25.25 0 0 0-.25.25v2.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25v-2.5a.25.25 0 0 0-.25-.25ZM1 8.75v5.5c0 .966.784 1.75 1.75 1.75h10.5A1.75 1.75 0 0 0 15 14.25v-5.5a.75.75 0 0 0-1.5 0v5.5a.25.25 0 0 1-.25.25H2.75a.25.25 0 0 1-.25-.25v-5.5a.75.75 0 0 0-1.5 0ZM5 10.25a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1-.75-.75Z"
+                                            />
+                                        </svg>
+                                    </Tooltip.Trigger>
+                                    <Tooltip.Portal>
+                                        <Tooltip.Content class="tooltip-content"
+                                            >Archive</Tooltip.Content
+                                        >
+                                    </Tooltip.Portal>
+                                </Tooltip.Root>
                             {:else}
-                                <button
-                                    class="action-btn"
-                                    type="button"
-                                    title="Unarchive"
-                                    onclick={(e) => handleUnarchive(e, notif)}
-                                >
-                                    <svg
-                                        aria-hidden="true"
-                                        width="14"
-                                        height="14"
-                                        viewBox="0 0 16 16"
-                                        fill="currentColor"
+                                <Tooltip.Root>
+                                    <Tooltip.Trigger
+                                        class="action-btn"
+                                        type="button"
+                                        aria-label="Unarchive"
+                                        onclick={(e) => handleUnarchive(e, notif)}
                                     >
-                                        <path
-                                            d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Z"
-                                        />
-                                    </svg>
-                                </button>
+                                        <svg
+                                            aria-hidden="true"
+                                            width="14"
+                                            height="14"
+                                            viewBox="0 0 16 16"
+                                            fill="currentColor"
+                                        >
+                                            <path
+                                                d="M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Z"
+                                            />
+                                        </svg>
+                                    </Tooltip.Trigger>
+                                    <Tooltip.Portal>
+                                        <Tooltip.Content class="tooltip-content"
+                                            >Unarchive</Tooltip.Content
+                                        >
+                                    </Tooltip.Portal>
+                                </Tooltip.Root>
                             {/if}
                         </div>
                     </div>
@@ -491,45 +506,46 @@ function initials(login: string | null): string {
 
     <div class="statusbar">
         {#if totalPages > 1}
-            <button
-                type="button"
-                class="page-btn"
-                disabled={currentPage <= 1}
-                aria-label="Previous page"
-                onclick={() => goToPage(currentPage - 1)}
+            <Pagination.Root
+                page={currentPage}
+                count={totalCount}
+                perPage={PER_PAGE}
+                onPageChange={goToPage}
+                style="display:flex;align-items:center;gap:4px"
             >
-                <svg
-                    aria-hidden="true"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
+                <Pagination.PrevButton
+                    class="page-btn"
+                    aria-label="Previous page"
                 >
-                    <path
-                        d="M9.78 12.78a.75.75 0 0 1-1.06 0L4.47 8.53a.75.75 0 0 1 0-1.06l4.25-4.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L6.06 8l3.72 3.72a.75.75 0 0 1 0 1.06Z"
-                    />
-                </svg>
-            </button>
-            <span class="page-info">Page {currentPage} of {totalPages}</span>
-            <button
-                type="button"
-                class="page-btn"
-                disabled={currentPage >= totalPages}
-                aria-label="Next page"
-                onclick={() => goToPage(currentPage + 1)}
-            >
-                <svg
-                    aria-hidden="true"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
+                    <svg
+                        aria-hidden="true"
+                        width="12"
+                        height="12"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                    >
+                        <path
+                            d="M9.78 12.78a.75.75 0 0 1-1.06 0L4.47 8.53a.75.75 0 0 1 0-1.06l4.25-4.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L6.06 8l3.72 3.72a.75.75 0 0 1 0 1.06Z"
+                        />
+                    </svg>
+                </Pagination.PrevButton>
+                <span class="page-info"
+                    >Page {currentPage} of {totalPages}</span
                 >
-                    <path
-                        d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"
-                    />
-                </svg>
-            </button>
+                <Pagination.NextButton class="page-btn" aria-label="Next page">
+                    <svg
+                        aria-hidden="true"
+                        width="12"
+                        height="12"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                    >
+                        <path
+                            d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"
+                        />
+                    </svg>
+                </Pagination.NextButton>
+            </Pagination.Root>
         {/if}
         <div class="statusbar-spacer"></div>
         <span class="statusbar-count"
@@ -820,7 +836,7 @@ function initials(login: string | null): string {
     display: flex;
     align-items: center;
 }
-.action-btn {
+:global(.action-btn) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -834,10 +850,10 @@ function initials(login: string | null): string {
     opacity: 0;
     transition: opacity 0.1s;
 }
-.pr-item:hover .action-btn {
+.pr-item:hover :global(.action-btn) {
     opacity: 1;
 }
-.action-btn:hover {
+:global(.action-btn:hover) {
     background: var(--border-muted);
     color: var(--fg-default);
 }
@@ -854,7 +870,7 @@ function initials(login: string | null): string {
     color: var(--fg-subtle);
     font-size: 12px;
 }
-.page-btn {
+:global(.page-btn) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -868,11 +884,11 @@ function initials(login: string | null): string {
     padding: 0;
     font-family: inherit;
 }
-.page-btn:hover:not(:disabled) {
+:global(.page-btn:hover:not(:disabled)) {
     background: var(--border-muted);
     color: var(--fg-default);
 }
-.page-btn:disabled {
+:global(.page-btn:disabled) {
     opacity: 0.4;
     cursor: default;
 }
