@@ -181,6 +181,7 @@ describe("PrList", () => {
         await waitFor(() => {
             expect(globalThis.fetch).toHaveBeenCalledWith(
                 `/api/inbox?status=archived&page=1&per_page=${DEFAULT_PER_PAGE}`,
+                expect.any(Object),
             );
         });
     });

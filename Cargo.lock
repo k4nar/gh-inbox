@@ -917,6 +917,7 @@ dependencies = [
  "http-body-util",
  "include_dir",
  "open",
+ "rand",
  "reqwest",
  "serde",
  "serde_json",

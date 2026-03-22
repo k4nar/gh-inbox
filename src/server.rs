@@ -2,11 +2,13 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
+use axum::http::HeaderValue;
 #[cfg(not(debug_assertions))]
 use axum::http::{StatusCode, header};
 #[cfg(not(debug_assertions))]
 use axum::response::{IntoResponse, Response};
 use axum::{Router, middleware, routing::get};
+use rand::Rng;
 use sqlx::SqlitePool;
 use tokio::sync::{RwLock, broadcast};
 
@@ -23,6 +25,9 @@ pub struct AppState {
     /// PRs currently visible in the frontend viewport: (repository, pr_number).
     /// Updated by POST /api/inbox/prefetch.
     pub viewport_prs: Arc<RwLock<HashSet<(String, i64)>>>,
+    /// Per-session random secret injected into index.html and required on all
+    /// /api/* requests (except /api/events) as the X-Session-Token header.
+    pub session_token: Arc<str>,
 }
 
 /// In release mode, the compiled frontend is embedded in the binary.
@@ -52,20 +57,23 @@ fn mime_from_path(path: &str) -> &'static str {
 /// Serve an embedded file, or fall back to index.html for SPA routing.
 /// Paths under /api/ are never served as static files — they should 404 normally.
 #[cfg(not(debug_assertions))]
-async fn static_file(axum::extract::Path(path): axum::extract::Path<String>) -> Response {
+async fn static_file(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::Path(path): axum::extract::Path<String>,
+) -> Response {
     if path.starts_with("api/") {
         return StatusCode::NOT_FOUND.into_response();
     }
-    serve_embedded(&path)
+    serve_embedded(&path, &state.session_token)
 }
 
 #[cfg(not(debug_assertions))]
-async fn index() -> Response {
-    serve_embedded("index.html")
+async fn index(axum::extract::State(state): axum::extract::State<AppState>) -> Response {
+    serve_embedded("index.html", &state.session_token)
 }
 
 #[cfg(not(debug_assertions))]
-fn serve_embedded(path: &str) -> Response {
+fn serve_embedded(path: &str, session_token: &str) -> Response {
     // Try the exact path first, then fall back to index.html for SPA routing.
     let file = embedded::FRONTEND_DIR
         .get_file(path)
@@ -82,6 +90,25 @@ fn serve_embedded(path: &str) -> Response {
             } else {
                 "public, max-age=31536000, immutable"
             };
+            if file_path == "index.html" {
+                // Inject the per-session token so the frontend can authenticate
+                // its API requests without holding the GitHub PAT.
+                let html = String::from_utf8_lossy(f.contents());
+                let injected = html.replacen(
+                    "</head>",
+                    &format!(
+                        r#"<meta name="x-session-token" content="{}"></head>"#,
+                        session_token
+                    ),
+                    1,
+                );
+                return (
+                    StatusCode::OK,
+                    [(header::CONTENT_TYPE, mime), (header::CACHE_CONTROL, cache)],
+                    injected.into_bytes(),
+                )
+                    .into_response();
+            }
             (
                 StatusCode::OK,
                 [(header::CONTENT_TYPE, mime), (header::CACHE_CONTROL, cache)],
@@ -97,6 +124,66 @@ fn serve_embedded(path: &str) -> Response {
 #[cfg(debug_assertions)]
 async fn index() -> &'static str {
     "gh-inbox works"
+}
+
+/// Adds security headers to every response.
+///
+/// `connect-src 'self'` is the critical one: even if XSS runs inside the app,
+/// it cannot exfiltrate data to an external origin.
+async fn add_security_headers(
+    request: axum::extract::Request,
+    next: middleware::Next,
+) -> axum::response::Response {
+    let mut response = next.run(request).await;
+    let h = response.headers_mut();
+    h.insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
+    h.insert("x-frame-options", HeaderValue::from_static("DENY"));
+    h.insert("referrer-policy", HeaderValue::from_static("no-referrer"));
+    h.insert(
+        "content-security-policy",
+        HeaderValue::from_static(
+            "default-src 'self'; \
+             img-src 'self' https://avatars.githubusercontent.com https://github.com data:; \
+             style-src 'self' 'unsafe-inline'; \
+             script-src 'self'; \
+             connect-src 'self'; \
+             frame-ancestors 'none'; \
+             base-uri 'self'; \
+             form-action 'self'",
+        ),
+    );
+    response
+}
+
+/// Rejects /api/* requests (except /api/events) that don't carry the correct
+/// per-session token.  This prevents other local processes or browser tabs
+/// from calling the API.  Skipped entirely in debug builds because the Vite
+/// dev server serves index.html and can't inject the token.
+#[allow(unused_variables)]
+async fn check_session_token(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    request: axum::extract::Request,
+    next: middleware::Next,
+) -> axum::response::Response {
+    #[cfg(not(debug_assertions))]
+    {
+        use axum::response::IntoResponse;
+        let path = request.uri().path();
+        if path.starts_with("/api/") && path != "/api/events" {
+            let provided = request
+                .headers()
+                .get("x-session-token")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            if provided != state.session_token.as_ref() {
+                return (axum::http::StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
+            }
+        }
+    }
+    next.run(request).await
 }
 
 async fn log_request(
@@ -120,12 +207,21 @@ pub fn app_with_base_url(
     github_base_url: String,
 ) -> (Router, AppState) {
     let (tx, _rx) = broadcast::channel(64);
+    let session_token: Arc<str> = Arc::from(
+        rand::thread_rng()
+            .sample_iter(&rand::distributions::Alphanumeric)
+            .take(32)
+            .map(char::from)
+            .collect::<String>()
+            .as_str(),
+    );
     let state = AppState {
         pool,
         github: github::GithubClient::new(token, github_base_url),
         tx,
         bootstrap_done: Arc::new(AtomicBool::new(false)),
         viewport_prs: Arc::new(RwLock::new(HashSet::new())),
+        session_token,
     };
 
     let router = api::router();
@@ -140,6 +236,11 @@ pub fn app_with_base_url(
 
     (
         router
+            .layer(middleware::from_fn_with_state(
+                state.clone(),
+                check_session_token,
+            ))
+            .layer(middleware::from_fn(add_security_headers))
             .layer(middleware::from_fn(log_request))
             .with_state(state.clone()),
         state,

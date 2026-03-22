@@ -16,6 +16,7 @@ dirs = "6"
 reqwest = { version = "0.12", features = ["json"] }
 include_dir = "0.7"
 futures = "0.3"
+rand = "0.8"
 tokio-stream = { version = "0.1", features = ["sync"] }
 comrak = "0.51.0"
 ammonia = "4.1.2"
