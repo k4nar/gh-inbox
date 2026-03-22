@@ -23,20 +23,20 @@ describe("Sidebar", () => {
         expect(screen.getByText("Codeowner Teams")).toBeInTheDocument();
     });
 
-    it("shows active class on Inbox when currentView is inbox", () => {
+    it("shows active state on Inbox when currentView is inbox", () => {
         render(Sidebar, { props: { currentView: "inbox" } });
         const inboxBtn = screen.getByText("Inbox").closest("button")!;
         const archivedBtn = screen.getByText("Archived").closest("button")!;
-        expect(inboxBtn.classList.contains("active")).toBe(true);
-        expect(archivedBtn.classList.contains("active")).toBe(false);
+        expect(inboxBtn.getAttribute("data-state")).toBe("active");
+        expect(archivedBtn.getAttribute("data-state")).toBe("inactive");
     });
 
-    it("shows active class on Archived when currentView is archived", () => {
+    it("shows active state on Archived when currentView is archived", () => {
         render(Sidebar, { props: { currentView: "archived" } });
         const inboxBtn = screen.getByText("Inbox").closest("button")!;
         const archivedBtn = screen.getByText("Archived").closest("button")!;
-        expect(inboxBtn.classList.contains("active")).toBe(false);
-        expect(archivedBtn.classList.contains("active")).toBe(true);
+        expect(inboxBtn.getAttribute("data-state")).toBe("inactive");
+        expect(archivedBtn.getAttribute("data-state")).toBe("active");
     });
 
     it("calls onViewChange with 'archived' when Archived is clicked", async () => {
