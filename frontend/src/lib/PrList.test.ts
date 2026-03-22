@@ -181,6 +181,7 @@ describe("PrList", () => {
         await waitFor(() => {
             expect(globalThis.fetch).toHaveBeenCalledWith(
                 `/api/inbox?status=archived&page=1&per_page=${DEFAULT_PER_PAGE}`,
+                expect.any(Object),
             );
         });
     });
@@ -625,6 +626,98 @@ describe("PrList", () => {
             expect(
                 screen.getByText("carol's review dismissed"),
             ).toBeInTheDocument();
+        });
+    });
+
+    it("onPrInfoUpdated SSE handler sets ci_status to a non-null value", async () => {
+        let capturedInfoCallback: ((data: unknown) => void) | null = null;
+        vi.mocked(onPrInfoUpdated).mockImplementation((cb) => {
+            capturedInfoCallback = cb as (data: unknown) => void;
+            return () => {};
+        });
+
+        globalThis.fetch = mockFetch(
+            paginatedResponse([
+                makeItem({
+                    id: "n1",
+                    pr_id: 42,
+                    repository: "owner/repo",
+                    ci_status: null,
+                }),
+            ]),
+        );
+
+        const { container } = render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("owner/repo")).toBeInTheDocument();
+        });
+
+        const row = container.querySelector("[data-notif-id='n1']")!;
+        expect(row.getAttribute("data-ci-status")).toBe("");
+
+        expect(capturedInfoCallback).not.toBeNull();
+        capturedInfoCallback!({
+            pr_id: 42,
+            repository: "owner/repo",
+            author: "alice",
+            pr_status: "open",
+            ci_status: "success",
+            new_commits: null,
+            new_comments: null,
+            new_reviews: null,
+            teams: null,
+        });
+
+        await waitFor(() => {
+            expect(row.getAttribute("data-ci-status")).toBe("success");
+        });
+    });
+
+    it("onPrInfoUpdated SSE handler clears ci_status when null is received", async () => {
+        // Regression: the old guard `if (data.ci_status !== null)` prevented null
+        // from clearing a previously-set ci_status value.
+        let capturedInfoCallback: ((data: unknown) => void) | null = null;
+        vi.mocked(onPrInfoUpdated).mockImplementation((cb) => {
+            capturedInfoCallback = cb as (data: unknown) => void;
+            return () => {};
+        });
+
+        globalThis.fetch = mockFetch(
+            paginatedResponse([
+                makeItem({
+                    id: "n1",
+                    pr_id: 42,
+                    repository: "owner/repo",
+                    ci_status: "failure",
+                }),
+            ]),
+        );
+
+        const { container } = render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("owner/repo")).toBeInTheDocument();
+        });
+
+        const row = container.querySelector("[data-notif-id='n1']")!;
+        expect(row.getAttribute("data-ci-status")).toBe("failure");
+
+        expect(capturedInfoCallback).not.toBeNull();
+        capturedInfoCallback!({
+            pr_id: 42,
+            repository: "owner/repo",
+            author: "alice",
+            pr_status: "open",
+            ci_status: null,
+            new_commits: null,
+            new_comments: null,
+            new_reviews: null,
+            teams: null,
+        });
+
+        await waitFor(() => {
+            expect(row.getAttribute("data-ci-status")).toBe("");
         });
     });
 
