@@ -12,23 +12,33 @@ let {
     onThemeChange?: (theme: Theme) => void;
 } = $props();
 
-const themeLabels: Record<Theme, string> = {
-    system: "System",
-    light: "Light",
-    dark: "Dark",
-    "catppuccin-latte": "Latte",
-    "catppuccin-frappe": "Frappé",
-    "catppuccin-macchiato": "Macchiato",
-    "catppuccin-mocha": "Mocha",
-};
+const themeGroups: {
+    label: string;
+    themes: { value: Theme; label: string }[];
+}[] = [
+    {
+        label: "Github",
+        themes: [
+            { value: "system", label: "System" },
+            { value: "light", label: "Light" },
+            { value: "dark", label: "Dark" },
+        ],
+    },
+    {
+        label: "Catppuccin",
+        themes: [
+            { value: "catppuccin-latte", label: "Latte" },
+            { value: "catppuccin-frappe", label: "Frappé" },
+            { value: "catppuccin-macchiato", label: "Macchiato" },
+            { value: "catppuccin-mocha", label: "Mocha" },
+        ],
+    },
+];
 
-const baseThemes = ["system", "light", "dark"] as const;
-const catppuccinThemes = [
-    "catppuccin-latte",
-    "catppuccin-frappe",
-    "catppuccin-macchiato",
-    "catppuccin-mocha",
-] as const;
+const themeLabel = $derived(
+    themeGroups.flatMap((g) => g.themes).find((t) => t.value === theme)
+        ?.label ?? theme,
+);
 
 let statusText = $derived(
     syncStatus === "syncing"
@@ -71,42 +81,26 @@ let statusText = $derived(
         type="single"
         value={theme}
         onValueChange={(v) =>
-            onThemeChange?.(v as "system" | "light" | "dark")}
+            onThemeChange?.(v as Theme)}
     >
         <Select.Trigger class="theme-trigger" aria-label="Theme">
-            Theme · {themeLabels[theme]}
+            Theme · {themeLabel}
         </Select.Trigger>
         <Select.Portal>
             <Select.Content class="theme-content">
                 <Select.Viewport>
-                    <Select.Group>
-                        <Select.GroupHeading class="theme-group-heading">
-                            Github
-                        </Select.GroupHeading>
-                        {#each baseThemes as value}
-                            <Select.Item
-                                class="theme-item"
-                                {value}
-                                label={themeLabels[value]}
-                            >
-                                {themeLabels[value]}
-                            </Select.Item>
-                        {/each}
-                    </Select.Group>
-                    <Select.Group>
-                        <Select.GroupHeading class="theme-group-heading">
-                            Catppuccin
-                        </Select.GroupHeading>
-                        {#each catppuccinThemes as value}
-                            <Select.Item
-                                class="theme-item"
-                                {value}
-                                label={themeLabels[value]}
-                            >
-                                {themeLabels[value]}
-                            </Select.Item>
-                        {/each}
-                    </Select.Group>
+                    {#each themeGroups as group}
+                        <Select.Group>
+                            <Select.GroupHeading class="theme-group-heading">
+                                {group.label}
+                            </Select.GroupHeading>
+                            {#each group.themes as { value, label }}
+                                <Select.Item class="theme-item" {value} {label}>
+                                    {label}
+                                </Select.Item>
+                            {/each}
+                        </Select.Group>
+                    {/each}
                 </Select.Viewport>
             </Select.Content>
         </Select.Portal>
