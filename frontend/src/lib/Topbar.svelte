@@ -60,17 +60,34 @@ let statusText = $derived(
         >
             <rect
                 x="1"
-                y="1"
+                y="2"
                 width="14"
-                height="14"
-                rx="3"
-                stroke="var(--fg-muted)"
-                stroke-width="1.3"
+                height="12"
+                rx="2"
+                fill="var(--accent-fg)"
             />
             <path
-                d="M4 5h8M4 8h5M4 11h6"
-                stroke="var(--accent-fg)"
-                stroke-width="1.5"
+                d="M1 9.5h3.5l1.5 2.5h4l1.5-2.5H15"
+                stroke="white"
+                stroke-width="1.2"
+                stroke-linejoin="round"
+            />
+            <line
+                x1="4"
+                y1="5.5"
+                x2="12"
+                y2="5.5"
+                stroke="white"
+                stroke-width="1.2"
+                stroke-linecap="round"
+            />
+            <line
+                x1="4"
+                y1="7.5"
+                x2="9"
+                y2="7.5"
+                stroke="white"
+                stroke-width="1.2"
                 stroke-linecap="round"
             />
         </svg>
