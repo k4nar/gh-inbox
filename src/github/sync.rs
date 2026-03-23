@@ -101,6 +101,7 @@ mod tests {
             tx,
             bootstrap_done: Arc::new(AtomicBool::new(false)),
             viewport_prs: Arc::new(tokio::sync::RwLock::new(std::collections::HashSet::new())),
+            session_token: Arc::from("test-session-token"),
         }
     }
 
