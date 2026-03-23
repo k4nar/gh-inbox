@@ -32,13 +32,21 @@ function applyTheme(t: "system" | "light" | "dark") {
 }
 
 async function handleThemeChange(t: "system" | "light" | "dark") {
+    const prev = theme;
     theme = t;
     applyTheme(t);
-    await apiFetch("/api/preferences", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ theme: t }),
-    });
+    try {
+        await apiFetch("/api/preferences", {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ theme: t }),
+        });
+    } catch {
+        // Roll back on failure so the DOM and dropdown stay in sync with the DB.
+        theme = prev;
+        applyTheme(prev);
+        showError("Failed to save theme preference");
+    }
 }
 
 function handleSelect(notification: InboxItem | null): void {
@@ -69,10 +77,14 @@ onMount(() => {
         console.error("GitHub sync error:", message);
     });
 
-    apiFetch<Preferences>("/api/preferences").then((prefs) => {
-        theme = prefs.theme;
-        applyTheme(prefs.theme);
-    });
+    apiFetch<Preferences>("/api/preferences")
+        .then((prefs) => {
+            theme = prefs.theme;
+            applyTheme(prefs.theme);
+        })
+        .catch(() => {
+            showError("Failed to load theme preference");
+        });
 
     return () => {
         unsubNotifications();
