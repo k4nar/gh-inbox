@@ -7,6 +7,7 @@ pub struct CommentRow {
     pub pr_id: i64,
     pub thread_id: Option<String>,
     pub author: String,
+    pub author_avatar_url: Option<String>,
     pub body: String,
     pub created_at: String,
     pub comment_type: String,
@@ -21,19 +22,21 @@ pub struct CommentRow {
 /// Insert or update a comment.
 pub async fn upsert_comment(pool: &SqlitePool, comment: &CommentRow) -> sqlx::Result<()> {
     sqlx::query(
-        "INSERT INTO comments (id, pr_id, thread_id, author, body, created_at, comment_type, path, position, in_reply_to_id, html_url, diff_hunk, resolved)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO comments (id, pr_id, thread_id, author, author_avatar_url, body, created_at, comment_type, path, position, in_reply_to_id, html_url, diff_hunk, resolved)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
-           body = excluded.body,
-           thread_id = excluded.thread_id,
-           html_url = excluded.html_url,
-           diff_hunk = excluded.diff_hunk,
-           resolved = excluded.resolved",
+           body              = excluded.body,
+           author_avatar_url = excluded.author_avatar_url,
+           thread_id         = excluded.thread_id,
+           html_url          = excluded.html_url,
+           diff_hunk         = excluded.diff_hunk,
+           resolved          = excluded.resolved",
     )
     .bind(comment.id)
     .bind(comment.pr_id)
     .bind(&comment.thread_id)
     .bind(&comment.author)
+    .bind(&comment.author_avatar_url)
     .bind(&comment.body)
     .bind(&comment.created_at)
     .bind(&comment.comment_type)
@@ -51,7 +54,7 @@ pub async fn upsert_comment(pool: &SqlitePool, comment: &CommentRow) -> sqlx::Re
 /// Query all comments for a given PR, ordered by creation time.
 pub async fn query_comments_for_pr(pool: &SqlitePool, pr_id: i64) -> sqlx::Result<Vec<CommentRow>> {
     sqlx::query_as::<_, CommentRow>(
-        "SELECT id, pr_id, thread_id, author, body, created_at, comment_type, path, position, in_reply_to_id, html_url, diff_hunk, resolved
+        "SELECT id, pr_id, thread_id, author, author_avatar_url, body, created_at, comment_type, path, position, in_reply_to_id, html_url, diff_hunk, resolved
          FROM comments
          WHERE pr_id = ?
          ORDER BY created_at ASC",

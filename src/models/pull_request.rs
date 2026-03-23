@@ -23,6 +23,7 @@ pub struct GithubPullRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GithubUser {
     pub login: String,
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

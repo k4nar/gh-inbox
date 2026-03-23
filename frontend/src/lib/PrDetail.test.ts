@@ -24,6 +24,7 @@ function makeComment(overrides: object = {}) {
         pr_id: 42,
         thread_id: "conversation",
         author: "bob",
+        author_avatar_url: null,
         body: "Looks good!",
         body_html: "<p>Looks good!</p>",
         created_at: "2025-06-01T09:00:00Z",
@@ -43,6 +44,7 @@ const BASE_DETAIL: PrDetailResponse = {
         title: "Fix bug in parser",
         repo: "owner/repo",
         author: "alice",
+        author_avatar_url: null,
         url: "https://github.com/owner/repo/pull/42",
         ci_status: "success",
         last_viewed_at: "2025-06-01T10:00:00Z",
@@ -359,6 +361,7 @@ describe("PrDetail — reviews", () => {
                 {
                     id: 1,
                     reviewer: "charlie",
+                    reviewer_avatar_url: null,
                     state: "APPROVED",
                     body: "",
                     submitted_at: "2025-06-01T08:00:00Z",
@@ -389,6 +392,7 @@ describe("PrDetail — reviews", () => {
                 {
                     id: 2,
                     reviewer: "dave",
+                    reviewer_avatar_url: null,
                     state: "CHANGES_REQUESTED",
                     body: "Please fix the typo on line 42.",
                     submitted_at: "2025-06-01T08:00:00Z",
@@ -419,6 +423,7 @@ describe("PrDetail — reviews", () => {
                 {
                     id: 3,
                     reviewer: "eve",
+                    reviewer_avatar_url: null,
                     state: "APPROVED",
                     body: "",
                     // after previous_viewed_at
@@ -445,6 +450,7 @@ describe("PrDetail — reviews", () => {
                 {
                     id: 5,
                     reviewer: "grace",
+                    reviewer_avatar_url: null,
                     state: "DISMISSED",
                     body: "",
                     submitted_at: "2025-06-01T08:00:00Z",
@@ -470,6 +476,7 @@ describe("PrDetail — reviews", () => {
                 {
                     id: 4,
                     reviewer: "frank",
+                    reviewer_avatar_url: null,
                     state: "APPROVED",
                     body: "",
                     // before previous_viewed_at

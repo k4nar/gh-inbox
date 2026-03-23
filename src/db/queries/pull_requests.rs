@@ -16,6 +16,7 @@ pub struct InboxItem {
     pub updated_at: String,
     // from pull_requests (None when no linked PR row)
     pub author: Option<String>,
+    pub author_avatar_url: Option<String>,
     pub pr_status: Option<String>,
     pub ci_status: Option<String>,
     // teams (None = fetch not attempted or in progress)
@@ -34,6 +35,7 @@ struct InboxItemRow {
     pub archived: bool,
     pub updated_at: String,
     pub author: Option<String>,
+    pub author_avatar_url: Option<String>,
     pub pr_status: Option<String>,
     pub ci_status: Option<String>,
     pub teams_json: Option<String>,
@@ -46,6 +48,7 @@ pub struct PullRequestRow {
     pub title: String,
     pub repo: String,
     pub author: String,
+    pub author_avatar_url: Option<String>,
     pub url: String,
     pub ci_status: Option<String>,
     pub last_viewed_at: Option<String>,
@@ -64,28 +67,30 @@ pub struct PullRequestRow {
 /// Insert or update a pull request.
 pub async fn upsert_pull_request(pool: &SqlitePool, pr: &PullRequestRow) -> sqlx::Result<()> {
     sqlx::query(
-		"INSERT INTO pull_requests (id, title, repo, author, url, ci_status, last_viewed_at, body, state, head_sha, additions, deletions, changed_files, draft, merged_at, labels)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		"INSERT INTO pull_requests (id, title, repo, author, author_avatar_url, url, ci_status, last_viewed_at, body, state, head_sha, additions, deletions, changed_files, draft, merged_at, labels)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
-           title         = excluded.title,
-           repo          = excluded.repo,
-           author        = excluded.author,
-           url           = excluded.url,
-           ci_status     = excluded.ci_status,
-           body          = excluded.body,
-           state         = excluded.state,
-           head_sha      = excluded.head_sha,
-           additions     = excluded.additions,
-           deletions     = excluded.deletions,
-           changed_files = excluded.changed_files,
-           draft         = excluded.draft,
-           merged_at     = excluded.merged_at,
-           labels        = excluded.labels",
+           title             = excluded.title,
+           repo              = excluded.repo,
+           author            = excluded.author,
+           author_avatar_url = excluded.author_avatar_url,
+           url               = excluded.url,
+           ci_status         = excluded.ci_status,
+           body              = excluded.body,
+           state             = excluded.state,
+           head_sha          = excluded.head_sha,
+           additions         = excluded.additions,
+           deletions         = excluded.deletions,
+           changed_files     = excluded.changed_files,
+           draft             = excluded.draft,
+           merged_at         = excluded.merged_at,
+           labels            = excluded.labels",
 	)
 	.bind(pr.id)
 	.bind(&pr.title)
 	.bind(&pr.repo)
 	.bind(&pr.author)
+	.bind(&pr.author_avatar_url)
 	.bind(&pr.url)
 	.bind(&pr.ci_status)
 	.bind(&pr.last_viewed_at)
@@ -110,7 +115,7 @@ pub async fn get_pull_request(
     number: i64,
 ) -> sqlx::Result<Option<PullRequestRow>> {
     sqlx::query_as::<_, PullRequestRow>(
-		"SELECT id, title, repo, author, url, ci_status, last_viewed_at, body, state, head_sha, additions, deletions, changed_files, draft, merged_at, teams, labels
+		"SELECT id, title, repo, author, author_avatar_url, url, ci_status, last_viewed_at, body, state, head_sha, additions, deletions, changed_files, draft, merged_at, teams, labels
          FROM pull_requests
          WHERE repo = ? AND id = ?",
 	)
@@ -145,6 +150,7 @@ fn to_inbox_item(row: InboxItemRow) -> Result<InboxItem, serde_json::Error> {
         archived: row.archived,
         updated_at: row.updated_at,
         author: row.author,
+        author_avatar_url: row.author_avatar_url,
         pr_status: row.pr_status,
         ci_status: row.ci_status,
         teams,
@@ -167,6 +173,7 @@ async fn query_enriched_paginated(
              n.id, n.pr_id, n.title, n.repository, n.reason,
              n.unread, n.archived, n.updated_at,
              pr.author,
+             pr.author_avatar_url,
              CASE
                  WHEN pr.merged_at IS NOT NULL THEN 'merged'
                  WHEN pr.state = 'closed'      THEN 'closed'

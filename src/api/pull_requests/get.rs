@@ -32,6 +32,7 @@ pub struct CommentResponse {
 pub struct ReviewResponse {
     pub id: i64,
     pub reviewer: String,
+    pub reviewer_avatar_url: Option<String>,
     pub state: String,
     pub body: String,
     pub submitted_at: String,
@@ -177,6 +178,7 @@ pub async fn get_pr(
         .map(|r| ReviewResponse {
             id: r.id,
             reviewer: r.reviewer,
+            reviewer_avatar_url: r.reviewer_avatar_url,
             state: r.state,
             body: r.body,
             submitted_at: r.submitted_at,

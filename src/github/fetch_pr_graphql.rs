@@ -26,7 +26,7 @@ query PullRequestFull($owner: String!, $repo: String!, $number: Int!) {
       deletions
       changedFiles
       url
-      author { login }
+      author { login avatarUrl }
       headRefOid
       labels(first: 100) {
         nodes { name color }
@@ -34,7 +34,7 @@ query PullRequestFull($owner: String!, $repo: String!, $number: Int!) {
       comments(first: 100) {
         nodes {
           databaseId
-          author { login }
+          author { login avatarUrl }
           body
           createdAt
           url
@@ -46,7 +46,7 @@ query PullRequestFull($owner: String!, $repo: String!, $number: Int!) {
           comments(first: 100) {
             nodes {
               databaseId
-              author { login }
+              author { login avatarUrl }
               body
               createdAt
               path
@@ -90,7 +90,7 @@ query PullRequestFull($owner: String!, $repo: String!, $number: Int!) {
       reviews(first: 100) {
         nodes {
           databaseId
-          author { login }
+          author { login avatarUrl }
           state
           body
           submittedAt
@@ -185,6 +185,8 @@ struct GqlPullRequest {
 #[derive(Debug, Deserialize)]
 struct GqlAuthor {
     login: String,
+    #[serde(rename = "avatarUrl")]
+    avatar_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -335,6 +337,10 @@ fn author_login(author: &Option<GqlAuthor>) -> String {
         .unwrap_or_else(|| "ghost".to_string())
 }
 
+fn author_avatar_url(author: &Option<GqlAuthor>) -> Option<String> {
+    author.as_ref().and_then(|a| a.avatar_url.clone())
+}
+
 fn convert_pr_state(gql_state: &str) -> String {
     match gql_state {
         "OPEN" => "open".to_string(),
@@ -354,6 +360,7 @@ fn convert(gql_pr: GqlPullRequest) -> GraphqlPrData {
         state,
         user: GithubUser {
             login: author_login(&gql_pr.author),
+            avatar_url: author_avatar_url(&gql_pr.author),
         },
         html_url: gql_pr.url,
         head: GithubHead {
@@ -385,6 +392,7 @@ fn convert(gql_pr: GqlPullRequest) -> GraphqlPrData {
                 id,
                 user: GithubUser {
                     login: author_login(&c.author),
+                    avatar_url: author_avatar_url(&c.author),
                 },
                 body: c.body,
                 created_at: c.created_at,
@@ -411,6 +419,7 @@ fn convert(gql_pr: GqlPullRequest) -> GraphqlPrData {
                 id,
                 user: GithubUser {
                     login: author_login(&comment.author),
+                    avatar_url: author_avatar_url(&comment.author),
                 },
                 body: comment.body,
                 created_at: comment.created_at,
@@ -480,6 +489,7 @@ fn convert(gql_pr: GqlPullRequest) -> GraphqlPrData {
                 id,
                 user: GithubUser {
                     login: author_login(&r.author),
+                    avatar_url: author_avatar_url(&r.author),
                 },
                 state: r.state,
                 body: r.body,

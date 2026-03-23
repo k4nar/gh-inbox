@@ -14,6 +14,7 @@ export interface PullRequest {
     title: string;
     repo: string;
     author: string;
+    author_avatar_url: string | null;
     url: string;
     ci_status: string;
     last_viewed_at: string | null;
@@ -33,6 +34,7 @@ export interface Comment {
     pr_id: number;
     thread_id: string;
     author: string;
+    author_avatar_url: string | null;
     body: string;
     body_html: string;
     created_at: string;
@@ -53,6 +55,7 @@ export interface CheckRun {
 export interface Review {
     id: number;
     reviewer: string;
+    reviewer_avatar_url: string | null;
     state: string; // "APPROVED" | "CHANGES_REQUESTED"
     body: string;
     submitted_at: string;
@@ -99,6 +102,7 @@ export interface InboxItem {
     archived: boolean;
     updated_at: string;
     author: string | null;
+    author_avatar_url: string | null;
     pr_status: "open" | "draft" | "merged" | "closed" | null;
     ci_status: string | null;
     teams: string[] | null; // null = loading (show shimmer)

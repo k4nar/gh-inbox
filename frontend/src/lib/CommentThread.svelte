@@ -49,8 +49,8 @@ function parseDiffLines(
 
 let diffLines = $derived(diffHunk ? parseDiffLines(diffHunk) : []);
 
-function avatarUrl(login: string): string {
-    return `https://github.com/${login}.png?size=40`;
+function avatarUrl(login: string, apiUrl: string | null): string {
+    return apiUrl ?? `https://github.com/${login}.png?size=40`;
 }
 
 function firstLine(text: string): string {
@@ -158,7 +158,7 @@ function firstLine(text: string): string {
                             <div class="comment-header">
                                 <img
                                     class="comment-avatar"
-                                    src={avatarUrl(comment.author)}
+                                    src={avatarUrl(comment.author, comment.author_avatar_url)}
                                     alt={comment.author}
                                     width="18"
                                     height="18"
@@ -196,7 +196,7 @@ function firstLine(text: string): string {
                         <div class="comment-preview">
                             <img
                                 class="preview-avatar"
-                                src={avatarUrl(firstComment.author)}
+                                src={avatarUrl(firstComment.author, firstComment.author_avatar_url)}
                                 alt={firstComment.author}
                                 width="16"
                                 height="16"
@@ -212,7 +212,7 @@ function firstLine(text: string): string {
                             <div class="comment-preview">
                                 <img
                                     class="preview-avatar"
-                                    src={avatarUrl(lastOldComment.author)}
+                                    src={avatarUrl(lastOldComment.author, lastOldComment.author_avatar_url)}
                                     alt={lastOldComment.author}
                                     width="16"
                                     height="16"
@@ -237,7 +237,7 @@ function firstLine(text: string): string {
                         <div class="comment-header">
                             <img
                                 class="comment-avatar"
-                                src={avatarUrl(lastNewComment.author)}
+                                src={avatarUrl(lastNewComment.author, lastNewComment.author_avatar_url)}
                                 alt={lastNewComment.author}
                                 width="18"
                                 height="18"
@@ -267,7 +267,7 @@ function firstLine(text: string): string {
                     <div class="comment-preview">
                         <img
                             class="preview-avatar"
-                            src={avatarUrl(firstComment.author)}
+                            src={avatarUrl(firstComment.author, firstComment.author_avatar_url)}
                             alt={firstComment.author}
                             width="16"
                             height="16"
@@ -283,7 +283,7 @@ function firstLine(text: string): string {
                         <div class="comment-preview">
                             <img
                                 class="preview-avatar"
-                                src={avatarUrl(lastComment.author)}
+                                src={avatarUrl(lastComment.author, lastComment.author_avatar_url)}
                                 alt={lastComment.author}
                                 width="16"
                                 height="16"

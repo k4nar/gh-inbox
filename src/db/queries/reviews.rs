@@ -8,6 +8,7 @@ pub struct ReviewRow {
     pub id: i64,
     pub pr_id: i64,
     pub reviewer: String,
+    pub reviewer_avatar_url: Option<String>,
     pub state: String,
     pub body: String,
     pub submitted_at: String,
@@ -17,16 +18,18 @@ pub struct ReviewRow {
 /// Insert or update a review. State and body may change on re-submission.
 pub async fn upsert_review(pool: &SqlitePool, row: &ReviewRow) -> sqlx::Result<()> {
     sqlx::query(
-        "INSERT INTO reviews (id, pr_id, reviewer, state, body, submitted_at, html_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO reviews (id, pr_id, reviewer, reviewer_avatar_url, state, body, submitted_at, html_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
-           state        = excluded.state,
-           body         = excluded.body,
-           submitted_at = excluded.submitted_at",
+           state                = excluded.state,
+           body                 = excluded.body,
+           submitted_at         = excluded.submitted_at,
+           reviewer_avatar_url  = excluded.reviewer_avatar_url",
     )
     .bind(row.id)
     .bind(row.pr_id)
     .bind(&row.reviewer)
+    .bind(&row.reviewer_avatar_url)
     .bind(&row.state)
     .bind(&row.body)
     .bind(&row.submitted_at)
@@ -75,7 +78,7 @@ pub async fn get_pr_review_activity(
 /// Query all reviews for a given PR, ordered by submission time ascending.
 pub async fn query_reviews_for_pr(pool: &SqlitePool, pr_id: i64) -> sqlx::Result<Vec<ReviewRow>> {
     sqlx::query_as::<_, ReviewRow>(
-        "SELECT id, pr_id, reviewer, state, body, submitted_at, html_url
+        "SELECT id, pr_id, reviewer, reviewer_avatar_url, state, body, submitted_at, html_url
          FROM reviews
          WHERE pr_id = ?
          ORDER BY submitted_at ASC",

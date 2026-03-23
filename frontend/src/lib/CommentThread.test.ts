@@ -9,6 +9,7 @@ function makeComment(overrides: Record<string, unknown> = {}) {
         pr_id: 0,
         thread_id: "conversation",
         author: "bob",
+        author_avatar_url: null,
         body,
         body_html: `<p>${body}</p>`,
         created_at: "2025-06-01T09:00:00Z",

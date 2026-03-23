@@ -83,8 +83,8 @@ function deriveStatePill(pr: PrDetailResponse["pull_request"]): {
     return { label: "Open", cls: "pill-open" };
 }
 
-function avatarUrl(login: string): string {
-    return `https://github.com/${login}.png?size=40`;
+function avatarUrl(login: string, apiUrl: string | null): string {
+    return apiUrl ?? `https://github.com/${login}.png?size=40`;
 }
 
 function commitUrl(repo: string, sha: string): string {
@@ -303,7 +303,7 @@ let diffSinceUrl = $derived(
                 <span class="state-pill {pill.cls}">{pill.label}</span>
                 <img
                     class="status-avatar"
-                    src={avatarUrl(pr.author)}
+                    src={avatarUrl(pr.author, pr.author_avatar_url)}
                     alt={pr.author}
                     width="18"
                     height="18"
@@ -432,7 +432,7 @@ let diffSinceUrl = $derived(
                         >
                             <img
                                 class="avatar avatar-sm"
-                                src={avatarUrl(review.reviewer)}
+                                src={avatarUrl(review.reviewer, review.reviewer_avatar_url)}
                                 alt={review.reviewer}
                                 width="18"
                                 height="18"
@@ -478,7 +478,7 @@ let diffSinceUrl = $derived(
                                     <div class="comment-header">
                                         <img
                                             class="comment-avatar"
-                                            src={avatarUrl(review.reviewer)}
+                                            src={avatarUrl(review.reviewer, review.reviewer_avatar_url)}
                                             alt={review.reviewer}
                                             width="18"
                                             height="18"
@@ -512,7 +512,7 @@ let diffSinceUrl = $derived(
                     >
                         <img
                             class="avatar avatar-sm"
-                            src={avatarUrl(review.reviewer)}
+                            src={avatarUrl(review.reviewer, review.reviewer_avatar_url)}
                             alt={review.reviewer}
                             width="18"
                             height="18"

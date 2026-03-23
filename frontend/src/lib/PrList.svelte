@@ -304,8 +304,8 @@ function formatActors(names: string[]): string {
     return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
-function avatarUrl(login: string): string {
-    return `https://github.com/${login}.png?size=64`;
+function avatarUrl(login: string, apiUrl: string | null): string {
+    return apiUrl ?? `https://github.com/${login}.png?size=64`;
 }
 
 function initials(login: string | null): string {
@@ -391,7 +391,7 @@ function initials(login: string | null): string {
                                     by
                                     <img
                                         class="author-avatar"
-                                        src={avatarUrl(notif.author)}
+                                        src={avatarUrl(notif.author, notif.author_avatar_url)}
                                         alt={notif.author}
                                         onerror={(e) => {
                                             const el = e.currentTarget as HTMLElement;
