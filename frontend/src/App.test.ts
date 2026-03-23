@@ -173,6 +173,12 @@ function installFetchMock(): void {
             ) as Promise<Response>;
         }
 
+        if (url.endsWith("/api/preferences")) {
+            return Promise.resolve(
+                Response.json({ theme: "system" }),
+            ) as Promise<Response>;
+        }
+
         return Promise.reject(new Error(`Unhandled fetch URL: ${url}`));
     }) as typeof fetch;
 }

@@ -1239,3 +1239,121 @@ async fn get_api_inbox_archived_paginates() {
     assert_eq!(result["page"], 1);
     assert_eq!(result["per_page"], 2);
 }
+
+#[tokio::test]
+async fn get_preferences_returns_system_default() {
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+    let (app, _state) = gh_inbox::app(pool, Arc::from("fake-token"));
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(Method::GET)
+                .uri("/api/preferences")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["theme"], "system");
+}
+
+#[tokio::test]
+async fn patch_preferences_updates_theme() {
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+    let (app, _state) = gh_inbox::app(pool, Arc::from("fake-token"));
+
+    let response = app
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .method(Method::PATCH)
+                .uri("/api/preferences")
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(r#"{"theme":"dark"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(Method::GET)
+                .uri("/api/preferences")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["theme"], "dark");
+}
+
+#[tokio::test]
+async fn patch_preferences_rejects_invalid_theme() {
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+    let (app, _state) = gh_inbox::app(pool, Arc::from("fake-token"));
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(Method::PATCH)
+                .uri("/api/preferences")
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(r#"{"theme":"purple"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn patch_preferences_rejects_malformed_json() {
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+    let (app, _state) = gh_inbox::app(pool, Arc::from("fake-token"));
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(Method::PATCH)
+                .uri("/api/preferences")
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from("not json"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn patch_preferences_rejects_unknown_key() {
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+    let (app, _state) = gh_inbox::app(pool, Arc::from("fake-token"));
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(Method::PATCH)
+                .uri("/api/preferences")
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(r#"{"unknown_key":"value"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}

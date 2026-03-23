@@ -54,6 +54,21 @@ fn mime_from_path(path: &str) -> &'static str {
     }
 }
 
+/// Pure function: injects session token and optional data-theme into index.html.
+/// Extracted for testability (serve_embedded is release-only).
+#[cfg_attr(debug_assertions, allow(dead_code))]
+fn build_index_html(html: &str, session_token: &str, theme: Option<&str>) -> String {
+    let with_theme = match theme {
+        Some(t) => html.replacen("<html", &format!(r#"<html data-theme="{t}""#), 1),
+        None => html.to_string(),
+    };
+    with_theme.replacen(
+        "</head>",
+        &format!(r#"<meta name="x-session-token" content="{session_token}"></head>"#),
+        1,
+    )
+}
+
 /// Serve an embedded file, or fall back to index.html for SPA routing.
 /// Paths under /api/ are never served as static files — they should 404 normally.
 #[cfg(not(debug_assertions))]
@@ -64,16 +79,16 @@ async fn static_file(
     if path.starts_with("api/") {
         return StatusCode::NOT_FOUND.into_response();
     }
-    serve_embedded(&path, &state.session_token)
+    serve_embedded(&path, &state.session_token, &state.pool).await
 }
 
 #[cfg(not(debug_assertions))]
 async fn index(axum::extract::State(state): axum::extract::State<AppState>) -> Response {
-    serve_embedded("index.html", &state.session_token)
+    serve_embedded("index.html", &state.session_token, &state.pool).await
 }
 
 #[cfg(not(debug_assertions))]
-fn serve_embedded(path: &str, session_token: &str) -> Response {
+async fn serve_embedded(path: &str, session_token: &str, pool: &SqlitePool) -> Response {
     // Try the exact path first, then fall back to index.html for SPA routing.
     let file = embedded::FRONTEND_DIR
         .get_file(path)
@@ -85,23 +100,21 @@ fn serve_embedded(path: &str, session_token: &str) -> Response {
             let mime = mime_from_path(file_path);
             // Vite hashed assets (e.g. index-abc123.js) are immutable.
             // index.html must always be revalidated to pick up new deploys.
-            let cache = if file_path == "index.html" || file_path.ends_with(".html") {
+            let cache = if file_path.ends_with(".html") {
                 "no-cache"
             } else {
                 "public, max-age=31536000, immutable"
             };
             if file_path == "index.html" {
-                // Inject the per-session token so the frontend can authenticate
-                // its API requests without holding the GitHub PAT.
+                let theme = crate::db::queries::get_preference(pool, "theme")
+                    .await
+                    .unwrap_or_else(|e| {
+                        tracing::warn!("failed to read theme preference: {e}");
+                        None
+                    });
+                let theme_attr = theme.as_deref().filter(|t| *t != "system");
                 let html = String::from_utf8_lossy(f.contents());
-                let injected = html.replacen(
-                    "</head>",
-                    &format!(
-                        r#"<meta name="x-session-token" content="{}"></head>"#,
-                        session_token
-                    ),
-                    1,
-                );
+                let injected = build_index_html(&html, session_token, theme_attr);
                 return (
                     StatusCode::OK,
                     [(header::CONTENT_TYPE, mime), (header::CACHE_CONTROL, cache)],
@@ -245,4 +258,32 @@ pub fn app_with_base_url(
             .with_state(state.clone()),
         state,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_index_html;
+
+    const TEMPLATE: &str =
+        r#"<!DOCTYPE html><html lang="en"><head><title>test</title></head><body></body></html>"#;
+
+    #[test]
+    fn injects_session_token_without_theme() {
+        let result = build_index_html(TEMPLATE, "my-token", None);
+        assert!(result.contains(r#"<meta name="x-session-token" content="my-token">"#));
+        assert!(!result.contains("data-theme"));
+    }
+
+    #[test]
+    fn injects_data_theme_and_session_token() {
+        let result = build_index_html(TEMPLATE, "my-token", Some("light"));
+        assert!(result.contains(r#"<html data-theme="light""#));
+        assert!(result.contains(r#"<meta name="x-session-token" content="my-token">"#));
+    }
+
+    #[test]
+    fn dark_theme_injection() {
+        let result = build_index_html(TEMPLATE, "tok", Some("dark"));
+        assert!(result.contains(r#"<html data-theme="dark""#));
+    }
 }

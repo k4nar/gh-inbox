@@ -116,3 +116,16 @@ export interface PaginatedInbox {
     page: number;
     per_page: number;
 }
+
+export type Theme =
+    | "system"
+    | "light"
+    | "dark"
+    | "catppuccin-latte"
+    | "catppuccin-frappe"
+    | "catppuccin-macchiato"
+    | "catppuccin-mocha";
+
+export interface Preferences {
+    theme: Theme;
+}

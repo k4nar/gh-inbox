@@ -3,6 +3,7 @@ mod comments;
 mod commits;
 mod fetches;
 mod notifications;
+mod preferences;
 mod pull_requests;
 mod reviews;
 mod user_teams;
@@ -15,6 +16,7 @@ pub use notifications::{
     NotificationRow, archive_notification, mark_read, query_archived, query_inbox,
     unarchive_notification, upsert_notification,
 };
+pub use preferences::{get_preference, upsert_preference};
 pub use pull_requests::{
     InboxItem, PullRequestRow, get_pr_activity, get_pull_request,
     query_archived_enriched_paginated, query_inbox_enriched_paginated, update_ci_status,

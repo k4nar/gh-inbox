@@ -14,6 +14,8 @@ pub enum AppError {
     NotFound(String),
     /// Internal server error.
     Internal(String),
+    /// Client sent an invalid request.
+    BadRequest(String),
 }
 
 impl From<reqwest::Error> for AppError {
@@ -54,6 +56,7 @@ impl IntoResponse for AppError {
             ),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             AppError::Internal(msg) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
+            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
         };
 
         tracing::warn!("{message}");
@@ -91,5 +94,12 @@ mod tests {
         let app_err = AppError::Database(err);
         let response = app_err.into_response();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn bad_request_error_maps_to_400() {
+        let app_err = AppError::BadRequest("invalid theme".to_string());
+        let response = app_err.into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 }

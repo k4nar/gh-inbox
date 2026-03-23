@@ -1,5 +1,44 @@
 <script lang="ts">
-let { syncStatus = "idle" }: { syncStatus?: string } = $props();
+import { Select } from "bits-ui";
+import type { Theme } from "./types.ts";
+
+let {
+    syncStatus = "idle",
+    theme = "system",
+    onThemeChange,
+}: {
+    syncStatus?: string;
+    theme?: Theme;
+    onThemeChange?: (theme: Theme) => void;
+} = $props();
+
+const themeGroups: {
+    label: string;
+    themes: { value: Theme; label: string }[];
+}[] = [
+    {
+        label: "Github",
+        themes: [
+            { value: "system", label: "System" },
+            { value: "light", label: "Light" },
+            { value: "dark", label: "Dark" },
+        ],
+    },
+    {
+        label: "Catppuccin",
+        themes: [
+            { value: "catppuccin-latte", label: "Latte" },
+            { value: "catppuccin-frappe", label: "Frappé" },
+            { value: "catppuccin-macchiato", label: "Macchiato" },
+            { value: "catppuccin-mocha", label: "Mocha" },
+        ],
+    },
+];
+
+const themeLabel = $derived(
+    themeGroups.flatMap((g) => g.themes).find((t) => t.value === theme)
+        ?.label ?? theme,
+);
 
 let statusText = $derived(
     syncStatus === "syncing"
@@ -38,6 +77,34 @@ let statusText = $derived(
         gh-inbox
     </div>
     <div class="topbar-spacer"></div>
+    <Select.Root
+        type="single"
+        value={theme}
+        onValueChange={(v) =>
+            onThemeChange?.(v as Theme)}
+    >
+        <Select.Trigger class="theme-trigger" aria-label="Theme">
+            Theme · {themeLabel}
+        </Select.Trigger>
+        <Select.Portal>
+            <Select.Content class="theme-content">
+                <Select.Viewport>
+                    {#each themeGroups as group}
+                        <Select.Group>
+                            <Select.GroupHeading class="theme-group-heading">
+                                {group.label}
+                            </Select.GroupHeading>
+                            {#each group.themes as { value, label }}
+                                <Select.Item class="theme-item" {value} {label}>
+                                    {label}
+                                </Select.Item>
+                            {/each}
+                        </Select.Group>
+                    {/each}
+                </Select.Viewport>
+            </Select.Content>
+        </Select.Portal>
+    </Select.Root>
     <div class="topbar-sync">
         <div
             class="sync-dot"
@@ -89,6 +156,45 @@ let statusText = $derived(
 }
 .sync-dot.error {
     background: var(--danger-fg);
+}
+:global(.theme-trigger) {
+    font-size: 12px;
+    color: var(--fg-default);
+    background: var(--canvas-subtle);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    padding: 2px 6px;
+    cursor: pointer;
+}
+:global(.theme-content) {
+    background: var(--canvas-default);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    padding: 4px;
+    min-width: 100px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    z-index: 100;
+}
+:global(.theme-item) {
+    font-size: 12px;
+    color: var(--fg-default);
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+:global(.theme-item[data-highlighted]) {
+    background: var(--canvas-subtle);
+}
+:global(.theme-item[data-selected]) {
+    color: var(--accent-fg);
+}
+:global(.theme-group-heading) {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--fg-subtle);
+    padding: 4px 8px 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 @keyframes pulse {
     0%,

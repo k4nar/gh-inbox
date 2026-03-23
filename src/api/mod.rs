@@ -1,5 +1,6 @@
 pub mod events;
 pub mod inbox;
+pub mod preferences;
 pub mod pull_requests;
 
 mod error;
@@ -14,4 +15,5 @@ pub fn router() -> Router<AppState> {
         .merge(inbox::router())
         .merge(pull_requests::router())
         .merge(events::router())
+        .merge(preferences::router())
 }
