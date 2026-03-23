@@ -245,9 +245,12 @@ describe("PrDetail — timeline", () => {
                 container.querySelector(".description-header"),
             ).toBeInTheDocument();
         });
+        // Content stays in DOM but inside a closed collapsible (Bits UI uses data-state)
         expect(
-            container.querySelector(".description-content"),
-        ).not.toBeInTheDocument();
+            container.querySelector(
+                "[data-state='closed'] .description-content",
+            ),
+        ).toBeInTheDocument();
     });
 
     it("shows fallback text when PR has no description", async () => {

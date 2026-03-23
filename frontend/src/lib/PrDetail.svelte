@@ -176,7 +176,11 @@ let expandedReviews = $state<Set<number>>(new Set());
 let expandedDescription = $state(true);
 
 $effect(() => {
-    // Collapse description if PR has been viewed before; expand for first visit
+    // Re-run whenever the notification (PR) changes, so manual collapse/expand
+    // state doesn't carry over from one PR to the next.
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    notification.pr_id;
+    notification.repository;
     expandedDescription = previousViewedAt === null;
 });
 
@@ -561,23 +565,21 @@ let diffSinceUrl = $derived(
                             </svg>
                         </span>
                     </Collapsible.Trigger>
-                    <Collapsible.Content>
-                        {#if expandedDescription}
-                            <div
-                                class="description-content"
-                                class:description-content--new={!previousViewedAt}
-                            >
-                                {#if hasRenderableDescription(pr)}
-                                    <div class="comment-body markdown">
-                                        {@html pr.body_html}
-                                    </div>
-                                {:else}
-                                    <p class="description-empty">
-                                        No description provided.
-                                    </p>
-                                {/if}
-                            </div>
-                        {/if}
+                    <Collapsible.Content hiddenUntilFound>
+                        <div
+                            class="description-content"
+                            class:description-content--new={!previousViewedAt}
+                        >
+                            {#if hasRenderableDescription(pr)}
+                                <div class="markdown-body">
+                                    {@html pr.body_html}
+                                </div>
+                            {:else}
+                                <p class="description-empty">
+                                    No description provided.
+                                </p>
+                            {/if}
+                        </div>
                     </Collapsible.Content>
                 </Collapsible.Root>
             </div>
@@ -1113,7 +1115,6 @@ let diffSinceUrl = $derived(
 .timeline-item {
     border-radius: 6px;
     border: 1px solid var(--border-default);
-    overflow: hidden;
 }
 
 .review-item {
@@ -1300,7 +1301,6 @@ let diffSinceUrl = $derived(
 
 /* Description section */
 .description-item {
-    font-size: 12px;
     margin-bottom: 10px;
 }
 
@@ -1332,7 +1332,7 @@ let diffSinceUrl = $derived(
 }
 
 .description-content {
-    padding: 0 10px 10px 10px;
+    padding: 16px;
     border: 1px solid var(--border-default);
     border-top: none;
     border-radius: 0 0 6px 6px;
@@ -1346,9 +1346,8 @@ let diffSinceUrl = $derived(
     padding-left: 7px;
 }
 
-.description-content .comment-body {
+.description-content .markdown-body {
     padding-left: 0;
-    margin-top: 8px;
 }
 
 .description-empty {
