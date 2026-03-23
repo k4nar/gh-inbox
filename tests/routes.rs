@@ -1337,3 +1337,23 @@ async fn patch_preferences_rejects_malformed_json() {
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn patch_preferences_rejects_unknown_key() {
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+    let (app, _state) = gh_inbox::app(pool, Arc::from("fake-token"));
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(Method::PATCH)
+                .uri("/api/preferences")
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(r#"{"unknown_key":"value"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}

@@ -35,11 +35,19 @@ pub async fn patch_preferences(
             .as_str()
             .ok_or_else(|| AppError::BadRequest(format!("value for '{key}' must be a string")))?;
 
-        if key == "theme" && !VALID_THEMES.contains(&v) {
-            return Err(AppError::BadRequest(format!(
-                "invalid theme '{v}'; valid values: {}",
-                VALID_THEMES.join(", ")
-            )));
+        match key.as_str() {
+            "theme" if VALID_THEMES.contains(&v) => {}
+            "theme" => {
+                return Err(AppError::BadRequest(format!(
+                    "invalid theme '{v}'; valid values: {}",
+                    VALID_THEMES.join(", ")
+                )));
+            }
+            _ => {
+                return Err(AppError::BadRequest(format!(
+                    "unknown preference key '{key}'"
+                )));
+            }
         }
 
         queries::upsert_preference(&state.pool, key, v).await?;
