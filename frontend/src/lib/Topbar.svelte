@@ -1,5 +1,13 @@
 <script lang="ts">
-let { syncStatus = "idle" }: { syncStatus?: string } = $props();
+let {
+    syncStatus = "idle",
+    theme = "system",
+    onThemeChange,
+}: {
+    syncStatus?: string;
+    theme?: "system" | "light" | "dark";
+    onThemeChange?: (theme: "system" | "light" | "dark") => void;
+} = $props();
 
 let statusText = $derived(
     syncStatus === "syncing"
@@ -8,6 +16,14 @@ let statusText = $derived(
           ? "sync error"
           : "synced",
 );
+
+function handleThemeChange(e: Event) {
+    const val = (e.target as HTMLSelectElement).value as
+        | "system"
+        | "light"
+        | "dark";
+    onThemeChange?.(val);
+}
 </script>
 
 <header class="topbar">
@@ -38,6 +54,17 @@ let statusText = $derived(
         gh-inbox
     </div>
     <div class="topbar-spacer"></div>
+    <label class="theme-label" for="theme-select">Theme</label>
+    <select
+        id="theme-select"
+        class="theme-select"
+        value={theme}
+        onchange={handleThemeChange}
+    >
+        <option value="system">System</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+    </select>
     <div class="topbar-sync">
         <div
             class="sync-dot"
@@ -89,6 +116,19 @@ let statusText = $derived(
 }
 .sync-dot.error {
     background: var(--danger-fg);
+}
+.theme-label {
+    font-size: 12px;
+    color: var(--fg-muted);
+}
+.theme-select {
+    font-size: 12px;
+    color: var(--fg-default);
+    background: var(--canvas-subtle);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    padding: 2px 6px;
+    cursor: pointer;
 }
 @keyframes pulse {
     0%,

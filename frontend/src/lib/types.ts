@@ -116,3 +116,7 @@ export interface PaginatedInbox {
     page: number;
     per_page: number;
 }
+
+export interface Preferences {
+    theme: "system" | "light" | "dark";
+}

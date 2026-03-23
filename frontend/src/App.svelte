@@ -1,6 +1,7 @@
 <script lang="ts">
 import { Tooltip } from "bits-ui";
 import { onMount } from "svelte";
+import { apiFetch } from "./lib/api.ts";
 import PrDetail from "./lib/PrDetail.svelte";
 import PrList from "./lib/PrList.svelte";
 import ResizableDetailPanel from "./lib/ResizableDetailPanel.svelte";
@@ -15,11 +16,30 @@ import {
 import Toast from "./lib/Toast.svelte";
 import Topbar from "./lib/Topbar.svelte";
 import { showError } from "./lib/toast.svelte.ts";
-import type { InboxItem } from "./lib/types.ts";
+import type { InboxItem, Preferences } from "./lib/types.ts";
 
 let currentView = $state("inbox");
 let selectedNotification: InboxItem | null = $state(null);
 let refreshKey = $state(0);
+let theme: "system" | "light" | "dark" = $state("system");
+
+function applyTheme(t: "system" | "light" | "dark") {
+    if (t === "system") {
+        delete document.documentElement.dataset.theme;
+    } else {
+        document.documentElement.dataset.theme = t;
+    }
+}
+
+async function handleThemeChange(t: "system" | "light" | "dark") {
+    theme = t;
+    applyTheme(t);
+    await apiFetch("/api/preferences", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ theme: t }),
+    });
+}
 
 function handleSelect(notification: InboxItem | null): void {
     if (notification && selectedNotification?.id === notification.id) {
@@ -49,6 +69,11 @@ onMount(() => {
         console.error("GitHub sync error:", message);
     });
 
+    apiFetch<Preferences>("/api/preferences").then((prefs) => {
+        theme = prefs.theme;
+        applyTheme(prefs.theme);
+    });
+
     return () => {
         unsubNotifications();
         unsubGithubError();
@@ -58,7 +83,11 @@ onMount(() => {
 </script>
 
 <Tooltip.Provider delayDuration={0}>
-    <Topbar syncStatus={getSyncStatus()} />
+    <Topbar
+        syncStatus={getSyncStatus()}
+        {theme}
+        onThemeChange={handleThemeChange}
+    />
     <div class="layout">
         <Sidebar {currentView} onViewChange={handleViewChange} />
         <PrList
