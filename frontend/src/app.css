@@ -97,6 +97,88 @@ html[data-theme="dark"] {
     --done-fg: #a371f7;
 }
 
+/* === Catppuccin themes === */
+
+/* Catppuccin Latte (light) */
+html[data-theme="catppuccin-latte"] {
+    --canvas-default: #eff1f5;
+    --canvas-subtle: #e6e9ef;
+    --canvas-inset: #dce0e8;
+    --border-default: #ccd0da;
+    --border-muted: #bcc0cc;
+    --fg-default: #4c4f69;
+    --fg-muted: #6c6f85;
+    --fg-subtle: #7c7f93;
+    --fg-on-emphasis: #eff1f5;
+    --accent-fg: #8839ef;
+    --accent-subtle: #ebe5ff;
+    --accent-emphasis: #8839ef;
+    --success-fg: #40a02b;
+    --danger-fg: #d20f39;
+    --attention-fg: #df8e1d;
+    --done-fg: #7287fd;
+}
+
+/* Catppuccin Frappé (dark) */
+html[data-theme="catppuccin-frappe"] {
+    --canvas-default: #303446;
+    --canvas-subtle: #292c3c;
+    --canvas-inset: #232634;
+    --border-default: #51576d;
+    --border-muted: #414559;
+    --fg-default: #c6d0f5;
+    --fg-muted: #a5adce;
+    --fg-subtle: #838ba7;
+    --fg-on-emphasis: #232634;
+    --accent-fg: #ca9ee6;
+    --accent-subtle: #393254;
+    --accent-emphasis: #ca9ee6;
+    --success-fg: #a6d189;
+    --danger-fg: #e78284;
+    --attention-fg: #e5c890;
+    --done-fg: #babbf1;
+}
+
+/* Catppuccin Macchiato (dark) */
+html[data-theme="catppuccin-macchiato"] {
+    --canvas-default: #24273a;
+    --canvas-subtle: #1e2030;
+    --canvas-inset: #181926;
+    --border-default: #494d64;
+    --border-muted: #363a4f;
+    --fg-default: #cad3f5;
+    --fg-muted: #a5adcb;
+    --fg-subtle: #8087a2;
+    --fg-on-emphasis: #181926;
+    --accent-fg: #c6a0f6;
+    --accent-subtle: #2d2a4a;
+    --accent-emphasis: #c6a0f6;
+    --success-fg: #a6da95;
+    --danger-fg: #ed8796;
+    --attention-fg: #eed49f;
+    --done-fg: #b7bdf8;
+}
+
+/* Catppuccin Mocha (dark) */
+html[data-theme="catppuccin-mocha"] {
+    --canvas-default: #1e1e2e;
+    --canvas-subtle: #181825;
+    --canvas-inset: #11111b;
+    --border-default: #45475a;
+    --border-muted: #313244;
+    --fg-default: #cdd6f4;
+    --fg-muted: #a6adc8;
+    --fg-subtle: #7f849c;
+    --fg-on-emphasis: #11111b;
+    --accent-fg: #cba6f7;
+    --accent-subtle: #27243d;
+    --accent-emphasis: #cba6f7;
+    --success-fg: #a6e3a1;
+    --danger-fg: #f38ba8;
+    --attention-fg: #f9e2af;
+    --done-fg: #b4befe;
+}
+
 body {
     font-family:
         -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica,

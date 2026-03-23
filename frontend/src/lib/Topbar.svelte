@@ -1,5 +1,6 @@
 <script lang="ts">
 import { Select } from "bits-ui";
+import type { Theme } from "./types.ts";
 
 let {
     syncStatus = "idle",
@@ -7,15 +8,27 @@ let {
     onThemeChange,
 }: {
     syncStatus?: string;
-    theme?: "system" | "light" | "dark";
-    onThemeChange?: (theme: "system" | "light" | "dark") => void;
+    theme?: Theme;
+    onThemeChange?: (theme: Theme) => void;
 } = $props();
 
-const themeLabels: Record<"system" | "light" | "dark", string> = {
+const themeLabels: Record<Theme, string> = {
     system: "System",
     light: "Light",
     dark: "Dark",
+    "catppuccin-latte": "Latte",
+    "catppuccin-frappe": "Frappé",
+    "catppuccin-macchiato": "Macchiato",
+    "catppuccin-mocha": "Mocha",
 };
+
+const baseThemes = ["system", "light", "dark"] as const;
+const catppuccinThemes = [
+    "catppuccin-latte",
+    "catppuccin-frappe",
+    "catppuccin-macchiato",
+    "catppuccin-mocha",
+] as const;
 
 let statusText = $derived(
     syncStatus === "syncing"
@@ -66,15 +79,34 @@ let statusText = $derived(
         <Select.Portal>
             <Select.Content class="theme-content">
                 <Select.Viewport>
-                    {#each (["system", "light", "dark"] as const) as value}
-                        <Select.Item
-                            class="theme-item"
-                            {value}
-                            label={themeLabels[value]}
-                        >
-                            {themeLabels[value]}
-                        </Select.Item>
-                    {/each}
+                    <Select.Group>
+                        <Select.GroupHeading class="theme-group-heading">
+                            Github
+                        </Select.GroupHeading>
+                        {#each baseThemes as value}
+                            <Select.Item
+                                class="theme-item"
+                                {value}
+                                label={themeLabels[value]}
+                            >
+                                {themeLabels[value]}
+                            </Select.Item>
+                        {/each}
+                    </Select.Group>
+                    <Select.Group>
+                        <Select.GroupHeading class="theme-group-heading">
+                            Catppuccin
+                        </Select.GroupHeading>
+                        {#each catppuccinThemes as value}
+                            <Select.Item
+                                class="theme-item"
+                                {value}
+                                label={themeLabels[value]}
+                            >
+                                {themeLabels[value]}
+                            </Select.Item>
+                        {/each}
+                    </Select.Group>
                 </Select.Viewport>
             </Select.Content>
         </Select.Portal>
@@ -161,6 +193,14 @@ let statusText = $derived(
 }
 :global(.theme-item[data-selected]) {
     color: var(--accent-fg);
+}
+:global(.theme-group-heading) {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--fg-subtle);
+    padding: 4px 8px 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 @keyframes pulse {
     0%,

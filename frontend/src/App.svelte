@@ -16,14 +16,14 @@ import {
 import Toast from "./lib/Toast.svelte";
 import Topbar from "./lib/Topbar.svelte";
 import { showError } from "./lib/toast.svelte.ts";
-import type { InboxItem, Preferences } from "./lib/types.ts";
+import type { InboxItem, Preferences, Theme } from "./lib/types.ts";
 
 let currentView = $state("inbox");
 let selectedNotification: InboxItem | null = $state(null);
 let refreshKey = $state(0);
-let theme: "system" | "light" | "dark" = $state("system");
+let theme: Theme = $state("system");
 
-function applyTheme(t: "system" | "light" | "dark") {
+function applyTheme(t: Theme) {
     if (t === "system") {
         delete document.documentElement.dataset.theme;
     } else {
@@ -31,7 +31,7 @@ function applyTheme(t: "system" | "light" | "dark") {
     }
 }
 
-async function handleThemeChange(t: "system" | "light" | "dark") {
+async function handleThemeChange(t: Theme) {
     const prev = theme;
     theme = t;
     applyTheme(t);

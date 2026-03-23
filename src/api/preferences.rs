@@ -6,7 +6,15 @@ use crate::api::AppError;
 use crate::db::queries;
 use crate::server::AppState;
 
-const VALID_THEMES: &[&str] = &["system", "light", "dark"];
+const VALID_THEMES: &[&str] = &[
+    "system",
+    "light",
+    "dark",
+    "catppuccin-latte",
+    "catppuccin-frappe",
+    "catppuccin-macchiato",
+    "catppuccin-mocha",
+];
 
 pub async fn get_preferences(State(state): State<AppState>) -> Result<axum::Json<Value>, AppError> {
     let theme = queries::get_preference(&state.pool, "theme")
@@ -29,7 +37,8 @@ pub async fn patch_preferences(
 
         if key == "theme" && !VALID_THEMES.contains(&v) {
             return Err(AppError::BadRequest(format!(
-                "invalid theme '{v}'; valid values: system, light, dark"
+                "invalid theme '{v}'; valid values: {}",
+                VALID_THEMES.join(", ")
             )));
         }
 
