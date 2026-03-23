@@ -1,4 +1,6 @@
 <script lang="ts">
+import { Select } from "bits-ui";
+
 let {
     syncStatus = "idle",
     theme = "system",
@@ -9,6 +11,12 @@ let {
     onThemeChange?: (theme: "system" | "light" | "dark") => void;
 } = $props();
 
+const themeLabels: Record<"system" | "light" | "dark", string> = {
+    system: "System",
+    light: "Light",
+    dark: "Dark",
+};
+
 let statusText = $derived(
     syncStatus === "syncing"
         ? "syncing…"
@@ -16,14 +24,6 @@ let statusText = $derived(
           ? "sync error"
           : "synced",
 );
-
-function handleThemeChange(e: Event) {
-    const val = (e.target as HTMLSelectElement).value as
-        | "system"
-        | "light"
-        | "dark";
-    onThemeChange?.(val);
-}
 </script>
 
 <header class="topbar">
@@ -54,17 +54,31 @@ function handleThemeChange(e: Event) {
         gh-inbox
     </div>
     <div class="topbar-spacer"></div>
-    <label class="theme-label" for="theme-select">Theme</label>
-    <select
-        id="theme-select"
-        class="theme-select"
+    <Select.Root
+        type="single"
         value={theme}
-        onchange={handleThemeChange}
+        onValueChange={(v) =>
+            onThemeChange?.(v as "system" | "light" | "dark")}
     >
-        <option value="system">System</option>
-        <option value="light">Light</option>
-        <option value="dark">Dark</option>
-    </select>
+        <Select.Trigger class="theme-trigger" aria-label="Theme">
+            Theme · {themeLabels[theme]}
+        </Select.Trigger>
+        <Select.Portal>
+            <Select.Content class="theme-content">
+                <Select.Viewport>
+                    {#each (["system", "light", "dark"] as const) as value}
+                        <Select.Item
+                            class="theme-item"
+                            {value}
+                            label={themeLabels[value]}
+                        >
+                            {themeLabels[value]}
+                        </Select.Item>
+                    {/each}
+                </Select.Viewport>
+            </Select.Content>
+        </Select.Portal>
+    </Select.Root>
     <div class="topbar-sync">
         <div
             class="sync-dot"
@@ -117,11 +131,7 @@ function handleThemeChange(e: Event) {
 .sync-dot.error {
     background: var(--danger-fg);
 }
-.theme-label {
-    font-size: 12px;
-    color: var(--fg-muted);
-}
-.theme-select {
+:global(.theme-trigger) {
     font-size: 12px;
     color: var(--fg-default);
     background: var(--canvas-subtle);
@@ -129,6 +139,28 @@ function handleThemeChange(e: Event) {
     border-radius: 6px;
     padding: 2px 6px;
     cursor: pointer;
+}
+:global(.theme-content) {
+    background: var(--canvas-default);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    padding: 4px;
+    min-width: 100px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    z-index: 100;
+}
+:global(.theme-item) {
+    font-size: 12px;
+    color: var(--fg-default);
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+:global(.theme-item[data-highlighted]) {
+    background: var(--canvas-subtle);
+}
+:global(.theme-item[data-selected]) {
+    color: var(--accent-fg);
 }
 @keyframes pulse {
     0%,
