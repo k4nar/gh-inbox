@@ -6,7 +6,79 @@
     padding: 0;
 }
 
+/* Layout tokens (not themed) */
 :root {
+    --sidebar-w: 240px;
+    --pr-list-min-w: 360px;
+    --pr-detail-min-w: 400px;
+}
+
+/* === THEMES === */
+
+/* Default: GitHub Primer Light (covers "system" on light OS + old browsers) */
+:root {
+    --canvas-default: #ffffff;
+    --canvas-subtle: #f6f8fa;
+    --canvas-inset: #f0f6fc;
+    --border-default: #d0d7de;
+    --border-muted: #d8dee4;
+    --fg-default: #1f2328;
+    --fg-muted: #636c76;
+    --fg-subtle: #6e7781;
+    --fg-on-emphasis: #ffffff;
+    --accent-fg: #0969da;
+    --accent-subtle: #ddf4ff;
+    --accent-emphasis: #0969da; /* same as accent-fg in Primer light, intentional */
+    --success-fg: #1a7f37;
+    --danger-fg: #d1242f;
+    --attention-fg: #9a6700;
+    --done-fg: #8250df;
+}
+
+/* System dark — only when no explicit data-theme is set */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+        --canvas-default: #0d1117;
+        --canvas-subtle: #161b22;
+        --canvas-inset: #010409;
+        --border-default: #30363d;
+        --border-muted: #21262d;
+        --fg-default: #e6edf3;
+        --fg-muted: #7d8590;
+        --fg-subtle: #6e7681;
+        --fg-on-emphasis: #ffffff;
+        --accent-fg: #2f81f7;
+        --accent-subtle: #121d2f;
+        --accent-emphasis: #1f6feb;
+        --success-fg: #3fb950;
+        --danger-fg: #f85149;
+        --attention-fg: #d29922;
+        --done-fg: #a371f7;
+    }
+}
+
+/* Explicit light override */
+html[data-theme="light"] {
+    --canvas-default: #ffffff;
+    --canvas-subtle: #f6f8fa;
+    --canvas-inset: #f0f6fc;
+    --border-default: #d0d7de;
+    --border-muted: #d8dee4;
+    --fg-default: #1f2328;
+    --fg-muted: #636c76;
+    --fg-subtle: #6e7781;
+    --fg-on-emphasis: #ffffff;
+    --accent-fg: #0969da;
+    --accent-subtle: #ddf4ff;
+    --accent-emphasis: #0969da;
+    --success-fg: #1a7f37;
+    --danger-fg: #d1242f;
+    --attention-fg: #9a6700;
+    --done-fg: #8250df;
+}
+
+/* Explicit dark override */
+html[data-theme="dark"] {
     --canvas-default: #0d1117;
     --canvas-subtle: #161b22;
     --canvas-inset: #010409;
@@ -23,9 +95,6 @@
     --danger-fg: #f85149;
     --attention-fg: #d29922;
     --done-fg: #a371f7;
-    --sidebar-w: 240px;
-    --pr-list-min-w: 360px;
-    --pr-detail-min-w: 400px;
 }
 
 body {
