@@ -461,6 +461,13 @@ pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>) {
         .unwrap_or(30);
     let interval = Duration::from_secs(interval_secs);
 
+    // Always start with a full sync so that any state accumulated while the
+    // service was stopped (notifications cleared on GitHub, etc.) is reconciled
+    // immediately on startup rather than waiting up to 2h.
+    let _ = sqlx::query("DELETE FROM last_fetched_at WHERE resource = 'notifications'")
+        .execute(&state.pool)
+        .await;
+
     loop {
         // Ignore send errors — they just mean no clients are listening
         let _ = tx.send(SyncEvent::SyncStatus {
