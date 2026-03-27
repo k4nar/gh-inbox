@@ -459,7 +459,7 @@ pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>) {
     let interval_secs: u64 = std::env::var("GH_INBOX_SYNC_INTERVAL")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(60);
+        .unwrap_or(30);
     let interval = Duration::from_secs(interval_secs);
 
     loop {
