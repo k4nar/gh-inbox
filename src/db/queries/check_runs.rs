@@ -60,6 +60,7 @@ mod tests {
             title: "Fix bug".to_string(),
             repo: "owner/repo".to_string(),
             author: "alice".to_string(),
+            author_avatar_url: None,
             url: "https://github.com/owner/repo/pull/42".to_string(),
             ci_status: None,
             last_viewed_at: None,
