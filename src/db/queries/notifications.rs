@@ -98,6 +98,26 @@ pub async fn mark_read(pool: &SqlitePool, id: &str) -> sqlx::Result<u64> {
     Ok(result.rows_affected())
 }
 
+/// Archive all non-archived notifications whose id is NOT in `ids`.
+/// Returns the number of rows affected.
+/// If `ids` is empty, returns 0 immediately without touching the DB.
+pub async fn archive_if_not_in(pool: &SqlitePool, ids: &[&str]) -> sqlx::Result<u64> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let placeholders = (0..ids.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
+    let sql = format!(
+        "UPDATE notifications SET archived = 1 \
+         WHERE archived = 0 AND id NOT IN ({placeholders})"
+    );
+    let mut query = sqlx::query(&sql);
+    for id in ids {
+        query = query.bind(*id);
+    }
+    let result = query.execute(pool).await?;
+    Ok(result.rows_affected())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,5 +209,55 @@ mod tests {
         mark_read(&pool, "n5").await.unwrap();
         let inbox = query_inbox(&pool).await.unwrap();
         assert!(!inbox[0].unread);
+    }
+
+    #[tokio::test]
+    async fn archive_if_not_in_archives_missing() {
+        let pool = test_pool().await;
+        upsert_notification(&pool, &sample("n1")).await.unwrap();
+        upsert_notification(&pool, &sample("n2")).await.unwrap();
+        upsert_notification(&pool, &sample("n3")).await.unwrap();
+
+        let count = archive_if_not_in(&pool, &["n1", "n2"]).await.unwrap();
+        assert_eq!(count, 1);
+
+        let archived = query_archived(&pool).await.unwrap();
+        assert_eq!(archived.len(), 1);
+        assert_eq!(archived[0].id, "n3");
+    }
+
+    #[tokio::test]
+    async fn archive_if_not_in_leaves_present_unchanged() {
+        let pool = test_pool().await;
+        upsert_notification(&pool, &sample("n1")).await.unwrap();
+        upsert_notification(&pool, &sample("n2")).await.unwrap();
+
+        let count = archive_if_not_in(&pool, &["n1", "n2"]).await.unwrap();
+        assert_eq!(count, 0);
+
+        assert_eq!(query_inbox(&pool).await.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn archive_if_not_in_returns_zero_for_empty_list() {
+        let pool = test_pool().await;
+        upsert_notification(&pool, &sample("n1")).await.unwrap();
+
+        let count = archive_if_not_in(&pool, &[]).await.unwrap();
+        assert_eq!(count, 0);
+        assert_eq!(query_inbox(&pool).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn archive_if_not_in_skips_already_archived() {
+        let pool = test_pool().await;
+        upsert_notification(&pool, &sample("n1")).await.unwrap();
+        archive_notification(&pool, "n1").await.unwrap();
+
+        // n1 is not in the list, but it's already archived — rows_affected should be 0
+        let count = archive_if_not_in(&pool, &[]).await.unwrap();
+        assert_eq!(count, 0); // empty list guard fires before SQL
+        let count2 = archive_if_not_in(&pool, &["n99"]).await.unwrap();
+        assert_eq!(count2, 0); // n1 already archived, nothing new to archive
     }
 }
