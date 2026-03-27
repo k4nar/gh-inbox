@@ -35,6 +35,60 @@ impl From<sqlx::Error> for SyncError {
     }
 }
 
+const FULL_SYNC_THRESHOLD_SECS: i64 = 2 * 60 * 60; // 2 hours
+
+pub(crate) fn now_epoch() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock before UNIX epoch")
+        .as_secs() as i64
+}
+
+/// Convert a Unix epoch (seconds) to an ISO 8601 UTC string suitable for
+/// the GitHub API `since` parameter. Avoids adding a time-crate dependency.
+fn epoch_to_iso(epoch: i64) -> String {
+    let mut rem = epoch as u64;
+    let ss = rem % 60;
+    rem /= 60;
+    let mm = rem % 60;
+    rem /= 60;
+    let hh = rem % 24;
+    rem /= 24;
+    let (y, mo, d) = days_since_epoch_to_ymd(rem as u32);
+    format!("{y:04}-{mo:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")
+}
+
+fn days_since_epoch_to_ymd(mut days: u32) -> (u32, u32, u32) {
+    let mut year = 1970u32;
+    loop {
+        let diy = if is_leap_year(year) { 366 } else { 365 };
+        if days < diy {
+            break;
+        }
+        days -= diy;
+        year += 1;
+    }
+    const MONTH_DAYS: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut month = 1u32;
+    for (i, &base) in MONTH_DAYS.iter().enumerate() {
+        let dim = if i == 1 && is_leap_year(year) {
+            29
+        } else {
+            base
+        };
+        if days < dim {
+            break;
+        }
+        days -= dim;
+        month += 1;
+    }
+    (year, month, days + 1)
+}
+
+fn is_leap_year(y: u32) -> bool {
+    (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400)
+}
+
 /// A notification that changed during sync.
 pub struct ChangedNotification {
     pub repository: String,
@@ -42,11 +96,32 @@ pub struct ChangedNotification {
 }
 
 /// Fetch notifications from GitHub and upsert into the database.
-/// Returns the changed notifications (those whose `updated_at` or `unread` changed).
+///
+/// **Full sync** (first run or last fetch >2h ago): fetches all pages and
+/// archives any local notification that GitHub no longer returns.
+///
+/// **Incremental sync** (recent last fetch): fetches only notifications
+/// changed since the last fetch using the `since=` parameter.
+///
+/// Returns the notifications that changed (upserted or reconciliation-archived).
 pub async fn sync_notifications(state: &AppState) -> Result<Vec<ChangedNotification>, SyncError> {
-    let notifications = super::fetch_all_notifications(&state.github).await?;
+    let last_fetched = queries::get_last_fetched_epoch(&state.pool, "notifications").await?;
+    let now = now_epoch();
+
+    let is_full_sync = last_fetched
+        .map(|t| now - t > FULL_SYNC_THRESHOLD_SECS)
+        .unwrap_or(true);
+
+    let notifications = if is_full_sync {
+        super::fetch_all_notifications(&state.github).await?
+    } else {
+        let since_iso = epoch_to_iso(last_fetched.unwrap());
+        super::fetch_notifications_since(&state.github, &since_iso).await?
+    };
 
     let mut changed = Vec::new();
+    let mut returned_ids: Vec<String> = Vec::new();
+
     for notif in &notifications {
         let pr_id = notif
             .subject
@@ -73,6 +148,22 @@ pub async fn sync_notifications(state: &AppState) -> Result<Vec<ChangedNotificat
                 pr_id,
             });
         }
+        returned_ids.push(notif.id.clone());
+    }
+
+    // Full sync reconciliation: archive notifications GitHub no longer returns.
+    // Guard: skip if returned_ids is empty to avoid archiving everything on an
+    // unexpected empty response.
+    if is_full_sync && !returned_ids.is_empty() {
+        let id_refs: Vec<&str> = returned_ids.iter().map(|s| s.as_str()).collect();
+        let archived_count = queries::archive_if_not_in(&state.pool, &id_refs).await?;
+        // Push dummy entries so run_sync_loop fires SSE events for reconciled items.
+        for _ in 0..archived_count {
+            changed.push(ChangedNotification {
+                repository: String::new(),
+                pr_id: None,
+            });
+        }
     }
 
     queries::set_last_fetched_now(&state.pool, "notifications").await?;
@@ -83,10 +174,13 @@ pub async fn sync_notifications(state: &AppState) -> Result<Vec<ChangedNotificat
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-    use std::sync::atomic::AtomicBool;
+    use std::sync::Mutex;
 
-    use axum::{Router, routing::get};
+    use axum::Router;
+    use axum::extract::Request;
+    use axum::routing::get;
     use tokio::net::TcpListener;
+    use tokio::sync::broadcast;
 
     use super::*;
     use crate::db::queries;
@@ -99,11 +193,13 @@ mod tests {
             pool,
             github: GithubClient::new(Arc::from("fake-token"), base_url),
             tx,
-            bootstrap_done: Arc::new(AtomicBool::new(false)),
+            bootstrap_done: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             viewport_prs: Arc::new(tokio::sync::RwLock::new(std::collections::HashSet::new())),
             session_token: Arc::from("test-session-token"),
         }
     }
+
+    // ── simple mock (no URL capture) ──────────────────────────────────────
 
     async fn start_mock(response: &'static str) -> String {
         let app = Router::new().route(
@@ -115,6 +211,32 @@ mod tests {
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         format!("http://{addr}")
     }
+
+    // ── URL-capturing mock ────────────────────────────────────────────────
+
+    async fn start_mock_capturing(response: &'static str) -> (String, Arc<Mutex<Option<String>>>) {
+        let captured = Arc::new(Mutex::new(None::<String>));
+        let captured_clone = captured.clone();
+        let app = Router::new().route(
+            "/notifications",
+            get(move |req: Request| {
+                let cap = captured_clone.clone();
+                async move {
+                    *cap.lock().unwrap() = Some(req.uri().to_string());
+                    axum::http::Response::builder()
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(response))
+                        .unwrap()
+                }
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (format!("http://{addr}"), captured)
+    }
+
+    // ── notification fixtures ─────────────────────────────────────────────
 
     const ONE_NOTIFICATION: &str = r#"[{
         "id": "1",
@@ -142,6 +264,8 @@ mod tests {
         "repository": { "full_name": "owner/repo" }
     }]"#;
 
+    // ── preserved tests ───────────────────────────────────────────────────
+
     #[tokio::test]
     async fn inserts_notification_and_returns_changed_count() {
         let state = make_state(start_mock(ONE_NOTIFICATION).await).await;
@@ -160,6 +284,7 @@ mod tests {
         let state = make_state(start_mock(ONE_NOTIFICATION).await).await;
 
         assert_eq!(sync_notifications(&state).await.unwrap().len(), 1);
+        // Second call: incremental (recent last_fetched_at), same data → 0 changed
         assert_eq!(sync_notifications(&state).await.unwrap().len(), 0);
 
         assert_eq!(queries::query_inbox(&state.pool).await.unwrap().len(), 1);
@@ -181,6 +306,148 @@ mod tests {
 
         let inbox = queries::query_inbox(&state.pool).await.unwrap();
         assert_eq!(inbox[0].pr_id, None);
+    }
+
+    // ── new two-mode tests ────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn full_sync_when_never_fetched_does_not_include_since() {
+        let (base, captured) = start_mock_capturing(ONE_NOTIFICATION).await;
+        let state = make_state(base).await;
+        // No last_fetched_at set → full sync
+
+        sync_notifications(&state).await.unwrap();
+
+        let uri = captured.lock().unwrap().clone().unwrap();
+        assert!(
+            !uri.contains("since="),
+            "Full sync should not send since=, got: {uri}"
+        );
+        assert!(uri.contains("all=true"), "Should use all=true, got: {uri}");
+    }
+
+    #[tokio::test]
+    async fn full_sync_when_last_fetch_over_2h_does_not_include_since() {
+        let (base, captured) = start_mock_capturing(ONE_NOTIFICATION).await;
+        let state = make_state(base).await;
+
+        let three_hours_ago = now_epoch() - 3 * 3600;
+        sqlx::query(
+            "INSERT INTO last_fetched_at (resource, fetched_at) VALUES ('notifications', ?)",
+        )
+        .bind(three_hours_ago)
+        .execute(&state.pool)
+        .await
+        .unwrap();
+
+        sync_notifications(&state).await.unwrap();
+
+        let uri = captured.lock().unwrap().clone().unwrap();
+        assert!(
+            !uri.contains("since="),
+            "Stale full sync should not send since=, got: {uri}"
+        );
+    }
+
+    #[tokio::test]
+    async fn incremental_sync_when_recently_fetched_includes_since() {
+        let (base, captured) = start_mock_capturing(ONE_NOTIFICATION).await;
+        let state = make_state(base).await;
+
+        let one_min_ago = now_epoch() - 60;
+        sqlx::query(
+            "INSERT INTO last_fetched_at (resource, fetched_at) VALUES ('notifications', ?)",
+        )
+        .bind(one_min_ago)
+        .execute(&state.pool)
+        .await
+        .unwrap();
+
+        sync_notifications(&state).await.unwrap();
+
+        let uri = captured.lock().unwrap().clone().unwrap();
+        assert!(
+            uri.contains("since="),
+            "Incremental sync should send since=, got: {uri}"
+        );
+    }
+
+    #[tokio::test]
+    async fn incremental_sync_since_value_matches_last_fetched_at() {
+        let (base, captured) = start_mock_capturing("[]").await;
+        let state = make_state(base).await;
+
+        // Use a recent epoch (1 min ago) so incremental sync fires.
+        // Compute the expected ISO prefix so the assertion stays correct regardless of date.
+        let epoch = now_epoch() - 60;
+        let expected_iso = epoch_to_iso(epoch);
+        // Only check the date portion (YYYY-MM-DD) to avoid sub-second jitter.
+        let expected_date = &expected_iso[..10];
+
+        sqlx::query(
+            "INSERT INTO last_fetched_at (resource, fetched_at) VALUES ('notifications', ?)",
+        )
+        .bind(epoch)
+        .execute(&state.pool)
+        .await
+        .unwrap();
+
+        sync_notifications(&state).await.unwrap();
+
+        let uri = captured.lock().unwrap().clone().unwrap();
+        assert!(
+            uri.contains(&format!("since={expected_date}")),
+            "URI should contain since={expected_date}, got: {uri}"
+        );
+    }
+
+    #[tokio::test]
+    async fn full_sync_archives_notifications_missing_from_github() {
+        // id="1" is in the mock response; id="99" is not → should be archived
+        let state = make_state(start_mock(ONE_NOTIFICATION).await).await;
+
+        // Pre-insert two notifications
+        queries::upsert_notification(
+            &state.pool,
+            &queries::NotificationRow {
+                id: "1".to_string(),
+                pr_id: Some(42),
+                title: "Fix bug".to_string(),
+                repository: "owner/repo".to_string(),
+                reason: "review_requested".to_string(),
+                unread: true,
+                archived: false,
+                updated_at: "2025-01-01T00:00:00Z".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        queries::upsert_notification(
+            &state.pool,
+            &queries::NotificationRow {
+                id: "99".to_string(),
+                pr_id: None,
+                title: "Gone".to_string(),
+                repository: "owner/repo".to_string(),
+                reason: "mention".to_string(),
+                unread: true,
+                archived: false,
+                updated_at: "2025-01-01T00:00:00Z".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+
+        // Full sync (no last_fetched_at) — GitHub returns only id="1"
+        sync_notifications(&state).await.unwrap();
+
+        let archived = queries::query_archived(&state.pool).await.unwrap();
+        assert_eq!(archived.len(), 1, "id=99 should be archived");
+        assert_eq!(archived[0].id, "99");
+
+        let inbox = queries::query_inbox(&state.pool).await.unwrap();
+        assert_eq!(inbox.len(), 1);
+        assert_eq!(inbox[0].id, "1");
     }
 }
 

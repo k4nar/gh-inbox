@@ -1,5 +1,3 @@
-use crate::models::Notification;
-
 use super::GithubClient;
 
 /// Parse the URL with `rel="next"` from an HTTP `Link` header value.
@@ -111,18 +109,6 @@ pub async fn mark_thread_done(
     }
     response.error_for_status()?;
     Ok(())
-}
-
-#[allow(dead_code)]
-pub async fn fetch_notifications(
-    github: &GithubClient,
-) -> Result<Vec<Notification>, reqwest::Error> {
-    github
-        .get("/notifications?all=true")
-        .await?
-        .error_for_status()?
-        .json()
-        .await
 }
 
 #[cfg(test)]
