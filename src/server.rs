@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 
 use axum::http::HeaderValue;
 #[cfg(not(debug_assertions))]
@@ -21,7 +20,6 @@ pub struct AppState {
     pub pool: SqlitePool,
     pub github: github::GithubClient,
     pub tx: broadcast::Sender<crate::models::SyncEvent>,
-    pub bootstrap_done: Arc<AtomicBool>,
     /// PRs currently visible in the frontend viewport: (repository, pr_number).
     /// Updated by POST /api/inbox/prefetch.
     pub viewport_prs: Arc<RwLock<HashSet<(String, i64)>>>,
@@ -232,7 +230,6 @@ pub fn app_with_base_url(
         pool,
         github: github::GithubClient::new(token, github_base_url),
         tx,
-        bootstrap_done: Arc::new(AtomicBool::new(false)),
         viewport_prs: Arc::new(RwLock::new(HashSet::new())),
         session_token,
     };

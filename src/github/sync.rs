@@ -193,7 +193,6 @@ mod tests {
             pool,
             github: GithubClient::new(Arc::from("fake-token"), base_url),
             tx,
-            bootstrap_done: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             viewport_prs: Arc::new(tokio::sync::RwLock::new(std::collections::HashSet::new())),
             session_token: Arc::from("test-session-token"),
         }

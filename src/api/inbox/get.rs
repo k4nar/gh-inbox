@@ -1,12 +1,9 @@
-use std::sync::atomic::Ordering;
-
 use axum::Json;
 use axum::extract::{Query, State};
 use serde::Deserialize;
 
 use crate::api::AppError;
 use crate::db::queries::{self, InboxItem};
-use crate::github::sync::sync_notifications;
 use crate::server::AppState;
 
 #[derive(Deserialize)]
@@ -29,21 +26,6 @@ pub async fn get_inbox(
     State(state): State<AppState>,
     Query(query): Query<InboxQuery>,
 ) -> Result<Json<PaginatedInbox>, AppError> {
-    // Bootstrap on first request
-    if state
-        .bootstrap_done
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_ok()
-    {
-        let has_fetched = queries::get_last_fetched_epoch(&state.pool, "notifications")
-            .await
-            .map_err(AppError::Database)?
-            .is_some();
-        if !has_fetched {
-            sync_notifications(&state).await?;
-        }
-    }
-
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(25).clamp(1, 100);
     let offset = (page - 1) * per_page;
