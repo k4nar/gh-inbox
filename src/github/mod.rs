@@ -42,6 +42,26 @@ impl GithubClient {
         self.send(Method::DELETE, path).await
     }
 
+    /// Fetch a fully-qualified URL with the standard GitHub auth headers.
+    /// Used for following pagination `Link: rel="next"` URLs.
+    #[allow(dead_code)]
+    pub(crate) async fn get_url(&self, url: &str) -> Result<Response, reqwest::Error> {
+        let builder = self
+            .client
+            .request(Method::GET, url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "gh-inbox")
+            .header("X-GitHub-Api-Version", "2026-03-10");
+        self.execute(builder, "GET", url).await
+    }
+
+    /// The base URL this client sends requests to (e.g. `https://api.github.com`).
+    /// Needed by callers that build full pagination URLs.
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
     async fn post_json<T: Serialize + ?Sized>(
         &self,
         path: &str,
