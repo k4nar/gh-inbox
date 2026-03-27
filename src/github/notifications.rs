@@ -2,6 +2,46 @@ use crate::models::Notification;
 
 use super::GithubClient;
 
+/// Parse the URL with `rel="next"` from an HTTP `Link` header value.
+/// Returns `None` if no next-page link is present.
+#[allow(dead_code)]
+fn parse_next_link(link: &str) -> Option<String> {
+    for part in link.split(',') {
+        let mut url: Option<String> = None;
+        let mut is_next = false;
+        for segment in part.trim().split(';') {
+            let segment = segment.trim();
+            if segment.starts_with('<') && segment.ends_with('>') {
+                url = Some(segment[1..segment.len() - 1].to_string());
+            } else if segment == r#"rel="next""# {
+                is_next = true;
+            }
+        }
+        if is_next {
+            return url;
+        }
+    }
+    None
+}
+
+/// Fetch a single page of notifications from a fully-qualified URL.
+/// Returns the deserialized notifications and the next-page URL (from the
+/// `Link: rel="next"` response header), if any.
+#[allow(dead_code)]
+pub(crate) async fn fetch_notifications_page(
+    github: &super::GithubClient,
+    url: &str,
+) -> Result<(Vec<crate::models::Notification>, Option<String>), reqwest::Error> {
+    let response = github.get_url(url).await?.error_for_status()?;
+    let next = response
+        .headers()
+        .get("link")
+        .and_then(|v| v.to_str().ok())
+        .and_then(parse_next_link);
+    let notifications: Vec<crate::models::Notification> = response.json().await?;
+    Ok((notifications, next))
+}
+
 pub async fn mark_thread_read(
     github: &GithubClient,
     thread_id: &str,
@@ -292,5 +332,110 @@ mod action_tests {
         let github = GithubClient::new(std::sync::Arc::from("tok"), base);
         let result = mark_thread_done(&github, "42").await;
         assert!(result.is_err());
+    }
+}
+
+#[cfg(test)]
+mod page_tests {
+    use std::sync::Arc;
+
+    use axum::Router;
+    use axum::routing::get;
+    use tokio::net::TcpListener;
+
+    use super::{fetch_notifications_page, parse_next_link};
+    use crate::github::GithubClient;
+
+    const ONE_NOTIFICATION: &str = r#"[{
+        "id": "1",
+        "reason": "review_requested",
+        "unread": true,
+        "updated_at": "2025-01-01T00:00:00Z",
+        "subject": {
+            "title": "Fix bug",
+            "url": "https://api.github.com/repos/owner/repo/pulls/42",
+            "type": "PullRequest"
+        },
+        "repository": { "full_name": "owner/repo" }
+    }]"#;
+
+    // --- parse_next_link unit tests ---
+
+    #[test]
+    fn parses_next_from_multi_rel_header() {
+        let link = r#"<https://api.github.com/notifications?page=2>; rel="next", <https://api.github.com/notifications?page=5>; rel="last""#;
+        assert_eq!(
+            parse_next_link(link),
+            Some("https://api.github.com/notifications?page=2".to_string())
+        );
+    }
+
+    #[test]
+    fn returns_none_when_no_next_rel() {
+        let link = r#"<https://api.github.com/notifications?page=5>; rel="last""#;
+        assert_eq!(parse_next_link(link), None);
+    }
+
+    #[test]
+    fn returns_none_for_empty_string() {
+        assert_eq!(parse_next_link(""), None);
+    }
+
+    // --- fetch_notifications_page integration tests ---
+
+    #[tokio::test]
+    async fn returns_notifications_and_next_url_from_link_header() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base = format!("http://{addr}");
+        let next_url = format!("{base}/notifications?page=2&per_page=50");
+        let next_url_clone = next_url.clone();
+
+        let app = Router::new().route(
+            "/notifications",
+            get(move || {
+                let next = next_url_clone.clone();
+                async move {
+                    axum::http::Response::builder()
+                        .header("content-type", "application/json")
+                        .header("link", format!(r#"<{next}>; rel="next""#))
+                        .body(axum::body::Body::from(ONE_NOTIFICATION))
+                        .unwrap()
+                }
+            }),
+        );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let github = GithubClient::new(Arc::from("fake-token"), base.clone());
+        let url = format!("{base}/notifications?per_page=50");
+        let (notifs, got_next) = fetch_notifications_page(&github, &url).await.unwrap();
+
+        assert_eq!(notifs.len(), 1);
+        assert_eq!(notifs[0].id, "1");
+        assert_eq!(got_next, Some(next_url));
+    }
+
+    #[tokio::test]
+    async fn returns_none_next_when_no_link_header() {
+        let app = Router::new().route(
+            "/notifications",
+            get(|| async {
+                axum::http::Response::builder()
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(ONE_NOTIFICATION))
+                    .unwrap()
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base = format!("http://{addr}");
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let github = GithubClient::new(Arc::from("fake-token"), base.clone());
+        let url = format!("{base}/notifications?per_page=50");
+        let (notifs, next) = fetch_notifications_page(&github, &url).await.unwrap();
+
+        assert_eq!(notifs.len(), 1);
+        assert!(next.is_none());
     }
 }

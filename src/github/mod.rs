@@ -44,6 +44,7 @@ impl GithubClient {
 
     /// Fetch a fully-qualified URL with the standard GitHub auth headers.
     /// Used for following pagination `Link: rel="next"` URLs.
+    #[allow(dead_code)]
     pub(crate) async fn get_url(&self, url: &str) -> Result<Response, reqwest::Error> {
         let builder = self
             .client
