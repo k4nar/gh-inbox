@@ -42,6 +42,25 @@ pub(crate) async fn fetch_notifications_page(
     Ok((notifications, next))
 }
 
+/// Fetch ALL notifications from GitHub, following pagination links until exhausted.
+/// Used for full syncs (first run or after a >2h gap).
+#[allow(dead_code)]
+pub async fn fetch_all_notifications(
+    github: &super::GithubClient,
+) -> Result<Vec<crate::models::Notification>, reqwest::Error> {
+    let mut url = format!("{}/notifications?all=true&per_page=50", github.base_url());
+    let mut all = Vec::new();
+    loop {
+        let (page, next) = fetch_notifications_page(github, &url).await?;
+        all.extend(page);
+        match next {
+            Some(next_url) => url = next_url,
+            None => break,
+        }
+    }
+    Ok(all)
+}
+
 pub async fn mark_thread_read(
     github: &GithubClient,
     thread_id: &str,
@@ -338,6 +357,7 @@ mod action_tests {
 #[cfg(test)]
 mod page_tests {
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use axum::Router;
     use axum::routing::get;
@@ -356,6 +376,24 @@ mod page_tests {
             "url": "https://api.github.com/repos/owner/repo/pulls/42",
             "type": "PullRequest"
         },
+        "repository": { "full_name": "owner/repo" }
+    }]"#;
+
+    const PAGE_1: &str = r#"[{
+        "id": "1",
+        "reason": "review_requested",
+        "unread": true,
+        "updated_at": "2025-01-01T00:00:00Z",
+        "subject": { "title": "PR 1", "url": null, "type": "PullRequest" },
+        "repository": { "full_name": "owner/repo" }
+    }]"#;
+
+    const PAGE_2: &str = r#"[{
+        "id": "2",
+        "reason": "mention",
+        "unread": false,
+        "updated_at": "2025-01-02T00:00:00Z",
+        "subject": { "title": "PR 2", "url": null, "type": "PullRequest" },
         "repository": { "full_name": "owner/repo" }
     }]"#;
 
@@ -437,5 +475,46 @@ mod page_tests {
 
         assert_eq!(notifs.len(), 1);
         assert!(next.is_none());
+    }
+
+    #[tokio::test]
+    async fn fetch_all_follows_link_headers_across_pages() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base = format!("http://{addr}");
+        let base_clone = base.clone();
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let call_count_clone = call_count.clone();
+
+        let app = Router::new().route(
+            "/notifications",
+            get(move || {
+                let count = call_count_clone.fetch_add(1, Ordering::SeqCst);
+                let base = base_clone.clone();
+                async move {
+                    if count == 0 {
+                        let next = format!("{base}/notifications?page=2&per_page=50");
+                        axum::http::Response::builder()
+                            .header("content-type", "application/json")
+                            .header("link", format!(r#"<{next}>; rel="next""#))
+                            .body(axum::body::Body::from(PAGE_1))
+                            .unwrap()
+                    } else {
+                        axum::http::Response::builder()
+                            .header("content-type", "application/json")
+                            .body(axum::body::Body::from(PAGE_2))
+                            .unwrap()
+                    }
+                }
+            }),
+        );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let github = GithubClient::new(Arc::from("fake-token"), base);
+        let notifs = super::fetch_all_notifications(&github).await.unwrap();
+
+        assert_eq!(notifs.len(), 2);
+        assert_eq!(notifs[0].id, "1");
+        assert_eq!(notifs[1].id, "2");
     }
 }
