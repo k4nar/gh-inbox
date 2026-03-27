@@ -44,7 +44,7 @@ pub struct ChangedNotification {
 /// Fetch notifications from GitHub and upsert into the database.
 /// Returns the changed notifications (those whose `updated_at` or `unread` changed).
 pub async fn sync_notifications(state: &AppState) -> Result<Vec<ChangedNotification>, SyncError> {
-    let notifications = super::fetch_notifications(&state.github).await?;
+    let notifications = super::fetch_all_notifications(&state.github).await?;
 
     let mut changed = Vec::new();
     for notif in &notifications {

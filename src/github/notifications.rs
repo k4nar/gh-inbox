@@ -61,6 +61,28 @@ pub async fn fetch_all_notifications(
     Ok(all)
 }
 
+/// Fetch notifications updated after `since_iso` (ISO 8601 UTC string), following pagination.
+/// Used for incremental syncs.
+pub async fn fetch_notifications_since(
+    github: &super::GithubClient,
+    since_iso: &str,
+) -> Result<Vec<crate::models::Notification>, reqwest::Error> {
+    let mut url = format!(
+        "{}/notifications?all=true&since={since_iso}&per_page=50",
+        github.base_url()
+    );
+    let mut all = Vec::new();
+    loop {
+        let (page, next) = fetch_notifications_page(github, &url).await?;
+        all.extend(page);
+        match next {
+            Some(next_url) => url = next_url,
+            None => break,
+        }
+    }
+    Ok(all)
+}
+
 pub async fn mark_thread_read(
     github: &GithubClient,
     thread_id: &str,
@@ -91,6 +113,7 @@ pub async fn mark_thread_done(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn fetch_notifications(
     github: &GithubClient,
 ) -> Result<Vec<Notification>, reqwest::Error> {
@@ -357,9 +380,11 @@ mod action_tests {
 #[cfg(test)]
 mod page_tests {
     use std::sync::Arc;
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use axum::Router;
+    use axum::extract::Request;
     use axum::routing::get;
     use tokio::net::TcpListener;
 
@@ -516,5 +541,44 @@ mod page_tests {
         assert_eq!(notifs.len(), 2);
         assert_eq!(notifs[0].id, "1");
         assert_eq!(notifs[1].id, "2");
+    }
+
+    #[tokio::test]
+    async fn fetch_since_includes_since_param_in_url() {
+        let captured_uri = Arc::new(Mutex::new(String::new()));
+        let captured_clone = captured_uri.clone();
+
+        let app = Router::new().route(
+            "/notifications",
+            get(move |req: Request| {
+                let captured = captured_clone.clone();
+                async move {
+                    *captured.lock().unwrap() = req.uri().to_string();
+                    axum::http::Response::builder()
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from("[]"))
+                        .unwrap()
+                }
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base = format!("http://{addr}");
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let github = GithubClient::new(Arc::from("fake-token"), base);
+        super::fetch_notifications_since(&github, "2025-06-01T00:00:00Z")
+            .await
+            .unwrap();
+
+        let uri = captured_uri.lock().unwrap().clone();
+        assert!(
+            uri.contains("since="),
+            "URI should contain since= param, got: {uri}"
+        );
+        assert!(
+            uri.contains("2025-06-01"),
+            "URI should contain the since date, got: {uri}"
+        );
     }
 }
