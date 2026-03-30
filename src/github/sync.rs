@@ -322,7 +322,10 @@ mod tests {
             !uri.contains("since="),
             "Full sync should not send since=, got: {uri}"
         );
-        assert!(uri.contains("all=true"), "Should use all=true, got: {uri}");
+        assert!(
+            !uri.contains("all=true"),
+            "Should not use all=true, got: {uri}"
+        );
     }
 
     #[tokio::test]
