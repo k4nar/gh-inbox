@@ -17,7 +17,7 @@ export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
     if (!res.ok) {
         throw new Error(`${res.status} ${res.statusText}`);
     }
-    if (res.status === 204) {
+    if (res.status === 202 || res.status === 204) {
         return undefined as T;
     }
     return res.json() as Promise<T>;

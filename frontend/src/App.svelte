@@ -49,6 +49,14 @@ async function handleThemeChange(t: Theme) {
     }
 }
 
+async function handleSync(): Promise<void> {
+    try {
+        await apiFetch<void>("/api/sync", { method: "POST" });
+    } catch {
+        // SSE stream provides feedback — ignore fetch errors here
+    }
+}
+
 function handleSelect(notification: InboxItem | null): void {
     if (notification && selectedNotification?.id === notification.id) {
         selectedNotification = null;
@@ -99,6 +107,7 @@ onMount(() => {
         syncStatus={getSyncStatus()}
         {theme}
         onThemeChange={handleThemeChange}
+        onSync={handleSync}
     />
     <div class="layout">
         <Sidebar {currentView} onViewChange={handleViewChange} />
