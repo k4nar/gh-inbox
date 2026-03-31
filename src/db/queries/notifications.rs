@@ -19,30 +19,37 @@ pub struct NotificationRow {
 /// actually changed, so `rows_affected` is 0 for no-op upserts — atomically, no separate SELECT.
 pub async fn upsert_notification(pool: &SqlitePool, notif: &NotificationRow) -> sqlx::Result<u64> {
     let result = sqlx::query(
-		"INSERT INTO notifications (id, pr_id, title, repository, reason, unread, archived, updated_at)
+        "INSERT INTO notifications (id, pr_id, title, repository, reason, unread, archived, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
-           pr_id = excluded.pr_id,
-           title = excluded.title,
+           pr_id      = excluded.pr_id,
+           title      = excluded.title,
            repository = excluded.repository,
-           reason = excluded.reason,
-           unread = excluded.unread,
+           reason     = excluded.reason,
+           unread     = CASE
+                          WHEN excluded.reason = 'your_activity' THEN notifications.unread
+                          ELSE excluded.unread
+                        END,
            updated_at = excluded.updated_at,
-           archived = CASE WHEN excluded.unread = 1 THEN 0 ELSE notifications.archived END
+           archived   = CASE
+                          WHEN excluded.reason = 'your_activity' THEN notifications.archived
+                          WHEN excluded.unread = 1               THEN 0
+                          ELSE notifications.archived
+                        END
          WHERE notifications.updated_at != excluded.updated_at
-            OR notifications.unread != excluded.unread
+            OR notifications.unread     != excluded.unread
             OR (notifications.archived = 1 AND excluded.unread = 1)",
-	)
-	.bind(&notif.id)
-	.bind(notif.pr_id)
-	.bind(&notif.title)
-	.bind(&notif.repository)
-	.bind(&notif.reason)
-	.bind(notif.unread)
-	.bind(notif.archived)
-	.bind(&notif.updated_at)
-	.execute(pool)
-	.await?;
+    )
+    .bind(&notif.id)
+    .bind(notif.pr_id)
+    .bind(&notif.title)
+    .bind(&notif.repository)
+    .bind(&notif.reason)
+    .bind(notif.unread)
+    .bind(notif.archived)
+    .bind(&notif.updated_at)
+    .execute(pool)
+    .await?;
 
     Ok(result.rows_affected())
 }
@@ -259,5 +266,77 @@ mod tests {
         assert_eq!(count, 0); // empty list guard fires before SQL
         let count2 = archive_if_not_in(&pool, &["n99"]).await.unwrap();
         assert_eq!(count2, 0); // n1 already archived, nothing new to archive
+    }
+}
+
+#[cfg(test)]
+mod own_activity_tests {
+    use super::*;
+
+    async fn pool() -> SqlitePool {
+        crate::db::init_with_path(":memory:").await
+    }
+
+    fn row(reason: &str, unread: bool, archived: bool) -> NotificationRow {
+        NotificationRow {
+            id: "n1".to_string(),
+            pr_id: Some(1),
+            title: "PR title".to_string(),
+            repository: "owner/repo".to_string(),
+            reason: reason.to_string(),
+            unread,
+            archived,
+            updated_at: "2025-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn own_activity_insert_starts_as_read() {
+        let pool = pool().await;
+        upsert_notification(&pool, &row("your_activity", false, false))
+            .await
+            .unwrap();
+        let rows = query_inbox(&pool).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert!(!rows[0].unread);
+    }
+
+    #[tokio::test]
+    async fn own_activity_does_not_make_read_notification_unread() {
+        let pool = pool().await;
+        upsert_notification(&pool, &row("review_requested", false, false))
+            .await
+            .unwrap();
+        let mut r = row("your_activity", false, false);
+        r.updated_at = "2025-01-02T00:00:00Z".to_string();
+        upsert_notification(&pool, &r).await.unwrap();
+        let rows = query_inbox(&pool).await.unwrap();
+        assert!(!rows[0].unread);
+    }
+
+    #[tokio::test]
+    async fn own_activity_preserves_unread_when_already_unread() {
+        let pool = pool().await;
+        upsert_notification(&pool, &row("review_requested", true, false))
+            .await
+            .unwrap();
+        let mut r = row("your_activity", false, false);
+        r.updated_at = "2025-01-02T00:00:00Z".to_string();
+        upsert_notification(&pool, &r).await.unwrap();
+        let rows = query_inbox(&pool).await.unwrap();
+        assert!(rows[0].unread);
+    }
+
+    #[tokio::test]
+    async fn own_activity_preserves_archived_state() {
+        let pool = pool().await;
+        upsert_notification(&pool, &row("review_requested", false, true))
+            .await
+            .unwrap();
+        let mut r = row("your_activity", false, false);
+        r.updated_at = "2025-01-02T00:00:00Z".to_string();
+        upsert_notification(&pool, &r).await.unwrap();
+        let archived = query_archived(&pool).await.unwrap();
+        assert_eq!(archived.len(), 1, "notification should remain archived");
     }
 }
