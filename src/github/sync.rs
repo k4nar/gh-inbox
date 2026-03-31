@@ -136,7 +136,7 @@ pub async fn sync_notifications(state: &AppState) -> Result<Vec<ChangedNotificat
             title: notif.subject.title.clone(),
             repository: notif.repository.full_name.clone(),
             reason: notif.reason.clone(),
-            unread: notif.unread,
+            unread: notif.unread && notif.reason != "your_activity",
             archived: false,
             updated_at: notif.updated_at.clone(),
         };
@@ -400,6 +400,41 @@ mod tests {
         assert!(
             uri.contains(&format!("since={expected_date}")),
             "URI should contain since={expected_date}, got: {uri}"
+        );
+    }
+
+    #[tokio::test]
+    async fn own_activity_notification_does_not_change_unread() {
+        let your_activity_notification = r#"[{
+            "id": "1",
+            "reason": "your_activity",
+            "unread": true,
+            "updated_at": "2025-01-01T00:00:00Z",
+            "subject": {
+                "title": "Fix bug",
+                "url": "https://api.github.com/repos/owner/repo/pulls/42",
+                "type": "PullRequest"
+            },
+            "repository": { "full_name": "owner/repo" }
+        }]"#;
+        let state = make_state(start_mock(your_activity_notification).await).await;
+
+        // Pre-seed a read row with older updated_at so the WHERE clause fires on sync
+        sqlx::query(
+            "INSERT INTO notifications (id, pr_id, title, repository, reason, unread, archived, updated_at)
+             VALUES ('1', 42, 'Fix bug', 'owner/repo', 'review_requested', 0, 0, '2024-12-31T00:00:00Z')",
+        )
+        .execute(&state.pool)
+        .await
+        .unwrap();
+
+        sync_notifications(&state).await.unwrap();
+
+        let rows = queries::query_inbox(&state.pool).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert!(
+            !rows[0].unread,
+            "own_activity should not mark the notification unread"
         );
     }
 
