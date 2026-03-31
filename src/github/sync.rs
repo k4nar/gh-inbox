@@ -1,3 +1,4 @@
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use tokio::sync::broadcast;
@@ -508,32 +509,35 @@ pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>) {
         .await;
 
     loop {
-        // Ignore send errors — they just mean no clients are listening
-        let _ = tx.send(SyncEvent::SyncStatus {
-            status: SyncStatusKind::Started,
-        });
+        // Skip this tick if a manually-triggered sync is already running.
+        if !state.sync_in_progress.load(Ordering::SeqCst) {
+            // Ignore send errors — they just mean no clients are listening
+            let _ = tx.send(SyncEvent::SyncStatus {
+                status: SyncStatusKind::Started,
+            });
 
-        match sync_notifications(&state).await {
-            Ok(changed) => {
-                let count = changed.len();
-                if count > 0 {
-                    tracing::info!(count, "new notifications fetched");
-                    let _ = tx.send(SyncEvent::NewNotifications { count });
+            match sync_notifications(&state).await {
+                Ok(changed) => {
+                    let count = changed.len();
+                    if count > 0 {
+                        tracing::info!(count, "new notifications fetched");
+                        let _ = tx.send(SyncEvent::NewNotifications { count });
 
-                    // Auto-fetch PR data for changed notifications in the viewport.
-                    auto_fetch_viewport_prs(&state, &tx, &changed).await;
+                        // Auto-fetch PR data for changed notifications in the viewport.
+                        auto_fetch_viewport_prs(&state, &tx, &changed).await;
+                    }
+                    let _ = tx.send(SyncEvent::SyncStatus {
+                        status: SyncStatusKind::Completed,
+                    });
                 }
-                let _ = tx.send(SyncEvent::SyncStatus {
-                    status: SyncStatusKind::Completed,
-                });
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "notification sync failed");
-                let _ = tx.send(SyncEvent::SyncStatus {
-                    status: SyncStatusKind::Errored {
-                        message: format!("{e:?}"),
-                    },
-                });
+                Err(e) => {
+                    tracing::warn!(error = %e, "notification sync failed");
+                    let _ = tx.send(SyncEvent::SyncStatus {
+                        status: SyncStatusKind::Errored {
+                            message: format!("{e:?}"),
+                        },
+                    });
+                }
             }
         }
 
