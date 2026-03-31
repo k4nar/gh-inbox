@@ -125,36 +125,38 @@ let statusText = $derived(
         </Select.Portal>
     </Select.Root>
     <div class="topbar-sync">
-        <div
-            class="sync-dot"
-            class:syncing={syncStatus === "syncing"}
-            class:error={syncStatus === "error"}
-        ></div>
-        {statusText}
-        <button
-            type="button"
-            class="sync-btn"
-            disabled={syncStatus === "syncing"}
-            onclick={() => onSync?.()}
-            aria-label="Force sync"
-            title="Force sync"
-        >
-            <svg
-                width="12"
-                height="12"
-                viewBox="0 0 16 16"
-                fill="currentColor"
-                aria-hidden="true"
+        <div class="sync-dot-wrap">
+            <div
+                class="sync-dot"
+                class:syncing={syncStatus === "syncing"}
+                class:error={syncStatus === "error"}
+            ></div>
+            <button
+                type="button"
+                class="sync-btn"
+                disabled={syncStatus === "syncing"}
+                onclick={() => onSync?.()}
+                aria-label="Force sync"
+                title="Force sync"
             >
-                <path
-                    d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41zm-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z"
-                />
-                <path
-                    fill-rule="evenodd"
-                    d="M8 3a4.995 4.995 0 0 0-4.192 2.268a.75.75 0 1 1-1.255-.823A6.5 6.5 0 0 1 14.466 7H13.46A5.001 5.001 0 0 0 8 3zM3.534 9H2.528A6.5 6.5 0 0 0 13.44 11.55a.75.75 0 1 1-1.255.822A5 5 0 0 1 8 13a5.001 5.001 0 0 1-4.466-2.75l-.001-.25z"
-                />
-            </svg>
-        </button>
+                <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    aria-hidden="true"
+                >
+                    <path
+                        d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41zm-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z"
+                    />
+                    <path
+                        fill-rule="evenodd"
+                        d="M8 3a4.995 4.995 0 0 0-4.192 2.268a.75.75 0 1 1-1.255-.823A6.5 6.5 0 0 1 14.466 7H13.46A5.001 5.001 0 0 0 8 3zM3.534 9H2.528A6.5 6.5 0 0 0 13.44 11.55a.75.75 0 1 1-1.255.822A5 5 0 0 1 8 13a5.001 5.001 0 0 1-4.466-2.75l-.001-.25z"
+                    />
+                </svg>
+            </button>
+        </div>
+        {statusText}
     </div>
 </header>
 
@@ -187,11 +189,18 @@ let statusText = $derived(
     color: var(--fg-muted);
     font-size: 12px;
 }
+.sync-dot-wrap {
+    position: relative;
+    width: 8px;
+    height: 8px;
+    flex-shrink: 0;
+}
 .sync-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
     background: var(--success-fg);
+    transition: opacity 0.1s;
 }
 .sync-dot.syncing {
     background: var(--attention-fg);
@@ -201,6 +210,10 @@ let statusText = $derived(
     background: var(--danger-fg);
 }
 .sync-btn {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -211,6 +224,14 @@ let statusText = $derived(
     color: var(--fg-muted);
     border-radius: 4px;
     line-height: 0;
+    opacity: 0;
+    transition: opacity 0.1s;
+}
+.sync-dot-wrap:hover .sync-dot {
+    opacity: 0;
+}
+.sync-dot-wrap:hover .sync-btn {
+    opacity: 1;
 }
 .sync-btn:hover:not(:disabled) {
     color: var(--fg-default);
