@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use axum::http::HeaderValue;
 #[cfg(not(debug_assertions))]
@@ -26,6 +27,9 @@ pub struct AppState {
     /// Per-session random secret injected into index.html and required on all
     /// /api/* requests (except /api/events) as the X-Session-Token header.
     pub session_token: Arc<str>,
+    /// Set to true while a manually-triggered sync is running, so the background
+    /// loop skips its tick and avoids a concurrent sync.
+    pub sync_in_progress: Arc<AtomicBool>,
 }
 
 /// In release mode, the compiled frontend is embedded in the binary.
@@ -232,6 +236,7 @@ pub fn app_with_base_url(
         tx,
         viewport_prs: Arc::new(RwLock::new(HashSet::new())),
         session_token,
+        sync_in_progress: Arc::new(AtomicBool::new(false)),
     };
 
     let router = api::router();

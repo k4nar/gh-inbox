@@ -195,6 +195,7 @@ mod tests {
             tx,
             viewport_prs: Arc::new(tokio::sync::RwLock::new(std::collections::HashSet::new())),
             session_token: Arc::from("test-session-token"),
+            sync_in_progress: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
