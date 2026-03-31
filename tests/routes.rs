@@ -1405,3 +1405,97 @@ async fn patch_preferences_rejects_unknown_key() {
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn post_sync_returns_202() {
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+    let (app, _state) = gh_inbox::app_with_base_url(
+        pool,
+        Arc::from("fake-token"),
+        "http://localhost:1".to_string(),
+    );
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/sync")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+}
+
+#[tokio::test]
+async fn post_sync_broadcasts_sync_started_event() {
+    let mock_base_url = start_mock_github().await;
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+    let (app, state) = gh_inbox::app_with_base_url(pool, Arc::from("fake-token"), mock_base_url);
+    let mut rx = state.tx.subscribe();
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/sync")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+    let event = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+        .await
+        .expect("timed out waiting for sync:status started event")
+        .expect("channel closed");
+
+    match event {
+        gh_inbox::models::SyncEvent::SyncStatus { status } => {
+            assert!(
+                matches!(status, gh_inbox::models::SyncStatusKind::Started),
+                "expected Started, got {status:?}"
+            );
+        }
+        other => panic!("expected SyncStatus, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn post_sync_while_in_progress_does_not_broadcast_started() {
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+    let (app, state) = gh_inbox::app_with_base_url(
+        pool,
+        Arc::from("fake-token"),
+        "http://localhost:1".to_string(),
+    );
+
+    // Simulate a sync already running
+    state
+        .sync_in_progress
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+
+    let mut rx = state.tx.subscribe();
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/sync")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+    // No started event should be sent within 100ms
+    let result = tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await;
+    assert!(
+        result.is_err(),
+        "expected timeout (no event), but got an event"
+    );
+}
