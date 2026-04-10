@@ -42,11 +42,12 @@ pub(crate) fn now_epoch() -> i64 {
     chrono::Utc::now().timestamp()
 }
 
-fn epoch_to_iso(epoch: i64) -> String {
+fn epoch_to_iso(epoch: i64) -> Result<String, SyncError> {
     chrono::DateTime::from_timestamp(epoch, 0)
-        .expect("epoch out of range")
-        .format("%Y-%m-%dT%H:%M:%SZ")
-        .to_string()
+        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+        .ok_or_else(|| {
+            SyncError::Database(sqlx::Error::Protocol(format!("epoch {epoch} out of range")))
+        })
 }
 
 /// A notification that changed during sync.
@@ -81,7 +82,7 @@ pub async fn sync_notifications(state: &AppState) -> Result<SyncResult, SyncErro
     let notifications = if is_full_sync {
         super::fetch_all_notifications(&state.github).await?
     } else {
-        let since_iso = epoch_to_iso(last_fetched.unwrap());
+        let since_iso = epoch_to_iso(last_fetched.unwrap())?;
         super::fetch_notifications_since(&state.github, &since_iso).await?
     };
 
@@ -347,7 +348,7 @@ mod tests {
         // Use a recent epoch (1 min ago) so incremental sync fires.
         // Compute the expected ISO prefix so the assertion stays correct regardless of date.
         let epoch = now_epoch() - 60;
-        let expected_iso = epoch_to_iso(epoch);
+        let expected_iso = epoch_to_iso(epoch).unwrap();
         // Only check the date portion (YYYY-MM-DD) to avoid sub-second jitter.
         let expected_date = &expected_iso[..10];
 
