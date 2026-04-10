@@ -409,7 +409,7 @@ mod tests {
             archived: false,
             updated_at: "2025-01-01T00:00:00Z".to_string(),
         };
-        crate::db::queries::upsert_notification(&pool, &notif)
+        crate::db::queries::upsert_notification(&pool, &notif, 1)
             .await
             .unwrap();
         upsert_pull_request(
@@ -458,7 +458,7 @@ mod tests {
             archived: false,
             updated_at: "2025-01-02T00:00:00Z".to_string(),
         };
-        crate::db::queries::upsert_notification(&pool, &notif)
+        crate::db::queries::upsert_notification(&pool, &notif, 1)
             .await
             .unwrap();
         upsert_pull_request(
@@ -504,7 +504,7 @@ mod tests {
             archived: false,
             updated_at: "2025-01-03T00:00:00Z".to_string(),
         };
-        crate::db::queries::upsert_notification(&pool, &notif)
+        crate::db::queries::upsert_notification(&pool, &notif, 1)
             .await
             .unwrap();
         upsert_pull_request(
@@ -582,7 +582,7 @@ mod tests {
                 archived: false,
                 updated_at: format!("2025-01-0{i}T00:00:00Z"),
             };
-            crate::db::queries::upsert_notification(&pool, &notif)
+            crate::db::queries::upsert_notification(&pool, &notif, 1)
                 .await
                 .unwrap();
         }
@@ -611,7 +611,7 @@ mod tests {
                 archived: true,
                 updated_at: format!("2025-02-0{i}T00:00:00Z"),
             };
-            crate::db::queries::upsert_notification(&pool, &notif)
+            crate::db::queries::upsert_notification(&pool, &notif, 1)
                 .await
                 .unwrap();
         }

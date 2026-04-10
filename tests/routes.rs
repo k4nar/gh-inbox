@@ -242,6 +242,7 @@ async fn mark_read_broadcasts_github_sync_error_on_github_failure() {
             archived: false,
             updated_at: "2025-06-01T10:00:00Z".to_string(),
         },
+        1,
     )
     .await
     .unwrap();
@@ -301,6 +302,7 @@ async fn archive_broadcasts_github_sync_error_on_github_failure() {
             archived: false,
             updated_at: "2025-06-01T10:00:00Z".to_string(),
         },
+        1,
     )
     .await
     .unwrap();
@@ -384,6 +386,7 @@ async fn get_api_inbox_returns_notifications() {
             archived: false,
             updated_at: "2025-06-01T10:00:00Z".to_string(),
         },
+        1,
     )
     .await
     .unwrap();
@@ -709,6 +712,7 @@ async fn setup_populated_inbox() -> (sqlx::SqlitePool, String) {
             archived: false,
             updated_at: "2025-06-01T10:00:00Z".to_string(),
         },
+        1,
     )
     .await
     .unwrap();
@@ -1157,6 +1161,7 @@ async fn get_api_inbox_paginates_results() {
                 archived: false,
                 updated_at: format!("2025-01-0{i}T00:00:00Z"),
             },
+            1,
         )
         .await
         .unwrap();

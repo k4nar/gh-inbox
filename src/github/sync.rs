@@ -87,7 +87,6 @@ pub async fn sync_notifications(state: &AppState) -> Result<SyncResult, SyncErro
     };
 
     let mut changed = Vec::new();
-    let mut returned_ids: Vec<String> = Vec::new();
 
     for notif in &notifications {
         let pr_id = notif
@@ -108,22 +107,20 @@ pub async fn sync_notifications(state: &AppState) -> Result<SyncResult, SyncErro
             updated_at: notif.updated_at.clone(),
         };
 
-        let rows_affected = queries::upsert_notification(&state.pool, &row).await?;
+        let rows_affected = queries::upsert_notification(&state.pool, &row, now).await?;
         if rows_affected > 0 {
             changed.push(ChangedNotification {
                 repository: notif.repository.full_name.clone(),
                 pr_id,
             });
         }
-        returned_ids.push(notif.id.clone());
     }
 
     // Full sync reconciliation: archive notifications GitHub no longer returns.
-    // Guard: skip if returned_ids is empty to avoid archiving everything on an
-    // unexpected empty response.
-    let reconciled = if is_full_sync && !returned_ids.is_empty() {
-        let id_refs: Vec<&str> = returned_ids.iter().map(|s| s.as_str()).collect();
-        queries::archive_if_not_in(&state.pool, &id_refs).await? as usize
+    // Guard: skip if no notifications were returned to avoid archiving everything
+    // on an unexpected empty response.
+    let reconciled = if is_full_sync && !notifications.is_empty() {
+        queries::archive_stale(&state.pool, now).await? as usize
     } else {
         0
     };
@@ -409,7 +406,7 @@ mod tests {
         // id="1" is in the mock response; id="99" is not → should be archived
         let state = make_state(start_mock(ONE_NOTIFICATION).await).await;
 
-        // Pre-insert two notifications
+        // Pre-insert two notifications with old synced_at so they appear stale
         queries::upsert_notification(
             &state.pool,
             &queries::NotificationRow {
@@ -422,6 +419,7 @@ mod tests {
                 archived: false,
                 updated_at: "2025-01-01T00:00:00Z".to_string(),
             },
+            0,
         )
         .await
         .unwrap();
@@ -437,6 +435,7 @@ mod tests {
                 archived: false,
                 updated_at: "2025-01-01T00:00:00Z".to_string(),
             },
+            0,
         )
         .await
         .unwrap();
