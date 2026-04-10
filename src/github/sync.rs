@@ -55,6 +55,14 @@ pub struct ChangedNotification {
     pub pr_id: Option<i64>,
 }
 
+/// Result of a sync operation.
+pub struct SyncResult {
+    /// Notifications that were upserted (new or updated).
+    pub changed: Vec<ChangedNotification>,
+    /// Number of notifications archived during full-sync reconciliation.
+    pub reconciled: u64,
+}
+
 /// Fetch notifications from GitHub and upsert into the database.
 ///
 /// **Full sync** (first run or last fetch >2h ago): fetches all pages and
@@ -62,9 +70,7 @@ pub struct ChangedNotification {
 ///
 /// **Incremental sync** (recent last fetch): fetches only notifications
 /// changed since the last fetch using the `since=` parameter.
-///
-/// Returns the notifications that changed (upserted or reconciliation-archived).
-pub async fn sync_notifications(state: &AppState) -> Result<Vec<ChangedNotification>, SyncError> {
+pub async fn sync_notifications(state: &AppState) -> Result<SyncResult, SyncError> {
     let last_fetched = queries::get_last_fetched_epoch(&state.pool, "notifications").await?;
     let now = now_epoch();
 
@@ -114,21 +120,19 @@ pub async fn sync_notifications(state: &AppState) -> Result<Vec<ChangedNotificat
     // Full sync reconciliation: archive notifications GitHub no longer returns.
     // Guard: skip if returned_ids is empty to avoid archiving everything on an
     // unexpected empty response.
-    if is_full_sync && !returned_ids.is_empty() {
+    let reconciled = if is_full_sync && !returned_ids.is_empty() {
         let id_refs: Vec<&str> = returned_ids.iter().map(|s| s.as_str()).collect();
-        let archived_count = queries::archive_if_not_in(&state.pool, &id_refs).await?;
-        // Push dummy entries so run_sync_loop fires SSE events for reconciled items.
-        for _ in 0..archived_count {
-            changed.push(ChangedNotification {
-                repository: String::new(),
-                pr_id: None,
-            });
-        }
-    }
+        queries::archive_if_not_in(&state.pool, &id_refs).await?
+    } else {
+        0
+    };
 
     queries::set_last_fetched_now(&state.pool, "notifications").await?;
 
-    Ok(changed)
+    Ok(SyncResult {
+        changed,
+        reconciled,
+    })
 }
 
 #[cfg(test)]
@@ -230,8 +234,8 @@ mod tests {
     async fn inserts_notification_and_returns_changed_count() {
         let state = make_state(start_mock(ONE_NOTIFICATION).await).await;
 
-        let changed = sync_notifications(&state).await.unwrap();
-        assert_eq!(changed.len(), 1);
+        let result = sync_notifications(&state).await.unwrap();
+        assert_eq!(result.changed.len(), 1);
 
         let inbox = queries::query_inbox(&state.pool).await.unwrap();
         assert_eq!(inbox.len(), 1);
@@ -243,9 +247,9 @@ mod tests {
     async fn idempotent_when_data_unchanged() {
         let state = make_state(start_mock(ONE_NOTIFICATION).await).await;
 
-        assert_eq!(sync_notifications(&state).await.unwrap().len(), 1);
+        assert_eq!(sync_notifications(&state).await.unwrap().changed.len(), 1);
         // Second call: incremental (recent last_fetched_at), same data → 0 changed
-        assert_eq!(sync_notifications(&state).await.unwrap().len(), 0);
+        assert_eq!(sync_notifications(&state).await.unwrap().changed.len(), 0);
 
         assert_eq!(queries::query_inbox(&state.pool).await.unwrap().len(), 1);
     }
@@ -474,10 +478,13 @@ pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>) {
             });
 
             match sync_notifications(&state).await {
-                Ok(changed) => {
-                    let count = changed.len();
+                Ok(SyncResult {
+                    changed,
+                    reconciled,
+                }) => {
+                    let count = changed.len() + reconciled as usize;
                     if count > 0 {
-                        tracing::info!(count, "new notifications fetched");
+                        tracing::info!(count, "inbox changed");
                         let _ = tx.send(SyncEvent::NewNotifications { count });
 
                         // Auto-fetch PR data for changed notifications in the viewport.

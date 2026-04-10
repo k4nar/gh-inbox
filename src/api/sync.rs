@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 
 use crate::api::AppError;
 use crate::db::queries;
-use crate::github::sync::sync_notifications;
+use crate::github::sync::{SyncResult, sync_notifications};
 use crate::models::{SyncEvent, SyncStatusKind};
 use crate::server::AppState;
 
@@ -34,8 +34,11 @@ pub async fn post_sync(State(state): State<AppState>) -> Result<StatusCode, AppE
         });
 
         match sync_notifications(&state_clone).await {
-            Ok(changed) => {
-                let count = changed.len();
+            Ok(SyncResult {
+                changed,
+                reconciled,
+            }) => {
+                let count = changed.len() + reconciled as usize;
                 if count > 0 {
                     let _ = state_clone.tx.send(SyncEvent::NewNotifications { count });
                 }

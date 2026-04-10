@@ -1003,12 +1003,12 @@ async fn sse_no_event_when_nothing_changed() {
     // Pre-populate DB via sync so last_fetched_at is set (incremental path)
     use gh_inbox::github::sync::sync_notifications;
     let first = sync_notifications(&state).await.unwrap();
-    assert_eq!(first.len(), 1, "First sync should return 1 change");
+    assert_eq!(first.changed.len(), 1, "First sync should return 1 change");
 
     // Sync again — same data, should return 0 changes
-    let changed = sync_notifications(&state).await.unwrap();
+    let second = sync_notifications(&state).await.unwrap();
     assert_eq!(
-        changed.len(),
+        second.changed.len(),
         0,
         "No changes expected when syncing identical data"
     );
