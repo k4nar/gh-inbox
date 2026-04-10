@@ -127,7 +127,7 @@ pub async fn get_pull_request(
 
 /// Update last_viewed_at to now (ISO 8601) for a pull request.
 pub async fn update_last_viewed_at(pool: &SqlitePool, pr_id: i64) -> sqlx::Result<()> {
-    sqlx::query("UPDATE pull_requests SET last_viewed_at = datetime('now') WHERE id = ?")
+    sqlx::query("UPDATE pull_requests SET last_viewed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?")
         .bind(pr_id)
         .execute(pool)
         .await?;
