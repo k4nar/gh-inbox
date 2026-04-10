@@ -38,7 +38,7 @@ pub async fn post_sync(State(state): State<AppState>) -> Result<StatusCode, AppE
                 changed,
                 reconciled,
             }) => {
-                let count = changed.len() + reconciled as usize;
+                let count = changed.len() + reconciled;
                 if count > 0 {
                     let _ = state_clone.tx.send(SyncEvent::NewNotifications { count });
                     auto_fetch_viewport_prs(&state_clone, &state_clone.tx, &changed).await;

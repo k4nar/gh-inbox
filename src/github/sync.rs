@@ -61,7 +61,7 @@ pub struct SyncResult {
     /// Notifications that were upserted (new or updated).
     pub changed: Vec<ChangedNotification>,
     /// Number of notifications archived during full-sync reconciliation.
-    pub reconciled: u64,
+    pub reconciled: usize,
 }
 
 /// Fetch notifications from GitHub and upsert into the database.
@@ -123,7 +123,7 @@ pub async fn sync_notifications(state: &AppState) -> Result<SyncResult, SyncErro
     // unexpected empty response.
     let reconciled = if is_full_sync && !returned_ids.is_empty() {
         let id_refs: Vec<&str> = returned_ids.iter().map(|s| s.as_str()).collect();
-        queries::archive_if_not_in(&state.pool, &id_refs).await?
+        queries::archive_if_not_in(&state.pool, &id_refs).await? as usize
     } else {
         0
     };
@@ -483,7 +483,7 @@ pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>) {
                     changed,
                     reconciled,
                 }) => {
-                    let count = changed.len() + reconciled as usize;
+                    let count = changed.len() + reconciled;
                     if count > 0 {
                         tracing::info!(count, "inbox changed");
                         let _ = tx.send(SyncEvent::NewNotifications { count });
