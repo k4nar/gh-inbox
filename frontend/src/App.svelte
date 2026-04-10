@@ -9,6 +9,7 @@ import Sidebar from "./lib/Sidebar.svelte";
 import {
     connectSSE,
     disconnectSSE,
+    getSyncErrorMessage,
     getSyncStatus,
     onGithubSyncError,
     onNewNotifications,
@@ -46,6 +47,14 @@ async function handleThemeChange(t: Theme) {
         theme = prev;
         applyTheme(prev);
         showError("Failed to save theme preference");
+    }
+}
+
+async function handleSync(): Promise<void> {
+    try {
+        await apiFetch<void>("/api/sync", { method: "POST" });
+    } catch {
+        // SSE stream provides feedback — ignore fetch errors here
     }
 }
 
@@ -97,8 +106,10 @@ onMount(() => {
 <Tooltip.Provider delayDuration={0}>
     <Topbar
         syncStatus={getSyncStatus()}
+        syncErrorMessage={getSyncErrorMessage()}
         {theme}
         onThemeChange={handleThemeChange}
+        onSync={handleSync}
     />
     <div class="layout">
         <Sidebar {currentView} onViewChange={handleViewChange} />

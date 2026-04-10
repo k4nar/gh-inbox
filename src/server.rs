@@ -21,13 +21,15 @@ pub struct AppState {
     pub pool: SqlitePool,
     pub github: github::GithubClient,
     pub tx: broadcast::Sender<crate::models::SyncEvent>,
-    pub bootstrap_done: Arc<AtomicBool>,
     /// PRs currently visible in the frontend viewport: (repository, pr_number).
     /// Updated by POST /api/inbox/prefetch.
     pub viewport_prs: Arc<RwLock<HashSet<(String, i64)>>>,
     /// Per-session random secret injected into index.html and required on all
     /// /api/* requests (except /api/events) as the X-Session-Token header.
     pub session_token: Arc<str>,
+    /// Set to true while a manually-triggered sync is running, so the background
+    /// loop skips its tick and avoids a concurrent sync.
+    pub sync_in_progress: Arc<AtomicBool>,
 }
 
 /// In release mode, the compiled frontend is embedded in the binary.
@@ -232,9 +234,9 @@ pub fn app_with_base_url(
         pool,
         github: github::GithubClient::new(token, github_base_url),
         tx,
-        bootstrap_done: Arc::new(AtomicBool::new(false)),
         viewport_prs: Arc::new(RwLock::new(HashSet::new())),
         session_token,
+        sync_in_progress: Arc::new(AtomicBool::new(false)),
     };
 
     let router = api::router();

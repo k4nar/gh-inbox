@@ -1,0 +1,1 @@
+ALTER TABLE notifications ADD COLUMN synced_at INTEGER NOT NULL DEFAULT 0;

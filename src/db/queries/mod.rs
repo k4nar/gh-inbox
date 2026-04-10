@@ -11,9 +11,9 @@ mod user_teams;
 pub use check_runs::{CheckRunRow, query_check_runs_for_pr, upsert_check_run};
 pub use comments::{CommentRow, query_comments_for_pr, upsert_comment};
 pub use commits::{CommitRow, query_commits_for_pr, upsert_commit};
-pub use fetches::{get_last_fetched_epoch, set_last_fetched_now};
+pub use fetches::{clear_last_fetched, get_last_fetched_epoch, set_last_fetched_now};
 pub use notifications::{
-    NotificationRow, archive_notification, mark_read, query_archived, query_inbox,
+    NotificationRow, archive_notification, archive_stale, mark_read, query_archived, query_inbox,
     unarchive_notification, upsert_notification,
 };
 pub use preferences::{get_preference, upsert_preference};

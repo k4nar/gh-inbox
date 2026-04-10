@@ -229,19 +229,23 @@ async fn mark_read_broadcasts_github_sync_error_on_github_failure() {
     let mock_base_url = start_mock_github_with_sync_error().await;
     let pool = gh_inbox::db::init_with_path(":memory:").await;
 
-    // First app instance: populate the DB by fetching /api/inbox.
-    // We discard its AppState — we don't need to subscribe to its broadcast channel.
-    let (app, _) =
-        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
-    let _ = app
-        .oneshot(
-            axum::http::Request::builder()
-                .uri("/api/inbox")
-                .body(axum::body::Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    // Pre-populate DB directly
+    gh_inbox::db::queries::upsert_notification(
+        &pool,
+        &gh_inbox::db::queries::NotificationRow {
+            id: "123".to_string(),
+            pr_id: Some(42),
+            title: "Add feature X".to_string(),
+            repository: "owner/repo".to_string(),
+            reason: "review_requested".to_string(),
+            unread: true,
+            archived: false,
+            updated_at: "2025-06-01T10:00:00Z".to_string(),
+        },
+        1,
+    )
+    .await
+    .unwrap();
 
     // Second app instance: subscribe to its broadcast channel BEFORE triggering the action.
     // The fire-and-forget task spawned inside this app broadcasts to this same channel,
@@ -285,19 +289,23 @@ async fn archive_broadcasts_github_sync_error_on_github_failure() {
     let mock_base_url = start_mock_github_with_sync_error().await;
     let pool = gh_inbox::db::init_with_path(":memory:").await;
 
-    // First app instance: populate the DB by fetching /api/inbox.
-    // We discard its AppState — we don't need to subscribe to its broadcast channel.
-    let (app, _) =
-        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
-    let _ = app
-        .oneshot(
-            axum::http::Request::builder()
-                .uri("/api/inbox")
-                .body(axum::body::Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    // Pre-populate DB directly
+    gh_inbox::db::queries::upsert_notification(
+        &pool,
+        &gh_inbox::db::queries::NotificationRow {
+            id: "123".to_string(),
+            pr_id: Some(42),
+            title: "Add feature X".to_string(),
+            repository: "owner/repo".to_string(),
+            reason: "review_requested".to_string(),
+            unread: true,
+            archived: false,
+            updated_at: "2025-06-01T10:00:00Z".to_string(),
+        },
+        1,
+    )
+    .await
+    .unwrap();
 
     // Second app instance: subscribe to its broadcast channel BEFORE triggering the action.
     // The fire-and-forget task spawned inside this app broadcasts to this same channel,
@@ -364,9 +372,30 @@ async fn start_mock_github() -> String {
 
 #[tokio::test]
 async fn get_api_inbox_returns_notifications() {
-    let mock_base_url = start_mock_github().await;
     let pool = gh_inbox::db::init_with_path(":memory:").await;
-    let (app, _state) = gh_inbox::app_with_base_url(pool, Arc::from("fake-token"), mock_base_url);
+    // Pre-populate the DB directly — no bootstrap
+    gh_inbox::db::queries::upsert_notification(
+        &pool,
+        &gh_inbox::db::queries::NotificationRow {
+            id: "123".to_string(),
+            pr_id: Some(42),
+            title: "Add feature X".to_string(),
+            repository: "owner/repo".to_string(),
+            reason: "review_requested".to_string(),
+            unread: true,
+            archived: false,
+            updated_at: "2025-06-01T10:00:00Z".to_string(),
+        },
+        1,
+    )
+    .await
+    .unwrap();
+
+    let (app, _state) = gh_inbox::app_with_base_url(
+        pool,
+        Arc::from("fake-token"),
+        "http://localhost".to_string(),
+    );
 
     let response = app
         .oneshot(
@@ -424,6 +453,33 @@ async fn get_api_inbox_empty_returns_empty_array() {
     let notifications = parse_inbox_items(&body);
     assert!(notifications.is_empty());
     let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(result["total"], 0);
+}
+
+#[tokio::test]
+async fn get_inbox_returns_empty_before_first_sync() {
+    // No mock GitHub, no DB seed — inbox must return empty without making any GitHub call.
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+    let (app, _state) = gh_inbox::app_with_base_url(
+        pool,
+        Arc::from("fake-token"),
+        "http://localhost:1".to_string(),
+    );
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/api/inbox")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(result["items"].as_array().unwrap().len(), 0);
     assert_eq!(result["total"], 0);
 }
 
@@ -638,24 +694,28 @@ async fn get_pr_threads_groups_comments() {
     }
 }
 
-/// Helper: build app with mock GitHub, fetch /api/inbox to populate DB, return (pool, base_url).
+/// Helper: pre-populate DB directly and return (pool, base_url).
 async fn setup_populated_inbox() -> (sqlx::SqlitePool, String) {
     let mock_base_url = start_mock_github().await;
     let pool = gh_inbox::db::init_with_path(":memory:").await;
 
-    // Fetch inbox to populate the DB with the mock notification
-    let (app, _state) =
-        gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
-    let response = app
-        .oneshot(
-            axum::http::Request::builder()
-                .uri("/api/inbox")
-                .body(axum::body::Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+    // Pre-populate DB directly — no bootstrap
+    gh_inbox::db::queries::upsert_notification(
+        &pool,
+        &gh_inbox::db::queries::NotificationRow {
+            id: "123".to_string(),
+            pr_id: Some(42),
+            title: "Add feature X".to_string(),
+            repository: "owner/repo".to_string(),
+            reason: "review_requested".to_string(),
+            unread: true,
+            archived: false,
+            updated_at: "2025-06-01T10:00:00Z".to_string(),
+        },
+        1,
+    )
+    .await
+    .unwrap();
 
     (pool, mock_base_url)
 }
@@ -905,7 +965,7 @@ async fn get_inbox_is_db_only_after_initial_fetch() {
 
     let pool = gh_inbox::db::init_with_path(":memory:").await;
 
-    // First request: should bootstrap (call GitHub once)
+    // First request: /api/inbox is DB-only — no GitHub call
     let (app, _state) =
         gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
     let response = app
@@ -918,9 +978,9 @@ async fn get_inbox_is_db_only_after_initial_fetch() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(call_count.load(Ordering::SeqCst), 1);
+    assert_eq!(call_count.load(Ordering::SeqCst), 0);
 
-    // Second request: should NOT call GitHub (reads from DB)
+    // Second request: also DB-only, no GitHub call
     let (app, _state) =
         gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url);
     let response = app
@@ -933,34 +993,26 @@ async fn get_inbox_is_db_only_after_initial_fetch() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    // Still only 1 call — second request was DB-only
-    assert_eq!(call_count.load(Ordering::SeqCst), 1);
+    // Still 0 — /api/inbox never calls GitHub
+    assert_eq!(call_count.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
 async fn sse_no_event_when_nothing_changed() {
     let mock_base_url = start_mock_github().await;
     let pool = gh_inbox::db::init_with_path(":memory:").await;
-    let (router, state) =
+    let (_router, state) =
         gh_inbox::app_with_base_url(pool.clone(), Arc::from("fake-token"), mock_base_url.clone());
 
-    // Bootstrap: populate DB with initial data
-    let response = router
-        .oneshot(
-            axum::http::Request::builder()
-                .uri("/api/inbox")
-                .body(axum::body::Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+    // Pre-populate DB via sync so last_fetched_at is set (incremental path)
+    use gh_inbox::github::sync::sync_notifications;
+    let first = sync_notifications(&state).await.unwrap();
+    assert_eq!(first.changed.len(), 1, "First sync should return 1 change");
 
     // Sync again — same data, should return 0 changes
-    use gh_inbox::github::sync::sync_notifications;
-    let changed = sync_notifications(&state).await.unwrap();
+    let second = sync_notifications(&state).await.unwrap();
     assert_eq!(
-        changed.len(),
+        second.changed.len(),
         0,
         "No changes expected when syncing identical data"
     );
@@ -1109,6 +1161,7 @@ async fn get_api_inbox_paginates_results() {
                 archived: false,
                 updated_at: format!("2025-01-0{i}T00:00:00Z"),
             },
+            1,
         )
         .await
         .unwrap();
@@ -1356,4 +1409,98 @@ async fn patch_preferences_rejects_unknown_key() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn post_sync_returns_202() {
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+    let (app, _state) = gh_inbox::app_with_base_url(
+        pool,
+        Arc::from("fake-token"),
+        "http://localhost:1".to_string(),
+    );
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/sync")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+}
+
+#[tokio::test]
+async fn post_sync_broadcasts_sync_started_event() {
+    let mock_base_url = start_mock_github().await;
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+    let (app, state) = gh_inbox::app_with_base_url(pool, Arc::from("fake-token"), mock_base_url);
+    let mut rx = state.tx.subscribe();
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/sync")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+    let event = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+        .await
+        .expect("timed out waiting for sync:status started event")
+        .expect("channel closed");
+
+    match event {
+        gh_inbox::models::SyncEvent::SyncStatus { status } => {
+            assert!(
+                matches!(status, gh_inbox::models::SyncStatusKind::Started),
+                "expected Started, got {status:?}"
+            );
+        }
+        other => panic!("expected SyncStatus, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn post_sync_while_in_progress_does_not_broadcast_started() {
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+    let (app, state) = gh_inbox::app_with_base_url(
+        pool,
+        Arc::from("fake-token"),
+        "http://localhost:1".to_string(),
+    );
+
+    // Simulate a sync already running
+    state
+        .sync_in_progress
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+
+    let mut rx = state.tx.subscribe();
+
+    let response = app
+        .oneshot(
+            axum::http::Request::builder()
+                .method(axum::http::Method::POST)
+                .uri("/api/sync")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+    // No started event should be sent within 100ms
+    let result = tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await;
+    assert!(
+        result.is_err(),
+        "expected timeout (no event), but got an event"
+    );
 }

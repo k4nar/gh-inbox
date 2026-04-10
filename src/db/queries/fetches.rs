@@ -13,12 +13,18 @@ pub async fn get_last_fetched_epoch(
     Ok(row.map(|r| r.0))
 }
 
+/// Clear the last fetched timestamp for a resource, forcing a full sync on next run.
+pub async fn clear_last_fetched(pool: &SqlitePool, resource: &str) -> sqlx::Result<()> {
+    sqlx::query("DELETE FROM last_fetched_at WHERE resource = ?")
+        .bind(resource)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 /// Set the last fetched timestamp for a resource to now (epoch seconds).
 pub async fn set_last_fetched_now(pool: &SqlitePool, resource: &str) -> sqlx::Result<()> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock before UNIX epoch")
-        .as_secs() as i64;
+    let now = chrono::Utc::now().timestamp();
     sqlx::query(
         "INSERT INTO last_fetched_at (resource, fetched_at)
          VALUES (?, ?)
@@ -51,10 +57,7 @@ mod tests {
     #[tokio::test]
     async fn set_and_get_round_trip() {
         let pool = test_pool().await;
-        let before = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+        let before = chrono::Utc::now().timestamp();
 
         set_last_fetched_now(&pool, "notifications").await.unwrap();
 
@@ -62,10 +65,7 @@ mod tests {
             .await
             .unwrap()
             .expect("should have a value");
-        let after = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+        let after = chrono::Utc::now().timestamp();
 
         assert!(fetched >= before && fetched <= after);
     }

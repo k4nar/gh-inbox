@@ -11,7 +11,9 @@ use serde::Serialize;
 pub const GITHUB_API_BASE: &str = "https://api.github.com";
 
 pub use fetch_pr_graphql::fetch_pr_graphql;
-pub use notifications::{fetch_notifications, mark_thread_done, mark_thread_read};
+pub use notifications::{
+    fetch_all_notifications, fetch_notifications_since, mark_thread_done, mark_thread_read,
+};
 pub use teams::fetch_user_teams;
 
 #[derive(Clone)]
@@ -40,6 +42,25 @@ impl GithubClient {
 
     async fn delete(&self, path: &str) -> Result<Response, reqwest::Error> {
         self.send(Method::DELETE, path).await
+    }
+
+    /// Fetch a fully-qualified URL with the standard GitHub auth headers.
+    /// Used for following pagination `Link: rel="next"` URLs.
+    pub(crate) async fn get_url(&self, url: &str) -> Result<Response, reqwest::Error> {
+        let builder = self
+            .client
+            .request(Method::GET, url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "gh-inbox")
+            .header("X-GitHub-Api-Version", "2026-03-10");
+        self.execute(builder, "GET", url).await
+    }
+
+    /// The base URL this client sends requests to (e.g. `https://api.github.com`).
+    /// Needed by callers that build full pagination URLs.
+    pub fn base_url(&self) -> &str {
+        &self.base_url
     }
 
     async fn post_json<T: Serialize + ?Sized>(
