@@ -39,55 +39,14 @@ impl From<sqlx::Error> for SyncError {
 const FULL_SYNC_THRESHOLD_SECS: i64 = 2 * 60 * 60; // 2 hours
 
 pub(crate) fn now_epoch() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock before UNIX epoch")
-        .as_secs() as i64
+    chrono::Utc::now().timestamp()
 }
 
-/// Convert a Unix epoch (seconds) to an ISO 8601 UTC string suitable for
-/// the GitHub API `since` parameter. Avoids adding a time-crate dependency.
 fn epoch_to_iso(epoch: i64) -> String {
-    let mut rem = epoch as u64;
-    let ss = rem % 60;
-    rem /= 60;
-    let mm = rem % 60;
-    rem /= 60;
-    let hh = rem % 24;
-    rem /= 24;
-    let (y, mo, d) = days_since_epoch_to_ymd(rem as u32);
-    format!("{y:04}-{mo:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")
-}
-
-fn days_since_epoch_to_ymd(mut days: u32) -> (u32, u32, u32) {
-    let mut year = 1970u32;
-    loop {
-        let diy = if is_leap_year(year) { 366 } else { 365 };
-        if days < diy {
-            break;
-        }
-        days -= diy;
-        year += 1;
-    }
-    const MONTH_DAYS: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let mut month = 1u32;
-    for (i, &base) in MONTH_DAYS.iter().enumerate() {
-        let dim = if i == 1 && is_leap_year(year) {
-            29
-        } else {
-            base
-        };
-        if days < dim {
-            break;
-        }
-        days -= dim;
-        month += 1;
-    }
-    (year, month, days + 1)
-}
-
-fn is_leap_year(y: u32) -> bool {
-    (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400)
+    chrono::DateTime::from_timestamp(epoch, 0)
+        .expect("epoch out of range")
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string()
 }
 
 /// A notification that changed during sync.
