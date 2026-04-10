@@ -463,9 +463,7 @@ pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>) {
     // Always start with a full sync so that any state accumulated while the
     // service was stopped (notifications cleared on GitHub, etc.) is reconciled
     // immediately on startup rather than waiting up to 2h.
-    let _ = sqlx::query("DELETE FROM last_fetched_at WHERE resource = 'notifications'")
-        .execute(&state.pool)
-        .await;
+    let _ = queries::clear_last_fetched(&state.pool, "notifications").await;
 
     loop {
         // Skip this tick if a manually-triggered sync is already running.

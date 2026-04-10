@@ -4,6 +4,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 
 use crate::api::AppError;
+use crate::db::queries;
 use crate::github::sync::sync_notifications;
 use crate::models::{SyncEvent, SyncStatusKind};
 use crate::server::AppState;
@@ -26,9 +27,7 @@ pub async fn post_sync(State(state): State<AppState>) -> Result<StatusCode, AppE
     let state_clone = state.clone();
     tokio::spawn(async move {
         // Force full sync by clearing last_fetched_at.
-        let _ = sqlx::query("DELETE FROM last_fetched_at WHERE resource = 'notifications'")
-            .execute(&state_clone.pool)
-            .await;
+        let _ = queries::clear_last_fetched(&state_clone.pool, "notifications").await;
 
         let _ = state_clone.tx.send(SyncEvent::SyncStatus {
             status: SyncStatusKind::Started,

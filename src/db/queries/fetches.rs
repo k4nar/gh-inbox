@@ -13,6 +13,15 @@ pub async fn get_last_fetched_epoch(
     Ok(row.map(|r| r.0))
 }
 
+/// Clear the last fetched timestamp for a resource, forcing a full sync on next run.
+pub async fn clear_last_fetched(pool: &SqlitePool, resource: &str) -> sqlx::Result<()> {
+    sqlx::query("DELETE FROM last_fetched_at WHERE resource = ?")
+        .bind(resource)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 /// Set the last fetched timestamp for a resource to now (epoch seconds).
 pub async fn set_last_fetched_now(pool: &SqlitePool, resource: &str) -> sqlx::Result<()> {
     let now = std::time::SystemTime::now()
