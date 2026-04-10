@@ -512,7 +512,7 @@ pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>) {
 
 /// For changed notifications whose PR is currently in the viewport,
 /// fetch fresh PR data and broadcast SSE updates.
-async fn auto_fetch_viewport_prs(
+pub(crate) async fn auto_fetch_viewport_prs(
     state: &AppState,
     tx: &broadcast::Sender<SyncEvent>,
     changed: &[ChangedNotification],

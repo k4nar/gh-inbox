@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 
 use crate::api::AppError;
 use crate::db::queries;
-use crate::github::sync::{SyncResult, sync_notifications};
+use crate::github::sync::{SyncResult, auto_fetch_viewport_prs, sync_notifications};
 use crate::models::{SyncEvent, SyncStatusKind};
 use crate::server::AppState;
 
@@ -41,6 +41,7 @@ pub async fn post_sync(State(state): State<AppState>) -> Result<StatusCode, AppE
                 let count = changed.len() + reconciled as usize;
                 if count > 0 {
                     let _ = state_clone.tx.send(SyncEvent::NewNotifications { count });
+                    auto_fetch_viewport_prs(&state_clone, &state_clone.tx, &changed).await;
                 }
                 let _ = state_clone.tx.send(SyncEvent::SyncStatus {
                     status: SyncStatusKind::Completed,
