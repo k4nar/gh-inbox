@@ -4,11 +4,13 @@ import type { Theme } from "./types.ts";
 
 let {
     syncStatus = "idle",
+    syncErrorMessage = null,
     theme = "system",
     onThemeChange,
     onSync,
 }: {
     syncStatus?: string;
+    syncErrorMessage?: string | null;
     theme?: Theme;
     onThemeChange?: (theme: Theme) => void;
     onSync?: () => void;
@@ -156,7 +158,13 @@ let statusText = $derived(
                 </svg>
             </button>
         </div>
-        {statusText}
+        {#if syncStatus === "error" && syncErrorMessage}
+            <span class="sync-error-label" data-error={syncErrorMessage}
+                >{statusText}</span
+            >
+        {:else}
+            {statusText}
+        {/if}
     </div>
 </header>
 
@@ -240,6 +248,32 @@ let statusText = $derived(
 .sync-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+}
+.sync-error-label {
+    position: relative;
+    cursor: help;
+}
+.sync-error-label::after {
+    content: attr(data-error);
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: var(--canvas-default);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 11px;
+    white-space: pre-wrap;
+    max-width: 320px;
+    color: var(--fg-default);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.1s;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+.sync-error-label:hover::after {
+    opacity: 1;
 }
 :global(.theme-trigger) {
     font-size: 12px;

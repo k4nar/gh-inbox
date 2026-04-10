@@ -1,6 +1,7 @@
 type SyncStatus = "idle" | "syncing" | "error";
 
 let syncStatus: SyncStatus = $state("idle");
+let syncErrorMessage: string | null = $state(null);
 
 let newNotificationCallbacks: Array<() => void> = [];
 
@@ -28,6 +29,10 @@ let eventSource: EventSource | null = null;
 
 export function getSyncStatus(): SyncStatus {
     return syncStatus;
+}
+
+export function getSyncErrorMessage(): string | null {
+    return syncErrorMessage;
 }
 
 export function onNewNotifications(callback: () => void): () => void {
@@ -70,8 +75,18 @@ export function connectSSE(): void {
         const { status } = JSON.parse((e as MessageEvent).data);
         if (status === "started") {
             syncStatus = "syncing";
+            syncErrorMessage = null;
         } else if (status === "completed") {
             syncStatus = "idle";
+            syncErrorMessage = null;
+        } else if (
+            status !== null &&
+            typeof status === "object" &&
+            "errored" in status
+        ) {
+            syncStatus = "error";
+            syncErrorMessage = (status as { errored: { message: string } })
+                .errored.message;
         } else {
             syncStatus = "error";
         }
@@ -103,10 +118,12 @@ export function connectSSE(): void {
 
     eventSource.addEventListener("open", () => {
         syncStatus = "idle";
+        syncErrorMessage = null;
     });
 
     eventSource.onerror = () => {
         syncStatus = "error";
+        syncErrorMessage = "Connection to server lost.";
     };
 }
 

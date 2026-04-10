@@ -13,6 +13,7 @@ vi.mock("./lib/sse.svelte.ts", () => ({
     connectSSE: vi.fn(),
     disconnectSSE: vi.fn(),
     getSyncStatus: vi.fn(() => "idle"),
+    getSyncErrorMessage: vi.fn(() => null),
     onGithubSyncError: vi.fn(() => () => {}),
     onNewNotifications: vi.fn(() => () => {}),
     onPrInfoUpdated: vi.fn(() => () => {}),

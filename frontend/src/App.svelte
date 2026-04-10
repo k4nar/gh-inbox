@@ -9,6 +9,7 @@ import Sidebar from "./lib/Sidebar.svelte";
 import {
     connectSSE,
     disconnectSSE,
+    getSyncErrorMessage,
     getSyncStatus,
     onGithubSyncError,
     onNewNotifications,
@@ -105,6 +106,7 @@ onMount(() => {
 <Tooltip.Provider delayDuration={0}>
     <Topbar
         syncStatus={getSyncStatus()}
+        syncErrorMessage={getSyncErrorMessage()}
         {theme}
         onThemeChange={handleThemeChange}
         onSync={handleSync}
