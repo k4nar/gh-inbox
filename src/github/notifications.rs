@@ -2,7 +2,6 @@ use super::GithubClient;
 
 /// Parse the URL with `rel="next"` from an HTTP `Link` header value.
 /// Returns `None` if no next-page link is present.
-#[allow(dead_code)]
 fn parse_next_link(link: &str) -> Option<String> {
     for part in link.split(',') {
         let mut url: Option<String> = None;
@@ -25,7 +24,6 @@ fn parse_next_link(link: &str) -> Option<String> {
 /// Fetch a single page of notifications from a fully-qualified URL.
 /// Returns the deserialized notifications and the next-page URL (from the
 /// `Link: rel="next"` response header), if any.
-#[allow(dead_code)]
 pub(crate) async fn fetch_notifications_page(
     github: &super::GithubClient,
     url: &str,
@@ -42,7 +40,6 @@ pub(crate) async fn fetch_notifications_page(
 
 /// Fetch ALL notifications from GitHub, following pagination links until exhausted.
 /// Used for full syncs (first run or after a >2h gap).
-#[allow(dead_code)]
 pub async fn fetch_all_notifications(
     github: &super::GithubClient,
 ) -> Result<Vec<crate::models::Notification>, reqwest::Error> {
