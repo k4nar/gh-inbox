@@ -1,5 +1,6 @@
 mod archive;
 mod get;
+mod options;
 mod prefetch;
 mod read;
 pub(crate) mod teams;
@@ -13,6 +14,7 @@ use crate::server::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/inbox", get(get::get_inbox))
+        .route("/api/inbox/options", get(options::get_inbox_options))
         .route("/api/inbox/prefetch", post(prefetch::post_prefetch))
         .route("/api/inbox/{id}/read", post(read::post_mark_read))
         .route("/api/inbox/{id}/archive", post(archive::post_archive))
