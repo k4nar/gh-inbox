@@ -17,12 +17,25 @@ import {
 import Toast from "./lib/Toast.svelte";
 import Topbar from "./lib/Topbar.svelte";
 import { showError } from "./lib/toast.svelte.ts";
-import type { InboxItem, Preferences, Theme } from "./lib/types.ts";
+import type {
+    ActiveFilters,
+    FilterOptions,
+    InboxItem,
+    Preferences,
+    Theme,
+} from "./lib/types.ts";
 
 let currentView = $state("inbox");
 let selectedNotification: InboxItem | null = $state(null);
 let refreshKey = $state(0);
 let theme: Theme = $state("system");
+let activeFilters: ActiveFilters = $state({});
+let filterOptions: FilterOptions = $state({
+    repos: [],
+    orgs: [],
+    teams: [],
+    authors: [],
+});
 
 function applyTheme(t: Theme) {
     if (t === "system") {
@@ -58,6 +71,19 @@ async function handleSync(): Promise<void> {
     }
 }
 
+async function fetchFilterOptions(): Promise<void> {
+    try {
+        const opts = await apiFetch<FilterOptions>("/api/inbox/options");
+        filterOptions = opts;
+    } catch {
+        // Non-fatal — sidebar filter lists stay empty
+    }
+}
+
+function handleFiltersChange(f: ActiveFilters): void {
+    activeFilters = f;
+}
+
 function handleSelect(notification: InboxItem | null): void {
     if (notification && selectedNotification?.id === notification.id) {
         selectedNotification = null;
@@ -78,8 +104,10 @@ function handleViewChange(view: string): void {
 
 onMount(() => {
     connectSSE();
+    fetchFilterOptions();
     const unsubNotifications = onNewNotifications(() => {
         refreshKey++;
+        fetchFilterOptions();
     });
     const unsubGithubError = onGithubSyncError((_notificationId, message) => {
         showError("Failed to sync with GitHub");
@@ -112,13 +140,22 @@ onMount(() => {
         onSync={handleSync}
     />
     <div class="layout">
-        <Sidebar {currentView} onViewChange={handleViewChange} />
+        <Sidebar
+            {currentView}
+            onViewChange={handleViewChange}
+            options={filterOptions}
+            {activeFilters}
+            onFiltersChange={handleFiltersChange}
+        />
         <PrList
             {currentView}
             onSelect={handleSelect}
             onSelectionChange={handleSelect}
             selectedId={selectedNotification?.id}
             {refreshKey}
+            {filterOptions}
+            {activeFilters}
+            onFiltersChange={handleFiltersChange}
         />
         {#if selectedNotification}
             <ResizableDetailPanel>

@@ -184,6 +184,17 @@ function installFetchMock(): void {
             ) as Promise<Response>;
         }
 
+        if (url.includes("/api/inbox/options")) {
+            return Promise.resolve(
+                Response.json({
+                    repos: ["owner/repo", "org/api"],
+                    orgs: ["owner", "org"],
+                    teams: ["owner/platform"],
+                    authors: ["alice", "bob"],
+                }),
+            ) as Promise<Response>;
+        }
+
         return Promise.reject(new Error(`Unhandled fetch URL: ${url}`));
     }) as typeof fetch;
 }
@@ -289,6 +300,45 @@ describe("App", () => {
 
         await waitFor(() => {
             expect(screen.getAllByText("Refactor auth module")).toHaveLength(2);
+        });
+    });
+});
+
+describe("filter options", () => {
+    it("fetches /api/inbox/options on mount", async () => {
+        const fetchSpy = globalThis.fetch as ReturnType<typeof vi.fn>;
+        render(App);
+        await waitFor(() => {
+            const urls = fetchSpy.mock.calls.map((args: unknown[]) =>
+                String(args[0]),
+            );
+            expect(urls.some((u) => u.includes("/api/inbox/options"))).toBe(
+                true,
+            );
+        });
+    });
+
+    it("sidebar renders repo options after fetch", async () => {
+        render(App);
+        await waitFor(() => {
+            expect(screen.getByTitle("owner/repo")).toBeInTheDocument();
+        });
+    });
+
+    it("clicking a sidebar repo refetches inbox with repo param", async () => {
+        const fetchSpy = globalThis.fetch as ReturnType<typeof vi.fn>;
+        render(App);
+        await waitFor(() => screen.getByTitle("owner/repo"));
+        await fireEvent.click(screen.getByTitle("owner/repo"));
+        await waitFor(() => {
+            const urls = fetchSpy.mock.calls.map((args: unknown[]) =>
+                String(args[0]),
+            );
+            expect(
+                urls
+                    .filter((u) => u.includes("/api/inbox?"))
+                    .some((u) => u.includes("repo=")),
+            ).toBe(true);
         });
     });
 });
