@@ -32,9 +32,23 @@ pub async fn get_inbox(
 
     let (items, total) = match query.status.as_deref() {
         Some("archived") => {
-            queries::query_archived_enriched_paginated(&state.pool, per_page, offset).await?
+            queries::query_archived_enriched_paginated(
+                &state.pool,
+                per_page,
+                offset,
+                &queries::FilterParams::default(),
+            )
+            .await?
         }
-        _ => queries::query_inbox_enriched_paginated(&state.pool, per_page, offset).await?,
+        _ => {
+            queries::query_inbox_enriched_paginated(
+                &state.pool,
+                per_page,
+                offset,
+                &queries::FilterParams::default(),
+            )
+            .await?
+        }
     };
 
     Ok(Json(PaginatedInbox {

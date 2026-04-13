@@ -1,4 +1,4 @@
-use sqlx::SqlitePool;
+use sqlx::{QueryBuilder, SqlitePool};
 
 /// Enriched inbox row: notification joined with PR data.
 /// Activity counts (new_commits, new_comments, new_reviews) are delivered via SSE,
@@ -62,6 +62,54 @@ pub struct PullRequestRow {
     pub merged_at: Option<String>,
     pub teams: Option<String>, // raw JSON string; deserialized at API layer
     pub labels: String,        // JSON array, default "[]"
+}
+
+/// Filter parameters for inbox queries. All fields are AND-combined.
+/// `repo` and `org` are mutually exclusive — callers must clear the other when setting one.
+#[derive(Debug, Default)]
+pub struct FilterParams {
+    pub repo: Option<String>,
+    pub org: Option<String>,
+    pub team: Option<String>,
+    pub author: Option<String>,
+    pub state: Option<String>,
+}
+
+fn push_filter_conditions(qb: &mut QueryBuilder<sqlx::Sqlite>, filters: &FilterParams) {
+    if let Some(repo) = &filters.repo {
+        qb.push(" AND n.repository = ");
+        qb.push_bind(repo.clone());
+    }
+    if let Some(org) = &filters.org {
+        qb.push(" AND n.repository LIKE ");
+        qb.push_bind(format!("{org}/%"));
+    }
+    if let Some(team) = &filters.team {
+        qb.push(" AND EXISTS (SELECT 1 FROM json_each(pr.teams) WHERE value = ");
+        qb.push_bind(team.clone());
+        qb.push(")");
+    }
+    if let Some(author) = &filters.author {
+        qb.push(" AND pr.author = ");
+        qb.push_bind(author.clone());
+    }
+    if let Some(state) = &filters.state {
+        match state.as_str() {
+            "open" => {
+                qb.push(" AND pr.merged_at IS NULL AND pr.state != 'closed' AND pr.draft = 0");
+            }
+            "draft" => {
+                qb.push(" AND pr.draft = 1");
+            }
+            "merged" => {
+                qb.push(" AND pr.merged_at IS NOT NULL");
+            }
+            "closed" => {
+                qb.push(" AND pr.state = 'closed' AND pr.merged_at IS NULL");
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Insert or update a pull request.
@@ -165,37 +213,50 @@ async fn query_enriched_paginated(
     archived: bool,
     limit: u32,
     offset: u32,
+    filters: &FilterParams,
 ) -> Result<(Vec<InboxItem>, i64), crate::api::AppError> {
     let archived_val = i32::from(archived);
 
-    let rows = sqlx::query_as::<_, InboxItemRow>(
-        "SELECT
-             n.id, n.pr_id, n.title, n.repository, n.reason,
-             n.unread, n.archived, n.updated_at,
-             pr.author,
-             pr.author_avatar_url,
-             CASE
-                 WHEN pr.merged_at IS NOT NULL THEN 'merged'
-                 WHEN pr.state = 'closed'      THEN 'closed'
-                 WHEN pr.draft = 1             THEN 'draft'
-                 WHEN pr.id IS NOT NULL        THEN 'open'
-                 ELSE NULL
-             END as pr_status,
-             pr.ci_status,
-             pr.teams as teams_json
-         FROM notifications n
-         LEFT JOIN pull_requests pr ON pr.id = n.pr_id AND pr.repo = n.repository
-              WHERE n.archived = ? ORDER BY n.updated_at DESC LIMIT ? OFFSET ?",
-    )
-    .bind(archived_val)
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(pool)
-    .await
-    .map_err(crate::api::AppError::Database)?;
+    let mut qb: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
+        "SELECT \
+             n.id, n.pr_id, n.title, n.repository, n.reason, \
+             n.unread, n.archived, n.updated_at, \
+             pr.author, pr.author_avatar_url, \
+             CASE \
+                 WHEN pr.merged_at IS NOT NULL THEN 'merged' \
+                 WHEN pr.state = 'closed'      THEN 'closed' \
+                 WHEN pr.draft = 1             THEN 'draft' \
+                 WHEN pr.id IS NOT NULL        THEN 'open' \
+                 ELSE NULL \
+             END as pr_status, \
+             pr.ci_status, pr.teams as teams_json \
+         FROM notifications n \
+         LEFT JOIN pull_requests pr ON pr.id = n.pr_id AND pr.repo = n.repository \
+         WHERE n.archived = ",
+    );
+    qb.push_bind(archived_val);
+    push_filter_conditions(&mut qb, filters);
+    qb.push(" ORDER BY n.updated_at DESC LIMIT ");
+    qb.push_bind(limit);
+    qb.push(" OFFSET ");
+    qb.push_bind(offset);
 
-    let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notifications WHERE archived = ?")
-        .bind(archived_val)
+    let rows = qb
+        .build_query_as::<InboxItemRow>()
+        .fetch_all(pool)
+        .await
+        .map_err(crate::api::AppError::Database)?;
+
+    let mut count_qb: QueryBuilder<sqlx::Sqlite> = QueryBuilder::new(
+        "SELECT COUNT(*) FROM notifications n \
+         LEFT JOIN pull_requests pr ON pr.id = n.pr_id AND pr.repo = n.repository \
+         WHERE n.archived = ",
+    );
+    count_qb.push_bind(archived_val);
+    push_filter_conditions(&mut count_qb, filters);
+
+    let total: (i64,) = count_qb
+        .build_query_as::<(i64,)>()
         .fetch_one(pool)
         .await
         .map_err(crate::api::AppError::Database)?;
@@ -214,8 +275,9 @@ pub async fn query_inbox_enriched_paginated(
     pool: &SqlitePool,
     limit: u32,
     offset: u32,
+    filters: &FilterParams,
 ) -> Result<(Vec<InboxItem>, i64), crate::api::AppError> {
-    query_enriched_paginated(pool, false, limit, offset).await
+    query_enriched_paginated(pool, false, limit, offset, filters).await
 }
 
 /// Query archived notifications with enrichment — paginated.
@@ -223,8 +285,9 @@ pub async fn query_archived_enriched_paginated(
     pool: &SqlitePool,
     limit: u32,
     offset: u32,
+    filters: &FilterParams,
 ) -> Result<(Vec<InboxItem>, i64), crate::api::AppError> {
-    query_enriched_paginated(pool, true, limit, offset).await
+    query_enriched_paginated(pool, true, limit, offset, filters).await
 }
 
 /// Query new-commits and new-comments-json for a specific PR since its last_viewed_at.
@@ -438,7 +501,9 @@ mod tests {
         .await
         .unwrap();
 
-        let (items, _) = query_inbox_enriched_paginated(&pool, 100, 0).await.unwrap();
+        let (items, _) = query_inbox_enriched_paginated(&pool, 100, 0, &FilterParams::default())
+            .await
+            .unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].author.as_deref(), Some("alice"));
         assert_eq!(items[0].pr_status.as_deref(), Some("open"));
@@ -486,7 +551,9 @@ mod tests {
         )
         .await
         .unwrap();
-        let (items, _) = query_inbox_enriched_paginated(&pool, 100, 0).await.unwrap();
+        let (items, _) = query_inbox_enriched_paginated(&pool, 100, 0, &FilterParams::default())
+            .await
+            .unwrap();
         let item = items.iter().find(|i| i.pr_id == Some(43)).unwrap();
         assert_eq!(item.pr_status.as_deref(), Some("draft"));
     }
@@ -532,7 +599,9 @@ mod tests {
         )
         .await
         .unwrap();
-        let (items, _) = query_inbox_enriched_paginated(&pool, 100, 0).await.unwrap();
+        let (items, _) = query_inbox_enriched_paginated(&pool, 100, 0, &FilterParams::default())
+            .await
+            .unwrap();
         let item = items.iter().find(|i| i.pr_id == Some(44)).unwrap();
         assert_eq!(item.pr_status.as_deref(), Some("merged"));
     }
@@ -586,13 +655,19 @@ mod tests {
                 .await
                 .unwrap();
         }
-        let (items, total) = query_inbox_enriched_paginated(&pool, 2, 0).await.unwrap();
+        let (items, total) = query_inbox_enriched_paginated(&pool, 2, 0, &FilterParams::default())
+            .await
+            .unwrap();
         assert_eq!(items.len(), 2);
         assert_eq!(total, 3);
-        let (items, total) = query_inbox_enriched_paginated(&pool, 2, 2).await.unwrap();
+        let (items, total) = query_inbox_enriched_paginated(&pool, 2, 2, &FilterParams::default())
+            .await
+            .unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(total, 3);
-        let (items, total) = query_inbox_enriched_paginated(&pool, 2, 4).await.unwrap();
+        let (items, total) = query_inbox_enriched_paginated(&pool, 2, 4, &FilterParams::default())
+            .await
+            .unwrap();
         assert!(items.is_empty());
         assert_eq!(total, 3);
     }
@@ -615,9 +690,10 @@ mod tests {
                 .await
                 .unwrap();
         }
-        let (items, total) = query_archived_enriched_paginated(&pool, 2, 0)
-            .await
-            .unwrap();
+        let (items, total) =
+            query_archived_enriched_paginated(&pool, 2, 0, &FilterParams::default())
+                .await
+                .unwrap();
         assert_eq!(items.len(), 2);
         assert_eq!(total, 3);
     }
@@ -635,6 +711,134 @@ mod tests {
             .unwrap();
         assert!(row.labels.contains("bug"));
         assert!(row.labels.contains("enhancement"));
+    }
+
+    async fn insert_notif_with_pr(
+        pool: &SqlitePool,
+        notif_id: &str,
+        repo: &str,
+        pr_id: i64,
+        author: &str,
+        state: &str,
+        draft: bool,
+        merged: bool,
+    ) {
+        sqlx::query(
+            "INSERT INTO notifications (id, title, repository, reason, unread, archived, updated_at, pr_id)
+             VALUES (?, 'T', ?, 'mention', 0, 0, '2025-01-01', ?)",
+        )
+        .bind(notif_id)
+        .bind(repo)
+        .bind(pr_id)
+        .execute(pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO pull_requests (id, title, repo, author, url, ci_status, body, state, head_sha, additions, deletions, changed_files, draft, merged_at, labels)
+             VALUES (?, 'T', ?, ?, 'https://x.com', NULL, '', ?, 'abc', 0, 0, 0, ?, ?, '[]')",
+        )
+        .bind(pr_id)
+        .bind(repo)
+        .bind(author)
+        .bind(state)
+        .bind(draft)
+        .bind(if merged { Some("2025-01-02T00:00:00Z") } else { None::<&str> })
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn filter_by_repo() {
+        let pool = test_pool().await;
+        insert_notif_with_pr(&pool, "n1", "acme/api", 1, "alice", "open", false, false).await;
+        insert_notif_with_pr(&pool, "n2", "acme/web", 2, "bob", "open", false, false).await;
+        let f = FilterParams {
+            repo: Some("acme/api".to_string()),
+            ..Default::default()
+        };
+        let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
+            .await
+            .unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(items[0].repository, "acme/api");
+    }
+
+    #[tokio::test]
+    async fn filter_by_org() {
+        let pool = test_pool().await;
+        insert_notif_with_pr(&pool, "n1", "acme/api", 1, "alice", "open", false, false).await;
+        insert_notif_with_pr(&pool, "n2", "beta/app", 2, "bob", "open", false, false).await;
+        let f = FilterParams {
+            org: Some("acme".to_string()),
+            ..Default::default()
+        };
+        let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
+            .await
+            .unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(items[0].repository, "acme/api");
+    }
+
+    #[tokio::test]
+    async fn filter_by_author() {
+        let pool = test_pool().await;
+        insert_notif_with_pr(&pool, "n1", "acme/api", 1, "alice", "open", false, false).await;
+        insert_notif_with_pr(&pool, "n2", "acme/web", 2, "bob", "open", false, false).await;
+        let f = FilterParams {
+            author: Some("alice".to_string()),
+            ..Default::default()
+        };
+        let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
+            .await
+            .unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(items[0].author, Some("alice".to_string()));
+    }
+
+    #[tokio::test]
+    async fn filter_by_state_open_excludes_drafts() {
+        let pool = test_pool().await;
+        insert_notif_with_pr(&pool, "n1", "acme/api", 1, "alice", "open", false, false).await;
+        insert_notif_with_pr(&pool, "n2", "acme/web", 2, "bob", "open", true, false).await; // draft
+        let f = FilterParams {
+            state: Some("open".to_string()),
+            ..Default::default()
+        };
+        let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
+            .await
+            .unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(items[0].repository, "acme/api");
+    }
+
+    #[tokio::test]
+    async fn filter_by_state_merged() {
+        let pool = test_pool().await;
+        insert_notif_with_pr(&pool, "n1", "acme/api", 1, "alice", "open", false, true).await; // merged
+        insert_notif_with_pr(&pool, "n2", "acme/web", 2, "bob", "open", false, false).await;
+        let f = FilterParams {
+            state: Some("merged".to_string()),
+            ..Default::default()
+        };
+        let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
+            .await
+            .unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(items[0].repository, "acme/api");
+    }
+
+    #[tokio::test]
+    async fn no_filters_returns_all() {
+        let pool = test_pool().await;
+        insert_notif_with_pr(&pool, "n1", "acme/api", 1, "alice", "open", false, false).await;
+        insert_notif_with_pr(&pool, "n2", "acme/web", 2, "bob", "open", false, false).await;
+        let (items, total) =
+            query_inbox_enriched_paginated(&pool, 100, 0, &FilterParams::default())
+                .await
+                .unwrap();
+        assert_eq!(total, 2);
+        assert_eq!(items.len(), 2);
     }
 
     #[tokio::test]
