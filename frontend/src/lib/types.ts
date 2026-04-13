@@ -133,3 +133,18 @@ export type Theme =
 export interface Preferences {
     theme: Theme;
 }
+
+export interface ActiveFilters {
+    repo?: string;
+    org?: string;
+    team?: string;
+    author?: string;
+    state?: string;
+}
+
+export interface FilterOptions {
+    repos: string[];
+    orgs: string[];
+    teams: string[];
+    authors: string[];
+}

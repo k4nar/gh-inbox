@@ -1,10 +1,36 @@
 <script lang="ts">
 import { Tabs } from "bits-ui";
+import type { ActiveFilters, FilterOptions } from "./types.ts";
 
 let {
     currentView = "inbox",
     onViewChange = (_view: string) => {},
-}: { currentView?: string; onViewChange?: (view: string) => void } = $props();
+    options = { repos: [], orgs: [], teams: [], authors: [] } as FilterOptions,
+    activeFilters = {} as ActiveFilters,
+    onFiltersChange = (_f: ActiveFilters) => {},
+}: {
+    currentView?: string;
+    onViewChange?: (view: string) => void;
+    options?: FilterOptions;
+    activeFilters?: ActiveFilters;
+    onFiltersChange?: (f: ActiveFilters) => void;
+} = $props();
+
+function handleRepoClick(repo: string) {
+    if (activeFilters.repo === repo) {
+        onFiltersChange({ ...activeFilters, repo: undefined, org: undefined });
+    } else {
+        onFiltersChange({ ...activeFilters, repo, org: undefined });
+    }
+}
+
+function handleTeamClick(team: string) {
+    if (activeFilters.team === team) {
+        onFiltersChange({ ...activeFilters, team: undefined });
+    } else {
+        onFiltersChange({ ...activeFilters, team });
+    }
+}
 </script>
 
 <nav class="sidebar">
@@ -41,13 +67,41 @@ let {
         </Tabs.List>
     </Tabs.Root>
 
-    <div class="sidebar-section">
-        <div class="sidebar-label">Repositories</div>
-    </div>
+    {#if options.repos.length > 0}
+        <div class="sidebar-section">
+            <div class="sidebar-label">Repositories</div>
+            {#each options.repos as repo}
+                {@const isActive = activeFilters.repo === repo}
+                <button
+                    type="button"
+                    class="sidebar-item"
+                    data-state={isActive ? "active" : "inactive"}
+                    title={repo}
+                    onclick={() => handleRepoClick(repo)}
+                >
+                    {repo.split("/")[1] ?? repo}
+                </button>
+            {/each}
+        </div>
+    {/if}
 
-    <div class="sidebar-section">
-        <div class="sidebar-label">Codeowner Teams</div>
-    </div>
+    {#if options.teams.length > 0}
+        <div class="sidebar-section">
+            <div class="sidebar-label">Codeowner Teams</div>
+            {#each options.teams as team}
+                {@const isActive = activeFilters.team === team}
+                <button
+                    type="button"
+                    class="sidebar-item"
+                    data-state={isActive ? "active" : "inactive"}
+                    title={team}
+                    onclick={() => handleTeamClick(team)}
+                >
+                    {team.split("/")[1] ?? team}
+                </button>
+            {/each}
+        </div>
+    {/if}
 </nav>
 
 <style>
