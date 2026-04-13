@@ -842,6 +842,95 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn filter_by_state_draft() {
+        let pool = test_pool().await;
+        insert_notif_with_pr(&pool, "n1", "acme/api", 1, "alice", "open", true, false).await; // draft
+        insert_notif_with_pr(&pool, "n2", "acme/web", 2, "bob", "open", false, false).await; // open
+        let f = FilterParams {
+            state: Some("draft".to_string()),
+            ..Default::default()
+        };
+        let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
+            .await
+            .unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(items[0].repository, "acme/api");
+    }
+
+    #[tokio::test]
+    async fn filter_by_state_closed() {
+        let pool = test_pool().await;
+        insert_notif_with_pr(&pool, "n1", "acme/api", 1, "alice", "closed", false, false).await; // closed
+        insert_notif_with_pr(&pool, "n2", "acme/web", 2, "bob", "open", false, false).await; // open
+        let f = FilterParams {
+            state: Some("closed".to_string()),
+            ..Default::default()
+        };
+        let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
+            .await
+            .unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(items[0].repository, "acme/api");
+    }
+
+    #[tokio::test]
+    async fn filter_by_team() {
+        let pool = test_pool().await;
+        // Insert n1 with pr_id=1, teams=["acme/platform"]
+        sqlx::query(
+            "INSERT INTO notifications (id, title, repository, reason, unread, archived, updated_at, pr_id)
+             VALUES ('n1', 'T', 'acme/api', 'mention', 0, 0, '2025-01-01', 1)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO pull_requests (id, title, repo, author, url, ci_status, body, state, head_sha, additions, deletions, changed_files, draft, labels, teams)
+             VALUES (1, 'T', 'acme/api', 'alice', 'https://x.com', NULL, '', 'open', 'abc', 0, 0, 0, 0, '[]', '[\"acme/platform\"]')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        // Insert n2 with pr_id=2, no teams
+        sqlx::query(
+            "INSERT INTO notifications (id, title, repository, reason, unread, archived, updated_at, pr_id)
+             VALUES ('n2', 'T', 'acme/web', 'mention', 0, 0, '2025-01-01', 2)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO pull_requests (id, title, repo, author, url, ci_status, body, state, head_sha, additions, deletions, changed_files, draft, labels)
+             VALUES (2, 'T', 'acme/web', 'bob', 'https://x.com', NULL, '', 'open', 'abc', 0, 0, 0, 0, '[]')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Should match the PR with acme/platform team
+        let f = FilterParams {
+            team: Some("acme/platform".to_string()),
+            ..Default::default()
+        };
+        let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
+            .await
+            .unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(items[0].repository, "acme/api");
+
+        // Should NOT match a different team
+        let f2 = FilterParams {
+            team: Some("acme/backend".to_string()),
+            ..Default::default()
+        };
+        let (items2, total2) = query_inbox_enriched_paginated(&pool, 100, 0, &f2)
+            .await
+            .unwrap();
+        assert_eq!(total2, 0);
+        assert!(items2.is_empty());
+    }
+
+    #[tokio::test]
     async fn update_ci_status_sets_clears_and_ignores_wrong_repo() {
         let pool = test_pool().await;
         let mut pr = sample(42);
