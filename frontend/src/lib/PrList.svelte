@@ -389,6 +389,15 @@ function initials(login: string | null): string {
                             onFiltersChange({ ...activeFilters, repo: v || undefined, org: undefined })}
                     >
                         <Select.Trigger class="filter-select-trigger">
+                            {#if activeFilters.repo}
+                                <img
+                                    class="filter-avatar"
+                                    src="https://github.com/{activeFilters.repo.split('/')[0]}.png?size=32"
+                                    alt=""
+                                    width="14"
+                                    height="14"
+                                >
+                            {/if}
                             {activeFilters.repo ?? "—"}
                         </Select.Trigger>
                         <Select.Portal>
@@ -398,9 +407,16 @@ function initials(login: string | null): string {
                                         >—</Select.Item
                                     >
                                     {#each filterOptions.repos as repo}
-                                        <Select.Item value={repo} label={repo}
-                                            >{repo}</Select.Item
-                                        >
+                                        <Select.Item value={repo} label={repo}>
+                                            <img
+                                                class="filter-avatar"
+                                                src="https://github.com/{repo.split('/')[0]}.png?size=32"
+                                                alt=""
+                                                width="14"
+                                                height="14"
+                                            >
+                                            {repo}
+                                        </Select.Item>
                                     {/each}
                                 </Select.Viewport>
                             </Select.Content>
@@ -416,6 +432,15 @@ function initials(login: string | null): string {
                             onFiltersChange({ ...activeFilters, org: v || undefined, repo: undefined })}
                     >
                         <Select.Trigger class="filter-select-trigger">
+                            {#if activeFilters.org}
+                                <img
+                                    class="filter-avatar"
+                                    src="https://github.com/{activeFilters.org}.png?size=32"
+                                    alt=""
+                                    width="14"
+                                    height="14"
+                                >
+                            {/if}
                             {activeFilters.org ?? "—"}
                         </Select.Trigger>
                         <Select.Portal>
@@ -425,9 +450,16 @@ function initials(login: string | null): string {
                                         >—</Select.Item
                                     >
                                     {#each filterOptions.orgs as org}
-                                        <Select.Item value={org} label={org}
-                                            >{org}</Select.Item
-                                        >
+                                        <Select.Item value={org} label={org}>
+                                            <img
+                                                class="filter-avatar"
+                                                src="https://github.com/{org}.png?size=32"
+                                                alt=""
+                                                width="14"
+                                                height="14"
+                                            >
+                                            {org}
+                                        </Select.Item>
                                     {/each}
                                 </Select.Viewport>
                             </Select.Content>
@@ -443,6 +475,15 @@ function initials(login: string | null): string {
                             onFiltersChange({ ...activeFilters, team: v || undefined })}
                     >
                         <Select.Trigger class="filter-select-trigger">
+                            {#if activeFilters.team}
+                                <img
+                                    class="filter-avatar"
+                                    src="https://github.com/{activeFilters.team.split('/')[0]}.png?size=32"
+                                    alt=""
+                                    width="14"
+                                    height="14"
+                                >
+                            {/if}
                             {activeFilters.team ?? "—"}
                         </Select.Trigger>
                         <Select.Portal>
@@ -452,9 +493,16 @@ function initials(login: string | null): string {
                                         >—</Select.Item
                                     >
                                     {#each filterOptions.teams as team}
-                                        <Select.Item value={team} label={team}
-                                            >{team}</Select.Item
-                                        >
+                                        <Select.Item value={team} label={team}>
+                                            <img
+                                                class="filter-avatar"
+                                                src="https://github.com/{team.split('/')[0]}.png?size=32"
+                                                alt=""
+                                                width="14"
+                                                height="14"
+                                            >
+                                            {team}
+                                        </Select.Item>
                                     {/each}
                                 </Select.Viewport>
                             </Select.Content>
@@ -470,6 +518,15 @@ function initials(login: string | null): string {
                             onFiltersChange({ ...activeFilters, author: v || undefined })}
                     >
                         <Select.Trigger class="filter-select-trigger">
+                            {#if activeFilters.author}
+                                <img
+                                    class="filter-avatar"
+                                    src="https://github.com/{activeFilters.author}.png?size=32"
+                                    alt=""
+                                    width="14"
+                                    height="14"
+                                >
+                            {/if}
                             {activeFilters.author ?? "—"}
                         </Select.Trigger>
                         <Select.Portal>
@@ -482,8 +539,16 @@ function initials(login: string | null): string {
                                         <Select.Item
                                             value={author}
                                             label={author}
-                                            >{author}</Select.Item
                                         >
+                                            <img
+                                                class="filter-avatar"
+                                                src="https://github.com/{author}.png?size=32"
+                                                alt=""
+                                                width="14"
+                                                height="14"
+                                            >
+                                            {author}
+                                        </Select.Item>
                                     {/each}
                                 </Select.Viewport>
                             </Select.Content>
@@ -499,6 +564,20 @@ function initials(login: string | null): string {
                             onFiltersChange({ ...activeFilters, state: v || undefined })}
                     >
                         <Select.Trigger class="filter-select-trigger">
+                            {#if activeFilters.state && STATUS_ICONS[activeFilters.state]}
+                                <svg
+                                    aria-hidden="true"
+                                    class="filter-state-icon filter-state-icon-{activeFilters.state}"
+                                    width="14"
+                                    height="14"
+                                    viewBox="0 0 16 16"
+                                    fill="currentColor"
+                                >
+                                    <path
+                                        d={STATUS_ICONS[activeFilters.state]}
+                                    />
+                                </svg>
+                            {/if}
                             {activeFilters.state ?? "—"}
                         </Select.Trigger>
                         <Select.Portal>
@@ -508,9 +587,22 @@ function initials(login: string | null): string {
                                         >—</Select.Item
                                     >
                                     {#each FILTER_STATES as state}
-                                        <Select.Item value={state} label={state}
-                                            >{state}</Select.Item
+                                        <Select.Item
+                                            value={state}
+                                            label={state}
                                         >
+                                            <svg
+                                                aria-hidden="true"
+                                                class="filter-state-icon filter-state-icon-{state}"
+                                                width="14"
+                                                height="14"
+                                                viewBox="0 0 16 16"
+                                                fill="currentColor"
+                                            >
+                                                <path d={STATUS_ICONS[state]} />
+                                            </svg>
+                                            {state}
+                                        </Select.Item>
                                     {/each}
                                 </Select.Viewport>
                             </Select.Content>
@@ -1179,5 +1271,26 @@ function initials(login: string | null): string {
 }
 .filter-clear-all:hover {
     text-decoration: underline;
+}
+.filter-avatar {
+    border-radius: 3px;
+    flex-shrink: 0;
+    vertical-align: middle;
+}
+.filter-state-icon {
+    flex-shrink: 0;
+    vertical-align: middle;
+}
+.filter-state-icon-open {
+    color: #3fb950;
+}
+.filter-state-icon-draft {
+    color: var(--fg-muted);
+}
+.filter-state-icon-merged {
+    color: #a371f7;
+}
+.filter-state-icon-closed {
+    color: #f85149;
 }
 </style>

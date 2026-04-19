@@ -8,12 +8,22 @@ pub struct InboxOptions {
     pub authors: Vec<String>,
 }
 
-pub async fn get_inbox_options(pool: &SqlitePool) -> sqlx::Result<InboxOptions> {
-    let repo_rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT DISTINCT repository FROM notifications ORDER BY repository LIMIT 100",
-    )
-    .fetch_all(pool)
-    .await?;
+pub async fn get_inbox_options(pool: &SqlitePool, archived: bool) -> sqlx::Result<InboxOptions> {
+    let repo_rows: Vec<(String,)> = if archived {
+        sqlx::query_as(
+            "SELECT DISTINCT repository \
+             FROM (SELECT repository FROM notifications WHERE archived = 1 ORDER BY updated_at DESC LIMIT 200) \
+             ORDER BY repository LIMIT 100",
+        )
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query_as(
+            "SELECT DISTINCT repository FROM notifications WHERE archived = 0 ORDER BY repository LIMIT 100",
+        )
+        .fetch_all(pool)
+        .await?
+    };
 
     let repos: Vec<String> = repo_rows.into_iter().map(|r| r.0).collect();
 
@@ -32,13 +42,24 @@ pub async fn get_inbox_options(pool: &SqlitePool) -> sqlx::Result<InboxOptions> 
             .fetch_all(pool)
             .await?;
 
-    let author_rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT DISTINCT author FROM pull_requests \
-         WHERE id IN (SELECT pr_id FROM notifications WHERE pr_id IS NOT NULL) \
-         ORDER BY author LIMIT 100",
-    )
-    .fetch_all(pool)
-    .await?;
+    let author_rows: Vec<(String,)> = if archived {
+        sqlx::query_as(
+            "SELECT DISTINCT author FROM pull_requests \
+             WHERE id IN ( \
+                 SELECT pr_id FROM (SELECT pr_id FROM notifications WHERE pr_id IS NOT NULL AND archived = 1 ORDER BY updated_at DESC LIMIT 200) \
+             ) ORDER BY author LIMIT 100",
+        )
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query_as(
+            "SELECT DISTINCT author FROM pull_requests \
+             WHERE id IN (SELECT pr_id FROM notifications WHERE pr_id IS NOT NULL AND archived = 0) \
+             ORDER BY author LIMIT 100",
+        )
+        .fetch_all(pool)
+        .await?
+    };
 
     Ok(InboxOptions {
         repos,
@@ -59,7 +80,7 @@ mod tests {
     #[tokio::test]
     async fn returns_empty_when_no_data() {
         let pool = test_pool().await;
-        let opts = get_inbox_options(&pool).await.unwrap();
+        let opts = get_inbox_options(&pool, false).await.unwrap();
         assert!(opts.repos.is_empty());
         assert!(opts.orgs.is_empty());
         assert!(opts.teams.is_empty());
@@ -80,9 +101,69 @@ mod tests {
             .await
             .unwrap();
         }
-        let opts = get_inbox_options(&pool).await.unwrap();
+        let opts = get_inbox_options(&pool, false).await.unwrap();
         assert_eq!(opts.repos, vec!["acme/api", "acme/web", "beta/app"]);
         assert_eq!(opts.orgs, vec!["acme", "beta"]);
+    }
+
+    #[tokio::test]
+    async fn archived_view_returns_repos_from_last_200_archived() {
+        let pool = test_pool().await;
+        sqlx::query(
+            "INSERT INTO notifications (id, title, repository, reason, unread, archived, updated_at)
+             VALUES ('n1', 'T', 'acme/api', 'mention', 0, 1, '2025-01-02')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        // Inbox notification — should not appear in archived options
+        sqlx::query(
+            "INSERT INTO notifications (id, title, repository, reason, unread, archived, updated_at)
+             VALUES ('n2', 'T', 'other/repo', 'mention', 0, 0, '2025-01-01')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let opts = get_inbox_options(&pool, true).await.unwrap();
+        assert_eq!(opts.repos, vec!["acme/api"]);
+    }
+
+    #[tokio::test]
+    async fn excludes_archived_notifications_from_repos_and_authors() {
+        let pool = test_pool().await;
+        // Inbox notification
+        sqlx::query(
+            "INSERT INTO notifications (id, title, repository, reason, unread, archived, updated_at, pr_id)
+             VALUES ('n1', 'T', 'acme/api', 'mention', 0, 0, '2025-01-01', 1)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        // Archived notification — should be excluded
+        sqlx::query(
+            "INSERT INTO notifications (id, title, repository, reason, unread, archived, updated_at, pr_id)
+             VALUES ('n2', 'T', 'other/repo', 'mention', 0, 1, '2025-01-01', 2)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO pull_requests (id, title, repo, author, url, ci_status, body, state, head_sha, additions, deletions, changed_files, draft, labels)
+             VALUES (1, 'T', 'acme/api', 'alice', 'https://github.com/acme/api/pull/1', NULL, '', 'open', 'abc', 0, 0, 0, 0, '[]')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO pull_requests (id, title, repo, author, url, ci_status, body, state, head_sha, additions, deletions, changed_files, draft, labels)
+             VALUES (2, 'T', 'other/repo', 'bob', 'https://github.com/other/repo/pull/2', NULL, '', 'open', 'def', 0, 0, 0, 0, '[]')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let opts = get_inbox_options(&pool, false).await.unwrap();
+        assert_eq!(opts.repos, vec!["acme/api"]);
+        assert_eq!(opts.authors, vec!["alice"]);
     }
 
     #[tokio::test]
@@ -94,7 +175,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let opts = get_inbox_options(&pool).await.unwrap();
+        let opts = get_inbox_options(&pool, false).await.unwrap();
         assert_eq!(opts.teams, vec!["acme/backend", "acme/platform"]);
     }
 
@@ -115,7 +196,7 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
-        let opts = get_inbox_options(&pool).await.unwrap();
+        let opts = get_inbox_options(&pool, false).await.unwrap();
         assert_eq!(opts.authors, vec!["alice"]);
     }
 
@@ -133,7 +214,7 @@ mod tests {
             .await
             .unwrap();
         }
-        let opts = get_inbox_options(&pool).await.unwrap();
+        let opts = get_inbox_options(&pool, false).await.unwrap();
         assert_eq!(opts.repos.len(), 100);
     }
 }

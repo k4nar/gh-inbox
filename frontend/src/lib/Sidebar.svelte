@@ -72,6 +72,7 @@ function handleTeamClick(team: string) {
             <div class="sidebar-label">Repositories</div>
             {#each options.repos as repo}
                 {@const isActive = activeFilters.repo === repo}
+                {@const org = repo.split("/")[0]}
                 <button
                     type="button"
                     class="sidebar-item"
@@ -79,7 +80,14 @@ function handleTeamClick(team: string) {
                     title={repo}
                     onclick={() => handleRepoClick(repo)}
                 >
-                    {repo.split("/")[1] ?? repo}
+                    <img
+                        class="sidebar-avatar"
+                        src="https://github.com/{org}.png?size=32"
+                        alt=""
+                        width="16"
+                        height="16"
+                    >
+                    {repo}
                 </button>
             {/each}
         </div>
@@ -90,6 +98,7 @@ function handleTeamClick(team: string) {
             <div class="sidebar-label">Codeowner Teams</div>
             {#each options.teams as team}
                 {@const isActive = activeFilters.team === team}
+                {@const org = team.split("/")[0]}
                 <button
                     type="button"
                     class="sidebar-item"
@@ -97,7 +106,14 @@ function handleTeamClick(team: string) {
                     title={team}
                     onclick={() => handleTeamClick(team)}
                 >
-                    {team.split("/")[1] ?? team}
+                    <img
+                        class="sidebar-avatar"
+                        src="https://github.com/{org}.png?size=32"
+                        alt=""
+                        width="16"
+                        height="16"
+                    >
+                    {team}
                 </button>
             {/each}
         </div>
@@ -127,6 +143,10 @@ function handleTeamClick(team: string) {
     color: var(--fg-muted);
     padding: 0 16px;
     margin-bottom: 4px;
+}
+.sidebar-avatar {
+    border-radius: 3px;
+    flex-shrink: 0;
 }
 :global(.sidebar-item) {
     display: flex;

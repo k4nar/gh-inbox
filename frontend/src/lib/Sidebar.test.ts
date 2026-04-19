@@ -87,9 +87,11 @@ describe("Sidebar filter lists", () => {
         expect(screen.getByTitle("acme/web")).toBeInTheDocument();
     });
 
-    it("shows only the repo part as label", () => {
+    it("shows the full org/repo as label", () => {
         render(Sidebar, { props: { options: OPTS, activeFilters: {} } });
-        expect(screen.getByTitle("acme/api").textContent?.trim()).toBe("api");
+        expect(screen.getByTitle("acme/api").textContent?.trim()).toBe(
+            "acme/api",
+        );
     });
 
     it("renders team items from options", () => {
@@ -97,10 +99,10 @@ describe("Sidebar filter lists", () => {
         expect(screen.getByTitle("acme/platform")).toBeInTheDocument();
     });
 
-    it("shows only the slug part as team label", () => {
+    it("shows the full org/team as label", () => {
         render(Sidebar, { props: { options: OPTS, activeFilters: {} } });
         expect(screen.getByTitle("acme/platform").textContent?.trim()).toBe(
-            "platform",
+            "acme/platform",
         );
     });
 

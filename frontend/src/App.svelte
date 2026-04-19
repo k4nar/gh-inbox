@@ -71,9 +71,12 @@ async function handleSync(): Promise<void> {
     }
 }
 
-async function fetchFilterOptions(): Promise<void> {
+async function fetchFilterOptions(view: string): Promise<void> {
     try {
-        const opts = await apiFetch<FilterOptions>("/api/inbox/options");
+        const params = view === "archived" ? "?status=archived" : "";
+        const opts = await apiFetch<FilterOptions>(
+            `/api/inbox/options${params}`,
+        );
         filterOptions = opts;
     } catch {
         // Non-fatal — sidebar filter lists stay empty
@@ -100,14 +103,15 @@ function handleClose(): void {
 function handleViewChange(view: string): void {
     currentView = view;
     selectedNotification = null;
+    fetchFilterOptions(view);
 }
 
 onMount(() => {
     connectSSE();
-    fetchFilterOptions();
+    fetchFilterOptions(currentView);
     const unsubNotifications = onNewNotifications(() => {
         refreshKey++;
-        fetchFilterOptions();
+        fetchFilterOptions(currentView);
     });
     const unsubGithubError = onGithubSyncError((_notificationId, message) => {
         showError("Failed to sync with GitHub");
