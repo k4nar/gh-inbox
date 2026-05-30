@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use sqlx::SqlitePool;
 
 #[derive(Debug, serde::Serialize)]
@@ -6,26 +8,43 @@ pub struct InboxOptions {
     pub orgs: Vec<String>,
     pub teams: Vec<String>,
     pub authors: Vec<String>,
+    pub repo_counts: HashMap<String, i64>,
+    pub team_counts: HashMap<String, i64>,
 }
 
 pub async fn get_inbox_options(pool: &SqlitePool, archived: bool) -> sqlx::Result<InboxOptions> {
-    let repo_rows: Vec<(String,)> = if archived {
-        sqlx::query_as(
+    let archived_flag: i32 = i32::from(archived);
+
+    // Repos shown in the sidebar. The archived view is limited to repos seen in the
+    // most recent 200 archived notifications; the inbox shows all repos. Capped at 100.
+    let repos: Vec<String> = if archived {
+        let rows: Vec<(String,)> = sqlx::query_as(
             "SELECT DISTINCT repository \
              FROM (SELECT repository FROM notifications WHERE archived = 1 ORDER BY updated_at DESC LIMIT 200) \
              ORDER BY repository LIMIT 100",
         )
         .fetch_all(pool)
-        .await?
+        .await?;
+        rows.into_iter().map(|r| r.0).collect()
     } else {
-        sqlx::query_as(
+        let rows: Vec<(String,)> = sqlx::query_as(
             "SELECT DISTINCT repository FROM notifications WHERE archived = 0 ORDER BY repository LIMIT 100",
         )
         .fetch_all(pool)
-        .await?
+        .await?;
+        rows.into_iter().map(|r| r.0).collect()
     };
 
-    let repos: Vec<String> = repo_rows.into_iter().map(|r| r.0).collect();
+    // Notification counts per repo, over the full archived/inbox set so the sidebar
+    // badge matches what a repo filter shows in the list (which is not windowed).
+    let repo_count_rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT repository, COUNT(*) as cnt FROM notifications WHERE archived = ? \
+         GROUP BY repository",
+    )
+    .bind(archived_flag)
+    .fetch_all(pool)
+    .await?;
+    let repo_counts: HashMap<String, i64> = repo_count_rows.into_iter().collect();
 
     let orgs: Vec<String> = {
         let mut seen = std::collections::HashSet::new();
@@ -41,6 +60,25 @@ pub async fn get_inbox_options(pool: &SqlitePool, archived: bool) -> sqlx::Resul
         sqlx::query_as("SELECT slug FROM user_teams ORDER BY slug LIMIT 100")
             .fetch_all(pool)
             .await?;
+
+    let teams: Vec<String> = team_rows.into_iter().map(|t| t.0).collect();
+
+    let team_counts: HashMap<String, i64> = if teams.is_empty() {
+        HashMap::new()
+    } else {
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT jt.value, COUNT(DISTINCT n.id) \
+             FROM notifications n \
+             JOIN pull_requests pr ON pr.id = n.pr_id AND pr.repo = n.repository \
+             JOIN json_each(pr.teams) jt \
+             WHERE n.archived = ? AND jt.value IN (SELECT slug FROM user_teams) \
+             GROUP BY jt.value",
+        )
+        .bind(archived_flag)
+        .fetch_all(pool)
+        .await?;
+        rows.into_iter().collect()
+    };
 
     let author_rows: Vec<(String,)> = if archived {
         sqlx::query_as(
@@ -64,8 +102,10 @@ pub async fn get_inbox_options(pool: &SqlitePool, archived: bool) -> sqlx::Resul
     Ok(InboxOptions {
         repos,
         orgs,
-        teams: team_rows.into_iter().map(|t| t.0).collect(),
+        teams,
         authors: author_rows.into_iter().map(|a| a.0).collect(),
+        repo_counts,
+        team_counts,
     })
 }
 
@@ -177,6 +217,74 @@ mod tests {
         .unwrap();
         let opts = get_inbox_options(&pool, false).await.unwrap();
         assert_eq!(opts.teams, vec!["acme/backend", "acme/platform"]);
+    }
+
+    #[tokio::test]
+    async fn returns_repo_counts_per_repository() {
+        let pool = test_pool().await;
+        for (id, repo) in [("n1", "acme/api"), ("n2", "acme/api"), ("n3", "acme/web")] {
+            sqlx::query(
+                "INSERT INTO notifications (id, title, repository, reason, unread, archived, updated_at)
+                 VALUES (?, 'T', ?, 'mention', 0, 0, '2025-01-01')",
+            )
+            .bind(id)
+            .bind(repo)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        let opts = get_inbox_options(&pool, false).await.unwrap();
+        assert_eq!(opts.repo_counts.get("acme/api"), Some(&2));
+        assert_eq!(opts.repo_counts.get("acme/web"), Some(&1));
+    }
+
+    #[tokio::test]
+    async fn repo_counts_cover_full_archived_set_not_just_the_window() {
+        let pool = test_pool().await;
+        // 201 archived notifications for the same repo: the repo list is windowed to the
+        // most recent 200, but the count must reflect all of them (matching the filter).
+        for i in 0..201_u32 {
+            sqlx::query(
+                "INSERT INTO notifications (id, title, repository, reason, unread, archived, updated_at)
+                 VALUES (?, 'T', 'acme/api', 'mention', 0, 1, '2025-01-01')",
+            )
+            .bind(format!("n{i}"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        let opts = get_inbox_options(&pool, true).await.unwrap();
+        assert_eq!(opts.repos, vec!["acme/api"]);
+        assert_eq!(opts.repo_counts.get("acme/api"), Some(&201));
+    }
+
+    #[tokio::test]
+    async fn returns_team_counts_for_user_teams() {
+        let pool = test_pool().await;
+        crate::db::queries::replace_user_teams(&pool, &["acme/platform".to_string()])
+            .await
+            .unwrap();
+        for (nid, pr_id) in [("n1", 1_i64), ("n2", 2)] {
+            sqlx::query(
+                "INSERT INTO notifications (id, title, repository, reason, unread, archived, updated_at, pr_id)
+                 VALUES (?, 'T', 'acme/api', 'mention', 0, 0, '2025-01-01', ?)",
+            )
+            .bind(nid)
+            .bind(pr_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO pull_requests (id, title, repo, author, url, ci_status, body, state, head_sha, additions, deletions, changed_files, draft, labels, teams)
+                 VALUES (?, 'T', 'acme/api', 'alice', 'https://github.com/acme/api/pull/1', NULL, '', 'open', 'abc', 0, 0, 0, 0, '[]', '[\"acme/platform\"]')",
+            )
+            .bind(pr_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        let opts = get_inbox_options(&pool, false).await.unwrap();
+        assert_eq!(opts.team_counts.get("acme/platform"), Some(&2));
     }
 
     #[tokio::test]

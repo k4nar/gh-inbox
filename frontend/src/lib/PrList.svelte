@@ -22,6 +22,8 @@ let {
         orgs: [],
         teams: [],
         authors: [],
+        repo_counts: {},
+        team_counts: {},
     } as FilterOptions,
     activeFilters = {} as ActiveFilters,
     onFiltersChange = (_f: ActiveFilters) => {},

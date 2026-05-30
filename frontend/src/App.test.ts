@@ -191,6 +191,8 @@ function installFetchMock(): void {
                     orgs: ["owner", "org"],
                     teams: ["owner/platform"],
                     authors: ["alice", "bob"],
+                    repo_counts: { "owner/repo": 1, "org/api": 1 },
+                    team_counts: { "owner/platform": 1 },
                 }),
             ) as Promise<Response>;
         }

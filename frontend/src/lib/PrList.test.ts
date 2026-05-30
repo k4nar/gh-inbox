@@ -809,6 +809,8 @@ const FILTER_OPTIONS: FilterOptions = {
     orgs: ["acme"],
     teams: ["acme/platform"],
     authors: ["alice", "bob"],
+    repo_counts: { "acme/api": 2, "acme/web": 1 },
+    team_counts: { "acme/platform": 1 },
 };
 
 describe("PrList filter button", () => {

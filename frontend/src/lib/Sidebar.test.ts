@@ -22,6 +22,8 @@ describe("Sidebar", () => {
                     orgs: [],
                     teams: [],
                     authors: [],
+                    repo_counts: {},
+                    team_counts: {},
                 },
             },
         });
@@ -36,6 +38,8 @@ describe("Sidebar", () => {
                     orgs: [],
                     teams: ["acme/platform"],
                     authors: [],
+                    repo_counts: {},
+                    team_counts: {},
                 },
             },
         });
@@ -78,6 +82,8 @@ const OPTS: FilterOptions = {
     orgs: ["acme"],
     teams: ["acme/platform"],
     authors: ["alice"],
+    repo_counts: { "acme/api": 3, "acme/web": 1 },
+    team_counts: { "acme/platform": 2 },
 };
 
 describe("Sidebar filter lists", () => {
@@ -87,11 +93,10 @@ describe("Sidebar filter lists", () => {
         expect(screen.getByTitle("acme/web")).toBeInTheDocument();
     });
 
-    it("shows the full org/repo as label", () => {
+    it("shows the full org/repo as label with count", () => {
         render(Sidebar, { props: { options: OPTS, activeFilters: {} } });
-        expect(screen.getByTitle("acme/api").textContent?.trim()).toBe(
-            "acme/api",
-        );
+        expect(screen.getByTitle("acme/api").textContent).toContain("acme/api");
+        expect(screen.getByTitle("acme/api").textContent).toContain("3");
     });
 
     it("renders team items from options", () => {
@@ -99,11 +104,12 @@ describe("Sidebar filter lists", () => {
         expect(screen.getByTitle("acme/platform")).toBeInTheDocument();
     });
 
-    it("shows the full org/team as label", () => {
+    it("shows the full org/team as label with count", () => {
         render(Sidebar, { props: { options: OPTS, activeFilters: {} } });
-        expect(screen.getByTitle("acme/platform").textContent?.trim()).toBe(
+        expect(screen.getByTitle("acme/platform").textContent).toContain(
             "acme/platform",
         );
+        expect(screen.getByTitle("acme/platform").textContent).toContain("2");
     });
 
     it("hides Repositories section when repos is empty", () => {

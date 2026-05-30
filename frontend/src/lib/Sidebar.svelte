@@ -5,7 +5,14 @@ import type { ActiveFilters, FilterOptions } from "./types.ts";
 let {
     currentView = "inbox",
     onViewChange = (_view: string) => {},
-    options = { repos: [], orgs: [], teams: [], authors: [] } as FilterOptions,
+    options = {
+        repos: [],
+        orgs: [],
+        teams: [],
+        authors: [],
+        repo_counts: {},
+        team_counts: {},
+    } as FilterOptions,
     activeFilters = {} as ActiveFilters,
     onFiltersChange = (_f: ActiveFilters) => {},
 }: {
@@ -87,7 +94,12 @@ function handleTeamClick(team: string) {
                         width="16"
                         height="16"
                     >
-                    {repo}
+                    <span class="sidebar-item-label">{repo}</span>
+                    {#if options.repo_counts[repo]}
+                        <span class="sidebar-count"
+                            >{options.repo_counts[repo]}</span
+                        >
+                    {/if}
                 </button>
             {/each}
         </div>
@@ -113,7 +125,12 @@ function handleTeamClick(team: string) {
                         width="16"
                         height="16"
                     >
-                    {team}
+                    <span class="sidebar-item-label">{team}</span>
+                    {#if options.team_counts[team]}
+                        <span class="sidebar-count"
+                            >{options.team_counts[team]}</span
+                        >
+                    {/if}
                 </button>
             {/each}
         </div>
@@ -146,6 +163,19 @@ function handleTeamClick(team: string) {
 }
 .sidebar-avatar {
     border-radius: 3px;
+    flex-shrink: 0;
+}
+.sidebar-item-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sidebar-count {
+    font-size: 11px;
+    color: var(--fg-muted);
+    font-weight: 400;
     flex-shrink: 0;
 }
 :global(.sidebar-item) {

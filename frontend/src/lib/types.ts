@@ -147,4 +147,6 @@ export interface FilterOptions {
     orgs: string[];
     teams: string[];
     authors: string[];
+    repo_counts: Record<string, number>;
+    team_counts: Record<string, number>;
 }
