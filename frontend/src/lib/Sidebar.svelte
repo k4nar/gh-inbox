@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Tabs } from "bits-ui";
+import { Collapsible, Tabs } from "bits-ui";
 import type { ActiveFilters, FilterOptions } from "./types.ts";
 
 let {
@@ -72,7 +72,31 @@ function handleStateClick(state: string) {
 function clearFilters() {
     onFiltersChange({});
 }
+
+// Collapsible list sections are collapsed by default. When collapsed, a section
+// with an active filter shows only the active item (handled in CSS) and its
+// label is highlighted; expanding reveals the full list.
+let reposOpen = $state(false);
+let teamsOpen = $state(false);
+let authorsOpen = $state(false);
 </script>
+
+{#snippet sectionHeader(title: string, count: number, active: boolean)}
+    <span class="sidebar-section-title" class:active>{title}</span>
+    <span class="sidebar-section-badge">{count}</span>
+    <svg
+        aria-hidden="true"
+        class="sidebar-chevron"
+        width="12"
+        height="12"
+        viewBox="0 0 16 16"
+        fill="currentColor"
+    >
+        <path
+            d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"
+        />
+    </svg>
+{/snippet}
 
 <nav class="sidebar">
     <Tabs.Root value={currentView} onValueChange={onViewChange}>
@@ -148,90 +172,123 @@ function clearFilters() {
     </div>
 
     {#if options.repos.length > 0}
-        <div class="sidebar-section">
-            <div class="sidebar-label">Repositories</div>
-            {#each options.repos as repo}
-                {@const isActive = activeFilters.repo === repo}
-                {@const org = repo.split("/")[0]}
-                <button
-                    type="button"
-                    class="sidebar-item"
-                    data-state={isActive ? "active" : "inactive"}
-                    title={repo}
-                    onclick={() => handleRepoClick(repo)}
-                >
-                    <img
-                        class="sidebar-avatar"
-                        src="https://github.com/{org}.png?size=32"
-                        alt=""
-                        width="16"
-                        height="16"
+        <Collapsible.Root
+            open={reposOpen}
+            onOpenChange={(v) => (reposOpen = v)}
+        >
+            <Collapsible.Trigger class="sidebar-section-header">
+                {@render sectionHeader(
+                    "Repositories",
+                    options.repos.length,
+                    activeFilters.repo !== undefined,
+                )}
+            </Collapsible.Trigger>
+            <Collapsible.Content class="sidebar-section-content" forceMount>
+                {#each options.repos as repo}
+                    {@const isActive = activeFilters.repo === repo}
+                    {@const org = repo.split("/")[0]}
+                    <button
+                        type="button"
+                        class="sidebar-item"
+                        data-state={isActive ? "active" : "inactive"}
+                        title={repo}
+                        onclick={() => handleRepoClick(repo)}
                     >
-                    <span class="sidebar-item-label">{repo}</span>
-                    {#if options.repo_counts[repo]}
-                        <span class="sidebar-count"
-                            >{options.repo_counts[repo]}</span
+                        <img
+                            class="sidebar-avatar"
+                            src="https://github.com/{org}.png?size=32"
+                            alt=""
+                            width="16"
+                            height="16"
                         >
-                    {/if}
-                </button>
-            {/each}
-        </div>
+                        <span class="sidebar-item-label">{repo}</span>
+                        {#if options.repo_counts[repo]}
+                            <span class="sidebar-count"
+                                >{options.repo_counts[repo]}</span
+                            >
+                        {/if}
+                    </button>
+                {/each}
+            </Collapsible.Content>
+        </Collapsible.Root>
     {/if}
 
     {#if options.teams.length > 0}
-        <div class="sidebar-section">
-            <div class="sidebar-label">Codeowner Teams</div>
-            {#each options.teams as team}
-                {@const isActive = activeFilters.team === team}
-                {@const org = team.split("/")[0]}
-                <button
-                    type="button"
-                    class="sidebar-item"
-                    data-state={isActive ? "active" : "inactive"}
-                    title={team}
-                    onclick={() => handleTeamClick(team)}
-                >
-                    <img
-                        class="sidebar-avatar"
-                        src="https://github.com/{org}.png?size=32"
-                        alt=""
-                        width="16"
-                        height="16"
+        <Collapsible.Root
+            open={teamsOpen}
+            onOpenChange={(v) => (teamsOpen = v)}
+        >
+            <Collapsible.Trigger class="sidebar-section-header">
+                {@render sectionHeader(
+                    "Codeowner Teams",
+                    options.teams.length,
+                    activeFilters.team !== undefined,
+                )}
+            </Collapsible.Trigger>
+            <Collapsible.Content class="sidebar-section-content" forceMount>
+                {#each options.teams as team}
+                    {@const isActive = activeFilters.team === team}
+                    {@const org = team.split("/")[0]}
+                    <button
+                        type="button"
+                        class="sidebar-item"
+                        data-state={isActive ? "active" : "inactive"}
+                        title={team}
+                        onclick={() => handleTeamClick(team)}
                     >
-                    <span class="sidebar-item-label">{team}</span>
-                    {#if options.team_counts[team]}
-                        <span class="sidebar-count"
-                            >{options.team_counts[team]}</span
+                        <img
+                            class="sidebar-avatar"
+                            src="https://github.com/{org}.png?size=32"
+                            alt=""
+                            width="16"
+                            height="16"
                         >
-                    {/if}
-                </button>
-            {/each}
-        </div>
+                        <span class="sidebar-item-label">{team}</span>
+                        {#if options.team_counts[team]}
+                            <span class="sidebar-count"
+                                >{options.team_counts[team]}</span
+                            >
+                        {/if}
+                    </button>
+                {/each}
+            </Collapsible.Content>
+        </Collapsible.Root>
     {/if}
 
     {#if options.authors.length > 0}
-        <div class="sidebar-section">
-            <div class="sidebar-label">Authors</div>
-            {#each options.authors as author}
-                {@const isActive = activeFilters.author === author}
-                <button
-                    type="button"
-                    class="sidebar-item"
-                    data-state={isActive ? "active" : "inactive"}
-                    title={author}
-                    onclick={() => handleAuthorClick(author)}
-                >
-                    <img
-                        class="sidebar-avatar"
-                        src="https://github.com/{author}.png?size=32"
-                        alt=""
-                        width="16"
-                        height="16"
+        <Collapsible.Root
+            open={authorsOpen}
+            onOpenChange={(v) => (authorsOpen = v)}
+        >
+            <Collapsible.Trigger class="sidebar-section-header">
+                {@render sectionHeader(
+                    "Authors",
+                    options.authors.length,
+                    activeFilters.author !== undefined,
+                )}
+            </Collapsible.Trigger>
+            <Collapsible.Content class="sidebar-section-content" forceMount>
+                {#each options.authors as author}
+                    {@const isActive = activeFilters.author === author}
+                    <button
+                        type="button"
+                        class="sidebar-item"
+                        data-state={isActive ? "active" : "inactive"}
+                        title={author}
+                        onclick={() => handleAuthorClick(author)}
                     >
-                    <span class="sidebar-item-label">{author}</span>
-                </button>
-            {/each}
-        </div>
+                        <img
+                            class="sidebar-avatar"
+                            src="https://github.com/{author}.png?size=32"
+                            alt=""
+                            width="16"
+                            height="16"
+                        >
+                        <span class="sidebar-item-label">{author}</span>
+                    </button>
+                {/each}
+            </Collapsible.Content>
+        </Collapsible.Root>
     {/if}
 </nav>
 
@@ -275,6 +332,64 @@ function clearFilters() {
     color: var(--fg-muted);
     font-weight: 400;
     flex-shrink: 0;
+}
+/* Collapsible list sections — header (Bits Trigger) + content (Bits Content)
+   are styled via :global because the class lands on elements inside Bits UI. */
+:global(.sidebar-section-header) {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 4px 16px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--fg-muted);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+}
+:global(.sidebar-section-header:hover) {
+    color: var(--fg-default);
+}
+:global(.sidebar-section-content) {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+/* When a section is collapsed, hide every item except the active one, so the
+   collapsed header still shows the current selection. */
+:global(
+        .sidebar-section-content[data-state="closed"]
+        .sidebar-item[data-state="inactive"]
+    ) {
+    display: none;
+}
+.sidebar-section-title {
+    flex-shrink: 0;
+}
+.sidebar-section-title.active {
+    color: var(--accent-fg);
+}
+.sidebar-section-badge {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--fg-muted);
+    background: var(--canvas-subtle);
+    border: 1px solid var(--border-default);
+    border-radius: 2em;
+    padding: 0 6px;
+    line-height: 16px;
+}
+.sidebar-chevron {
+    margin-left: auto;
+    flex-shrink: 0;
+    color: var(--fg-muted);
+    transition: transform 0.15s ease;
+}
+:global(.sidebar-section-header[data-state="open"]) .sidebar-chevron {
+    transform: rotate(90deg);
 }
 .sidebar-clear {
     padding: 0 16px;

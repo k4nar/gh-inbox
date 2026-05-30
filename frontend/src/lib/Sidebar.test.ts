@@ -290,6 +290,70 @@ describe("Sidebar authors filter", () => {
     });
 });
 
+describe("Sidebar collapsible sections", () => {
+    it("collapses Repositories by default", () => {
+        render(Sidebar, { props: { options: OPTS, activeFilters: {} } });
+        const header = screen.getByText("Repositories").closest("button");
+        expect(header?.getAttribute("data-state")).toBe("closed");
+    });
+
+    it("stays collapsed when a repo filter is active", () => {
+        render(Sidebar, {
+            props: { options: OPTS, activeFilters: { repo: "acme/api" } },
+        });
+        const header = screen.getByText("Repositories").closest("button");
+        expect(header?.getAttribute("data-state")).toBe("closed");
+    });
+
+    it("highlights the section label when its filter is active", () => {
+        render(Sidebar, {
+            props: { options: OPTS, activeFilters: { repo: "acme/api" } },
+        });
+        expect(screen.getByText("Repositories")).toHaveClass("active");
+    });
+
+    it("does not highlight the section label when its filter is inactive", () => {
+        render(Sidebar, {
+            props: { options: OPTS, activeFilters: { repo: "acme/api" } },
+        });
+        // Repositories is active, but Codeowner Teams / Authors are not.
+        expect(screen.getByText("Codeowner Teams")).not.toHaveClass("active");
+        expect(screen.getByText("Authors")).not.toHaveClass("active");
+    });
+
+    it("keeps the active item mounted while the section is collapsed", () => {
+        render(Sidebar, {
+            props: { options: OPTS, activeFilters: { repo: "acme/api" } },
+        });
+        const header = screen.getByText("Repositories").closest("button");
+        expect(header?.getAttribute("data-state")).toBe("closed");
+        // The active item is still rendered (CSS shows only it while collapsed).
+        expect(screen.getByTitle("acme/api").getAttribute("data-state")).toBe(
+            "active",
+        );
+    });
+
+    it("clicking a collapsed section header expands it", async () => {
+        render(Sidebar, { props: { options: OPTS, activeFilters: {} } });
+        const header = screen.getByText("Repositories").closest("button")!;
+        expect(header.getAttribute("data-state")).toBe("closed");
+        await fireEvent.click(header);
+        expect(header.getAttribute("data-state")).toBe("open");
+    });
+
+    it("shows a count badge with the number of items in each section", () => {
+        render(Sidebar, { props: { options: OPTS, activeFilters: {} } });
+        // Repositories has 2 items (acme/api, acme/web)
+        expect(
+            screen.getByText("Repositories").closest("button")?.textContent,
+        ).toContain("2");
+        // Authors has 1 item (alice)
+        expect(
+            screen.getByText("Authors").closest("button")?.textContent,
+        ).toContain("1");
+    });
+});
+
 describe("Sidebar clear filters", () => {
     it("hides the Clear filters link when no filter is active", () => {
         render(Sidebar, { props: { options: OPTS, activeFilters: {} } });
