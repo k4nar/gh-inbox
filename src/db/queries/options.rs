@@ -61,9 +61,9 @@ pub async fn get_inbox_options(pool: &SqlitePool, archived: bool) -> sqlx::Resul
             .fetch_all(pool)
             .await?;
 
-    let teams: Vec<String> = team_rows.into_iter().map(|t| t.0).collect();
+    let all_teams: Vec<String> = team_rows.into_iter().map(|t| t.0).collect();
 
-    let team_counts: HashMap<String, i64> = if teams.is_empty() {
+    let team_counts: HashMap<String, i64> = if all_teams.is_empty() {
         HashMap::new()
     } else {
         let rows: Vec<(String, i64)> = sqlx::query_as(
@@ -79,6 +79,14 @@ pub async fn get_inbox_options(pool: &SqlitePool, archived: bool) -> sqlx::Resul
         .await?;
         rows.into_iter().collect()
     };
+
+    // Only surface teams that actually have notifications in this view; a team
+    // with no matching notifications is in `team_counts` only when its count > 0,
+    // so membership there is the filter. Preserves the slug ordering.
+    let teams: Vec<String> = all_teams
+        .into_iter()
+        .filter(|t| team_counts.contains_key(t))
+        .collect();
 
     let author_rows: Vec<(String,)> = if archived {
         sqlx::query_as(
@@ -207,7 +215,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn returns_teams_from_user_teams_table() {
+    async fn returns_only_user_teams_with_notifications() {
         let pool = test_pool().await;
         crate::db::queries::replace_user_teams(
             &pool,
@@ -215,8 +223,25 @@ mod tests {
         )
         .await
         .unwrap();
+        // A notification + PR tagged with acme/platform only — acme/backend has none.
+        sqlx::query(
+            "INSERT INTO notifications (id, title, repository, reason, unread, archived, updated_at, pr_id)
+             VALUES ('n1', 'T', 'acme/api', 'mention', 0, 0, '2025-01-01', 1)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO pull_requests (id, title, repo, author, url, ci_status, body, state, head_sha, additions, deletions, changed_files, draft, labels, teams)
+             VALUES (1, 'T', 'acme/api', 'alice', 'https://x.com', NULL, '', 'open', 'abc', 0, 0, 0, 0, '[]', '[\"acme/platform\"]')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
         let opts = get_inbox_options(&pool, false).await.unwrap();
-        assert_eq!(opts.teams, vec!["acme/backend", "acme/platform"]);
+        // acme/backend is hidden because it has no notifications.
+        assert_eq!(opts.teams, vec!["acme/platform"]);
+        assert_eq!(opts.team_counts.get("acme/platform"), Some(&1));
     }
 
     #[tokio::test]
