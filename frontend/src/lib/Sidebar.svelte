@@ -1,5 +1,6 @@
 <script lang="ts">
-import { Collapsible, Tabs } from "bits-ui";
+import { Collapsible, Tabs, Tooltip } from "bits-ui";
+import { describeActiveFilters } from "./filters.ts";
 import type { ActiveFilters, FilterOptions } from "./types.ts";
 
 let {
@@ -33,9 +34,8 @@ const STATUS_ICONS: Record<string, string> = {
     closed: "M3.25 1A2.25 2.25 0 0 1 4 5.372v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 3.25 1Zm9.96 5.016a.75.75 0 1 0-1.06-1.06L10.5 6.61 8.84 4.94a.75.75 0 0 0-1.061 1.06l1.661 1.661-1.661 1.661a.75.75 0 1 0 1.06 1.06L10.5 8.72l1.661 1.661a.75.75 0 1 0 1.06-1.06L11.56 7.66l1.65-1.644ZM3.25 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z",
 };
 
-const hasActiveFilters = $derived(
-    Object.values(activeFilters).some((v) => v !== undefined && v !== ""),
-);
+const activeFilterList = $derived(describeActiveFilters(activeFilters));
+const activeFilterCount = $derived(activeFilterList.length);
 
 function handleRepoClick(repo: string) {
     if (activeFilters.repo === repo) {
@@ -140,15 +140,40 @@ let authorsOpen = $state(false);
         </Tabs.List>
     </Tabs.Root>
 
-    {#if hasActiveFilters}
+    {#if activeFilterCount > 0}
         <div class="sidebar-clear">
-            <button
-                type="button"
-                class="sidebar-clear-btn"
-                onclick={clearFilters}
-            >
-                Clear filters
-            </button>
+            <Tooltip.Root>
+                <Tooltip.Trigger
+                    class="sidebar-clear-btn"
+                    onclick={clearFilters}
+                >
+                    <svg
+                        aria-hidden="true"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                    >
+                        <path
+                            d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"
+                        />
+                    </svg>
+                    <span class="sidebar-clear-label">Clear filters</span>
+                    <span class="sidebar-section-badge"
+                        >{activeFilterCount}</span
+                    >
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                    <Tooltip.Content class="tooltip-content" side="right">
+                        <div class="sidebar-clear-tip-title">
+                            Active filters
+                        </div>
+                        {#each activeFilterList as item}
+                            <div class="sidebar-clear-tip-item">{item}</div>
+                        {/each}
+                    </Tooltip.Content>
+                </Tooltip.Portal>
+            </Tooltip.Root>
         </div>
     {/if}
 
@@ -429,20 +454,40 @@ let authorsOpen = $state(false);
     transform: rotate(90deg);
 }
 .sidebar-clear {
-    padding: 0 16px;
+    padding: 0 8px;
     margin-top: -12px;
 }
-.sidebar-clear-btn {
-    font-size: 12px;
-    color: var(--accent-fg);
+/* Styled like a section header (icon + label + count badge) so it reads as
+   part of the filter UI rather than a stray link. */
+:global(.sidebar-clear-btn) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 5px 8px;
     background: none;
     border: none;
-    cursor: pointer;
-    padding: 0;
+    border-radius: 6px;
+    color: var(--fg-muted);
+    font-size: 12px;
     font-family: inherit;
+    text-align: left;
+    cursor: pointer;
 }
-.sidebar-clear-btn:hover {
-    text-decoration: underline;
+:global(.sidebar-clear-btn:hover) {
+    background: var(--canvas-subtle);
+    color: var(--fg-default);
+}
+.sidebar-clear-label {
+    flex: 1;
+}
+.sidebar-clear-tip-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+.sidebar-clear-tip-item {
+    color: var(--fg-muted);
+    white-space: nowrap;
 }
 .sidebar-status {
     display: flex;

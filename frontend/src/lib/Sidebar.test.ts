@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
-import Sidebar from "./Sidebar.svelte";
+import Sidebar from "./Sidebar.test-helpers.svelte";
 import type { ActiveFilters, FilterOptions } from "./types.ts";
 
 describe("Sidebar", () => {
@@ -431,5 +431,21 @@ describe("Sidebar clear filters", () => {
         });
         await fireEvent.click(screen.getByText("Clear filters"));
         expect(onFiltersChange).toHaveBeenCalledWith({});
+    });
+
+    it("shows the number of active filters as a count", () => {
+        render(Sidebar, {
+            props: {
+                options: OPTS,
+                activeFilters: {
+                    repo: "acme/api",
+                    author: "alice",
+                    states: { open: "include", merged: "exclude" },
+                },
+            },
+        });
+        // repo + author + status (grouped) = 3
+        const btn = screen.getByText("Clear filters").closest("button");
+        expect(btn?.textContent).toContain("3");
     });
 });
