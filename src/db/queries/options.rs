@@ -9,6 +9,7 @@ pub struct InboxOptions {
     pub authors: Vec<String>,
     pub repo_counts: HashMap<String, i64>,
     pub team_counts: HashMap<String, i64>,
+    pub author_counts: HashMap<String, i64>,
 }
 
 pub async fn get_inbox_options(pool: &SqlitePool, archived: bool) -> sqlx::Result<InboxOptions> {
@@ -96,12 +97,27 @@ pub async fn get_inbox_options(pool: &SqlitePool, archived: bool) -> sqlx::Resul
         .await?
     };
 
+    // Notification counts per author, over the full archived/inbox set so the
+    // badge matches what an author filter shows in the list (not windowed).
+    let author_count_rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT pr.author, COUNT(*) as cnt \
+         FROM notifications n \
+         JOIN pull_requests pr ON pr.id = n.pr_id AND pr.repo = n.repository \
+         WHERE n.archived = ? \
+         GROUP BY pr.author",
+    )
+    .bind(archived_flag)
+    .fetch_all(pool)
+    .await?;
+    let author_counts: HashMap<String, i64> = author_count_rows.into_iter().collect();
+
     Ok(InboxOptions {
         repos,
         teams,
         authors: author_rows.into_iter().map(|a| a.0).collect(),
         repo_counts,
         team_counts,
+        author_counts,
     })
 }
 
@@ -317,6 +333,34 @@ mod tests {
         .unwrap();
         let opts = get_inbox_options(&pool, false).await.unwrap();
         assert_eq!(opts.authors, vec!["alice"]);
+    }
+
+    #[tokio::test]
+    async fn returns_author_counts_per_author() {
+        let pool = test_pool().await;
+        for (nid, pr_id, author) in [("n1", 1_i64, "alice"), ("n2", 2, "alice"), ("n3", 3, "bob")] {
+            sqlx::query(
+                "INSERT INTO notifications (id, title, repository, reason, unread, archived, updated_at, pr_id)
+                 VALUES (?, 'T', 'acme/api', 'mention', 0, 0, '2025-01-01', ?)",
+            )
+            .bind(nid)
+            .bind(pr_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+            sqlx::query(
+                "INSERT INTO pull_requests (id, title, repo, author, url, ci_status, body, state, head_sha, additions, deletions, changed_files, draft, labels)
+                 VALUES (?, 'T', 'acme/api', ?, 'https://x.com', NULL, '', 'open', 'abc', 0, 0, 0, 0, '[]')",
+            )
+            .bind(pr_id)
+            .bind(author)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        let opts = get_inbox_options(&pool, false).await.unwrap();
+        assert_eq!(opts.author_counts.get("alice"), Some(&2));
+        assert_eq!(opts.author_counts.get("bob"), Some(&1));
     }
 
     #[tokio::test]

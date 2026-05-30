@@ -23,6 +23,7 @@ describe("Sidebar", () => {
                     authors: [],
                     repo_counts: {},
                     team_counts: {},
+                    author_counts: {},
                 },
             },
         });
@@ -38,6 +39,7 @@ describe("Sidebar", () => {
                     authors: [],
                     repo_counts: {},
                     team_counts: {},
+                    author_counts: {},
                 },
             },
         });
@@ -81,6 +83,7 @@ const OPTS: FilterOptions = {
     authors: ["alice"],
     repo_counts: { "acme/api": 3, "acme/web": 1 },
     team_counts: { "acme/platform": 2 },
+    author_counts: { alice: 4 },
 };
 
 describe("Sidebar filter lists", () => {
@@ -302,6 +305,11 @@ describe("Sidebar authors filter", () => {
     it("renders author items from options", () => {
         render(Sidebar, { props: { options: OPTS, activeFilters: {} } });
         expect(screen.getByTitle("alice")).toBeInTheDocument();
+    });
+
+    it("shows the author notification count", () => {
+        render(Sidebar, { props: { options: OPTS, activeFilters: {} } });
+        expect(screen.getByTitle("alice").textContent).toContain("4");
     });
 
     it("hides Authors section when authors is empty", () => {

@@ -150,4 +150,5 @@ export interface FilterOptions {
     authors: string[];
     repo_counts: Record<string, number>;
     team_counts: Record<string, number>;
+    author_counts: Record<string, number>;
 }

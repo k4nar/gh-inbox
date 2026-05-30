@@ -36,6 +36,7 @@ let filterOptions: FilterOptions = $state({
     authors: [],
     repo_counts: {},
     team_counts: {},
+    author_counts: {},
 });
 
 function applyTheme(t: Theme) {

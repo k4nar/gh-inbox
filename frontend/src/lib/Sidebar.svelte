@@ -12,6 +12,7 @@ let {
         authors: [],
         repo_counts: {},
         team_counts: {},
+        author_counts: {},
     } as FilterOptions,
     activeFilters = {} as ActiveFilters,
     onFiltersChange = (_f: ActiveFilters) => {},
@@ -346,6 +347,11 @@ let authorsOpen = $state(false);
                             height="16"
                         >
                         <span class="sidebar-item-label">{author}</span>
+                        {#if options.author_counts[author]}
+                            <span class="sidebar-count"
+                                >{options.author_counts[author]}</span
+                            >
+                        {/if}
                     </button>
                 {/each}
             </Collapsible.Content>
