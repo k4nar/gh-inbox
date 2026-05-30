@@ -51,7 +51,11 @@ function buildInboxUrl(view: string, page: number): string {
     if (activeFilters.org) params.set("org", activeFilters.org);
     if (activeFilters.team) params.set("team", activeFilters.team);
     if (activeFilters.author) params.set("author", activeFilters.author);
-    if (activeFilters.state) params.set("state", activeFilters.state);
+    const states = activeFilters.states ?? {};
+    const include = Object.keys(states).filter((s) => states[s] === "include");
+    const exclude = Object.keys(states).filter((s) => states[s] === "exclude");
+    if (include.length) params.set("state_include", include.join(","));
+    if (exclude.length) params.set("state_exclude", exclude.join(","));
     return `/api/inbox?${params.toString()}`;
 }
 

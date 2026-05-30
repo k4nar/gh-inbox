@@ -15,7 +15,23 @@ pub struct InboxQuery {
     pub org: Option<String>,
     pub team: Option<String>,
     pub author: Option<String>,
-    pub state: Option<String>,
+    /// Comma-separated PR statuses to show exclusively (e.g. "open,draft").
+    pub state_include: Option<String>,
+    /// Comma-separated PR statuses to hide (e.g. "merged,closed").
+    pub state_exclude: Option<String>,
+}
+
+/// Split a comma-separated query value into a list, dropping empty entries.
+fn parse_csv(value: Option<String>) -> Vec<String> {
+    value
+        .map(|v| {
+            v.split(',')
+                .map(str::trim)
+                .filter(|p| !p.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 #[derive(serde::Serialize)]
@@ -40,7 +56,8 @@ pub async fn get_inbox(
         org: query.org,
         team: query.team,
         author: query.author,
-        state: query.state,
+        state_include: parse_csv(query.state_include),
+        state_exclude: parse_csv(query.state_exclude),
     };
 
     let (items, total) = match query.status.as_deref() {

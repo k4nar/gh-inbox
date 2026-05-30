@@ -836,21 +836,39 @@ describe("PrList filter params", () => {
         });
     });
 
-    it("fetch URL includes state filter param", async () => {
+    it("fetch URL includes state_include param for included statuses", async () => {
         const fetchSpy = vi.fn(() =>
             Promise.resolve(Response.json(paginatedResponse([]))),
         );
         globalThis.fetch = fetchSpy as unknown as typeof fetch;
         render(PrList, {
-            props: { activeFilters: { state: "open" } },
+            props: {
+                activeFilters: {
+                    states: { open: "include", draft: "include" },
+                },
+            },
         });
         await waitFor(() => {
-            const urls = (fetchSpy.mock.calls as unknown as [unknown][]).map(
-                ([url]) => String(url),
-            );
-            expect(urls.find((u) => u.includes("/api/inbox"))).toContain(
-                "state=open",
-            );
+            const url = (fetchSpy.mock.calls as unknown as [unknown][])
+                .map(([u]) => String(u))
+                .find((u) => u.includes("/api/inbox"));
+            expect(url).toContain("state_include=open%2Cdraft");
+        });
+    });
+
+    it("fetch URL includes state_exclude param for hidden statuses", async () => {
+        const fetchSpy = vi.fn(() =>
+            Promise.resolve(Response.json(paginatedResponse([]))),
+        );
+        globalThis.fetch = fetchSpy as unknown as typeof fetch;
+        render(PrList, {
+            props: { activeFilters: { states: { merged: "exclude" } } },
+        });
+        await waitFor(() => {
+            const url = (fetchSpy.mock.calls as unknown as [unknown][])
+                .map(([u]) => String(u))
+                .find((u) => u.includes("/api/inbox"));
+            expect(url).toContain("state_exclude=merged");
         });
     });
 });

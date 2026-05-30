@@ -134,12 +134,15 @@ export interface Preferences {
     theme: Theme;
 }
 
+export type StateFilterMode = "include" | "exclude";
+
 export interface ActiveFilters {
     repo?: string;
     org?: string;
     team?: string;
     author?: string;
-    state?: string;
+    /** Per-status filter: "include" shows only those statuses, "exclude" hides them. */
+    states?: Record<string, StateFilterMode>;
 }
 
 export interface FilterOptions {

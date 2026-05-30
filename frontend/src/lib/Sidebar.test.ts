@@ -208,41 +208,91 @@ describe("Sidebar status filter", () => {
         }
     });
 
-    it("clicking a status pill calls onFiltersChange with that state", async () => {
+    it("clicking a status pill includes that state", async () => {
         const onFiltersChange = vi.fn();
         render(Sidebar, {
             props: { options: OPTS, activeFilters: {}, onFiltersChange },
         });
         await fireEvent.click(screen.getByText("open"));
         expect(onFiltersChange).toHaveBeenCalledWith(
-            expect.objectContaining({ state: "open" }),
+            expect.objectContaining({ states: { open: "include" } }),
         );
     });
 
-    it("clicking the active status pill clears it (toggle off)", async () => {
+    it("clicking an included status pill clears it (toggle off)", async () => {
         const onFiltersChange = vi.fn();
         render(Sidebar, {
             props: {
                 options: OPTS,
-                activeFilters: { state: "open" },
+                activeFilters: { states: { open: "include" } },
                 onFiltersChange,
             },
         });
         await fireEvent.click(screen.getByText("open"));
         const called = onFiltersChange.mock.calls[0][0] as ActiveFilters;
-        expect(called.state).toBeUndefined();
+        expect(called.states).toBeUndefined();
     });
 
-    it("active status pill has data-state=active", () => {
+    it("clicking the hide button excludes that state", async () => {
+        const onFiltersChange = vi.fn();
         render(Sidebar, {
-            props: { options: OPTS, activeFilters: { state: "merged" } },
+            props: { options: OPTS, activeFilters: {}, onFiltersChange },
+        });
+        await fireEvent.click(screen.getByLabelText("Hide merged"));
+        expect(onFiltersChange).toHaveBeenCalledWith(
+            expect.objectContaining({ states: { merged: "exclude" } }),
+        );
+    });
+
+    it("clicking hide on an included status switches it to excluded", async () => {
+        const onFiltersChange = vi.fn();
+        render(Sidebar, {
+            props: {
+                options: OPTS,
+                activeFilters: { states: { open: "include" } },
+                onFiltersChange,
+            },
+        });
+        await fireEvent.click(screen.getByLabelText("Hide open"));
+        const called = onFiltersChange.mock.calls[0][0] as ActiveFilters;
+        expect(called.states).toEqual({ open: "exclude" });
+    });
+
+    it("clicking an excluded status's hide button clears it (toggle off)", async () => {
+        const onFiltersChange = vi.fn();
+        render(Sidebar, {
+            props: {
+                options: OPTS,
+                activeFilters: { states: { merged: "exclude" } },
+                onFiltersChange,
+            },
+        });
+        await fireEvent.click(screen.getByLabelText("Hide merged"));
+        const called = onFiltersChange.mock.calls[0][0] as ActiveFilters;
+        expect(called.states).toBeUndefined();
+    });
+
+    it("reflects include/exclude modes via data-mode on the pill", () => {
+        render(Sidebar, {
+            props: {
+                options: OPTS,
+                activeFilters: {
+                    states: { open: "include", merged: "exclude" },
+                },
+            },
         });
         expect(
             screen
+                .getByText("open")
+                .closest(".status-pill")
+                ?.getAttribute("data-mode"),
+        ).toBe("include");
+        expect(
+            screen
                 .getByText("merged")
-                .closest("button")
-                ?.getAttribute("data-state"),
-        ).toBe("active");
+                .closest(".status-pill")
+                ?.getAttribute("data-mode"),
+        ).toBe("exclude");
     });
 });
 
@@ -372,7 +422,10 @@ describe("Sidebar clear filters", () => {
         render(Sidebar, {
             props: {
                 options: OPTS,
-                activeFilters: { repo: "acme/api", state: "open" },
+                activeFilters: {
+                    repo: "acme/api",
+                    states: { open: "include" },
+                },
                 onFiltersChange,
             },
         });

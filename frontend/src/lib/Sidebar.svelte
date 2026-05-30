@@ -61,12 +61,20 @@ function handleAuthorClick(author: string) {
     }
 }
 
-function handleStateClick(state: string) {
-    if (activeFilters.state === state) {
-        onFiltersChange({ ...activeFilters, state: undefined });
+// Toggle a status between the given mode and neutral. Each status can be in at
+// most one mode ("include" = show only, "exclude" = hide), so setting one mode
+// replaces the other.
+function toggleStateMode(state: string, mode: "include" | "exclude") {
+    const states = { ...(activeFilters.states ?? {}) };
+    if (states[state] === mode) {
+        delete states[state];
     } else {
-        onFiltersChange({ ...activeFilters, state });
+        states[state] = mode;
     }
+    onFiltersChange({
+        ...activeFilters,
+        states: Object.keys(states).length > 0 ? states : undefined,
+    });
 }
 
 function clearFilters() {
@@ -148,25 +156,54 @@ let authorsOpen = $state(false);
         <div class="sidebar-label">Status</div>
         <div class="sidebar-status">
             {#each FILTER_STATES as state}
-                {@const isActive = activeFilters.state === state}
-                <button
-                    type="button"
-                    class="status-pill"
-                    data-state={isActive ? "active" : "inactive"}
-                    onclick={() => handleStateClick(state)}
-                >
-                    <svg
-                        aria-hidden="true"
-                        class="status-pill-icon status-pill-icon-{state}"
-                        width="14"
-                        height="14"
-                        viewBox="0 0 16 16"
-                        fill="currentColor"
+                {@const mode = activeFilters.states?.[state]}
+                <div class="status-pill" data-mode={mode ?? "neutral"}>
+                    <button
+                        type="button"
+                        class="status-pill-main"
+                        aria-pressed={mode === "include"}
+                        title="Show only {state}"
+                        onclick={() => toggleStateMode(state, "include")}
                     >
-                        <path d={STATUS_ICONS[state]} />
-                    </svg>
-                    {state}
-                </button>
+                        <svg
+                            aria-hidden="true"
+                            class="status-pill-icon status-pill-icon-{state}"
+                            width="14"
+                            height="14"
+                            viewBox="0 0 16 16"
+                            fill="currentColor"
+                        >
+                            <path d={STATUS_ICONS[state]} />
+                        </svg>
+                        {state}
+                    </button>
+                    <button
+                        type="button"
+                        class="status-pill-hide"
+                        aria-label="Hide {state}"
+                        aria-pressed={mode === "exclude"}
+                        title="Hide {state}"
+                        onclick={() => toggleStateMode(state, "exclude")}
+                    >
+                        <svg
+                            aria-hidden="true"
+                            width="13"
+                            height="13"
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.4"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path
+                                d="M.5 8C2 5 4.5 3.5 8 3.5S14 5 15.5 8C14 11 11.5 12.5 8 12.5S2 11 .5 8Z"
+                            />
+                            <circle cx="8" cy="8" r="1.9" />
+                            <line x1="2.5" y1="13.5" x2="13.5" y2="2.5" />
+                        </svg>
+                    </button>
+                </div>
             {/each}
         </div>
     </div>
@@ -415,26 +452,66 @@ let authorsOpen = $state(false);
 }
 .status-pill {
     display: inline-flex;
-    align-items: center;
-    gap: 4px;
+    align-items: stretch;
     font-size: 12px;
-    padding: 3px 8px;
     border: 1px solid var(--border-default);
     border-radius: 2em;
     background: var(--canvas-subtle);
+    overflow: hidden;
+}
+.status-pill-main {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 4px 3px 8px;
+    background: none;
+    border: none;
     color: var(--fg-muted);
     cursor: pointer;
     font-family: inherit;
+    font-size: inherit;
     text-transform: capitalize;
 }
-.status-pill:hover {
-    background: var(--border-muted);
+.status-pill-hide {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 7px 0 2px;
+    background: none;
+    border: none;
+    color: var(--fg-subtle);
+    cursor: pointer;
+}
+/* The eye-off icon is revealed only on hover or when the status is hidden. */
+.status-pill-hide svg {
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+.status-pill:hover .status-pill-hide svg,
+.status-pill[data-mode="exclude"] .status-pill-hide svg {
+    opacity: 1;
+}
+.status-pill-main:hover {
     color: var(--fg-default);
 }
-.status-pill[data-state="active"] {
+.status-pill-hide:hover {
+    color: var(--fg-default);
+}
+/* Include: only these statuses are shown. */
+.status-pill[data-mode="include"] {
     border-color: var(--accent-fg);
     background: var(--accent-subtle);
+}
+.status-pill[data-mode="include"] .status-pill-main {
     color: var(--fg-default);
+}
+/* Exclude: this status is hidden — dim and strike through the label. */
+.status-pill[data-mode="exclude"] .status-pill-main {
+    color: var(--fg-subtle);
+    text-decoration: line-through;
+}
+.status-pill[data-mode="exclude"] .status-pill-hide {
+    color: #f85149;
 }
 .status-pill-icon {
     flex-shrink: 0;
@@ -450,6 +527,11 @@ let authorsOpen = $state(false);
 }
 .status-pill-icon-closed {
     color: #f85149;
+}
+/* Dim the status icon when the status is hidden (declared after the base/color
+   rules above to keep specificity non-descending). */
+.status-pill[data-mode="exclude"] .status-pill-icon {
+    opacity: 0.5;
 }
 :global(.sidebar-item) {
     display: flex;

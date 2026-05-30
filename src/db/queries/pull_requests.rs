@@ -72,7 +72,24 @@ pub struct FilterParams {
     pub org: Option<String>,
     pub team: Option<String>,
     pub author: Option<String>,
-    pub state: Option<String>,
+    /// Show only PRs whose status is in this set (empty = no include filter).
+    pub state_include: Vec<String>,
+    /// Hide PRs whose status is in this set.
+    pub state_exclude: Vec<String>,
+}
+
+/// SQL predicate (over the `pr` alias) that is true for PRs with the given
+/// status, or `None` for unrecognised values. The branches are mutually
+/// exclusive and mirror the `pr_status` CASE used when selecting rows, so
+/// filtering by a status matches exactly the rows displayed with that status.
+fn state_predicate(state: &str) -> Option<&'static str> {
+    match state {
+        "merged" => Some("pr.merged_at IS NOT NULL"),
+        "closed" => Some("(pr.merged_at IS NULL AND pr.state = 'closed')"),
+        "draft" => Some("(pr.merged_at IS NULL AND pr.state != 'closed' AND pr.draft = 1)"),
+        "open" => Some("(pr.merged_at IS NULL AND pr.state != 'closed' AND pr.draft = 0)"),
+        _ => None,
+    }
 }
 
 fn push_filter_conditions(qb: &mut QueryBuilder<sqlx::Sqlite>, filters: &FilterParams) {
@@ -93,22 +110,26 @@ fn push_filter_conditions(qb: &mut QueryBuilder<sqlx::Sqlite>, filters: &FilterP
         qb.push(" AND pr.author = ");
         qb.push_bind(author.clone());
     }
-    if let Some(state) = &filters.state {
-        match state.as_str() {
-            "open" => {
-                qb.push(" AND pr.merged_at IS NULL AND pr.state != 'closed' AND pr.draft = 0");
-            }
-            "draft" => {
-                qb.push(" AND pr.draft = 1");
-            }
-            "merged" => {
-                qb.push(" AND pr.merged_at IS NOT NULL");
-            }
-            "closed" => {
-                qb.push(" AND pr.state = 'closed' AND pr.merged_at IS NULL");
-            }
-            _ => {}
-        }
+
+    // Status include/exclude. Predicates come from a fixed allowlist, so pushing
+    // them as literal SQL is safe (no user-controlled text reaches the query).
+    let includes: Vec<&'static str> = filters
+        .state_include
+        .iter()
+        .filter_map(|s| state_predicate(s))
+        .collect();
+    if !includes.is_empty() {
+        qb.push(" AND (");
+        qb.push(includes.join(" OR "));
+        qb.push(")");
+    }
+    for pred in filters
+        .state_exclude
+        .iter()
+        .filter_map(|s| state_predicate(s))
+    {
+        qb.push(" AND NOT ");
+        qb.push(pred);
     }
 }
 
@@ -802,7 +823,7 @@ mod tests {
         insert_notif_with_pr(&pool, "n1", "acme/api", 1, "alice", "open", false, false).await;
         insert_notif_with_pr(&pool, "n2", "acme/web", 2, "bob", "open", true, false).await; // draft
         let f = FilterParams {
-            state: Some("open".to_string()),
+            state_include: vec!["open".to_string()],
             ..Default::default()
         };
         let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
@@ -818,7 +839,7 @@ mod tests {
         insert_notif_with_pr(&pool, "n1", "acme/api", 1, "alice", "open", false, true).await; // merged
         insert_notif_with_pr(&pool, "n2", "acme/web", 2, "bob", "open", false, false).await;
         let f = FilterParams {
-            state: Some("merged".to_string()),
+            state_include: vec!["merged".to_string()],
             ..Default::default()
         };
         let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
@@ -847,7 +868,7 @@ mod tests {
         insert_notif_with_pr(&pool, "n1", "acme/api", 1, "alice", "open", true, false).await; // draft
         insert_notif_with_pr(&pool, "n2", "acme/web", 2, "bob", "open", false, false).await; // open
         let f = FilterParams {
-            state: Some("draft".to_string()),
+            state_include: vec!["draft".to_string()],
             ..Default::default()
         };
         let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
@@ -863,7 +884,43 @@ mod tests {
         insert_notif_with_pr(&pool, "n1", "acme/api", 1, "alice", "closed", false, false).await; // closed
         insert_notif_with_pr(&pool, "n2", "acme/web", 2, "bob", "open", false, false).await; // open
         let f = FilterParams {
-            state: Some("closed".to_string()),
+            state_include: vec!["closed".to_string()],
+            ..Default::default()
+        };
+        let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
+            .await
+            .unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(items[0].repository, "acme/api");
+    }
+
+    #[tokio::test]
+    async fn filter_includes_multiple_states() {
+        let pool = test_pool().await;
+        insert_notif_with_pr(&pool, "n1", "acme/api", 1, "alice", "open", false, false).await; // open
+        insert_notif_with_pr(&pool, "n2", "acme/web", 2, "bob", "open", true, false).await; // draft
+        insert_notif_with_pr(&pool, "n3", "acme/cli", 3, "carol", "open", false, true).await; // merged
+        let f = FilterParams {
+            state_include: vec!["open".to_string(), "draft".to_string()],
+            ..Default::default()
+        };
+        let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
+            .await
+            .unwrap();
+        assert_eq!(total, 2);
+        let repos: Vec<&str> = items.iter().map(|i| i.repository.as_str()).collect();
+        assert!(repos.contains(&"acme/api"));
+        assert!(repos.contains(&"acme/web"));
+    }
+
+    #[tokio::test]
+    async fn filter_excludes_states() {
+        let pool = test_pool().await;
+        insert_notif_with_pr(&pool, "n1", "acme/api", 1, "alice", "open", false, false).await; // open
+        insert_notif_with_pr(&pool, "n2", "acme/web", 2, "bob", "open", false, true).await; // merged
+        insert_notif_with_pr(&pool, "n3", "acme/cli", 3, "carol", "closed", false, false).await; // closed
+        let f = FilterParams {
+            state_exclude: vec!["merged".to_string(), "closed".to_string()],
             ..Default::default()
         };
         let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
