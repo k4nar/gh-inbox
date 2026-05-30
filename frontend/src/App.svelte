@@ -160,6 +160,7 @@ onMount(() => {
             selectedId={selectedNotification?.id}
             {refreshKey}
             {activeFilters}
+            onClearFilters={() => handleFiltersChange({})}
         />
         {#if selectedNotification}
             <ResizableDetailPanel>

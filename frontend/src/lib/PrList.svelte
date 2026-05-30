@@ -1,6 +1,7 @@
 <script lang="ts">
 import { Pagination, Tooltip } from "bits-ui";
 import { apiFetch } from "./api.ts";
+import { countActiveFilters } from "./filters.ts";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
 import { timeAgo } from "./timeago.ts";
 import { showError } from "./toast.svelte.ts";
@@ -18,6 +19,7 @@ let {
     selectedId = null,
     refreshKey = 0,
     activeFilters = {} as ActiveFilters,
+    onClearFilters = () => {},
 }: {
     currentView?: string;
     onSelect?: (notification: InboxItem) => void;
@@ -25,6 +27,7 @@ let {
     selectedId?: string | null;
     refreshKey?: number;
     activeFilters?: ActiveFilters;
+    onClearFilters?: () => void;
 } = $props();
 
 let notifications: InboxItem[] = $state([]);
@@ -179,6 +182,7 @@ let count = $derived(notifications.length);
 let unreadCount = $derived(notifications.filter((n) => n.unread).length);
 let viewTitle = $derived(currentView === "archived" ? "Archived" : "Inbox");
 let totalPages = $derived(Math.max(1, Math.ceil(totalCount / PER_PAGE)));
+let hasActiveFilters = $derived(countActiveFilters(activeFilters) > 0);
 let emptyMessage = $derived(
     currentView === "archived"
         ? "No archived notifications."
@@ -355,7 +359,20 @@ function initials(login: string | null): string {
 
     <div class="pr-list" bind:this={listEl}>
         {#if count === 0}
-            <div class="empty-state">{emptyMessage}</div>
+            <div class="empty-state">
+                {#if hasActiveFilters}
+                    <span>No pull requests match your filters.</span>
+                    <button
+                        type="button"
+                        class="empty-clear-btn"
+                        onclick={onClearFilters}
+                    >
+                        Clear filters
+                    </button>
+                {:else}
+                    {emptyMessage}
+                {/if}
+            </div>
         {:else}
             {#each notifications as notif (notif.id)}
                 {@const sentence = activitySentence(notif)}
@@ -612,11 +629,26 @@ function initials(login: string | null): string {
 }
 .empty-state {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 8px;
     height: 100%;
     color: var(--fg-muted);
     font-size: 14px;
+}
+.empty-clear-btn {
+    font-size: 12px;
+    color: var(--accent-fg);
+    background: none;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-family: inherit;
+}
+.empty-clear-btn:hover {
+    background: var(--canvas-subtle);
 }
 
 /* PR row */

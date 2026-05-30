@@ -123,6 +123,25 @@ describe("PrList", () => {
         });
     });
 
+    it("shows a filter-aware empty state with a clear button when filters are active", async () => {
+        globalThis.fetch = mockFetch(paginatedResponse([]));
+        const onClearFilters = vi.fn();
+
+        render(PrList, {
+            props: { activeFilters: { repo: "acme/api" }, onClearFilters },
+        });
+
+        await waitFor(() => {
+            expect(
+                screen.getByText("No pull requests match your filters."),
+            ).toBeInTheDocument();
+        });
+        await fireEvent.click(
+            screen.getByRole("button", { name: /clear filters/i }),
+        );
+        expect(onClearFilters).toHaveBeenCalled();
+    });
+
     it("renders PR rows with repo, title, and PR number", async () => {
         globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
 
