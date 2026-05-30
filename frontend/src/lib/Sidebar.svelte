@@ -23,6 +23,20 @@ let {
     onFiltersChange?: (f: ActiveFilters) => void;
 } = $props();
 
+const FILTER_STATES = ["open", "draft", "merged", "closed"] as const;
+
+// SVG path data for GitHub Octicons (16px) — PR state icons.
+const STATUS_ICONS: Record<string, string> = {
+    open: "M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z",
+    draft: "M3.25 1A2.25 2.25 0 0 1 4 5.372v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 3.25 1Zm9.5 14a2.25 2.25 0 1 1 0-4.5 2.25 2.25 0 0 1 0 4.5ZM3.25 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm9.5 0a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z",
+    merged: "M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372A2.25 2.25 0 1 1 5.45 5.154ZM4.25 13.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm8.5-4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM5 3.25a.75.75 0 1 0 0 .005V3.25Z",
+    closed: "M3.25 1A2.25 2.25 0 0 1 4 5.372v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 3.25 1Zm9.96 5.016a.75.75 0 1 0-1.06-1.06L10.5 6.61 8.84 4.94a.75.75 0 0 0-1.061 1.06l1.661 1.661-1.661 1.661a.75.75 0 1 0 1.06 1.06L10.5 8.72l1.661 1.661a.75.75 0 1 0 1.06-1.06L11.56 7.66l1.65-1.644ZM3.25 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z",
+};
+
+const hasActiveFilters = $derived(
+    Object.values(activeFilters).some((v) => v !== undefined && v !== ""),
+);
+
 function handleRepoClick(repo: string) {
     if (activeFilters.repo === repo) {
         onFiltersChange({ ...activeFilters, repo: undefined, org: undefined });
@@ -37,6 +51,26 @@ function handleTeamClick(team: string) {
     } else {
         onFiltersChange({ ...activeFilters, team });
     }
+}
+
+function handleAuthorClick(author: string) {
+    if (activeFilters.author === author) {
+        onFiltersChange({ ...activeFilters, author: undefined });
+    } else {
+        onFiltersChange({ ...activeFilters, author });
+    }
+}
+
+function handleStateClick(state: string) {
+    if (activeFilters.state === state) {
+        onFiltersChange({ ...activeFilters, state: undefined });
+    } else {
+        onFiltersChange({ ...activeFilters, state });
+    }
+}
+
+function clearFilters() {
+    onFiltersChange({});
 }
 </script>
 
@@ -73,6 +107,45 @@ function handleTeamClick(team: string) {
             </Tabs.Trigger>
         </Tabs.List>
     </Tabs.Root>
+
+    {#if hasActiveFilters}
+        <div class="sidebar-clear">
+            <button
+                type="button"
+                class="sidebar-clear-btn"
+                onclick={clearFilters}
+            >
+                Clear filters
+            </button>
+        </div>
+    {/if}
+
+    <div class="sidebar-section">
+        <div class="sidebar-label">Status</div>
+        <div class="sidebar-status">
+            {#each FILTER_STATES as state}
+                {@const isActive = activeFilters.state === state}
+                <button
+                    type="button"
+                    class="status-pill"
+                    data-state={isActive ? "active" : "inactive"}
+                    onclick={() => handleStateClick(state)}
+                >
+                    <svg
+                        aria-hidden="true"
+                        class="status-pill-icon status-pill-icon-{state}"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                    >
+                        <path d={STATUS_ICONS[state]} />
+                    </svg>
+                    {state}
+                </button>
+            {/each}
+        </div>
+    </div>
 
     {#if options.repos.length > 0}
         <div class="sidebar-section">
@@ -135,6 +208,31 @@ function handleTeamClick(team: string) {
             {/each}
         </div>
     {/if}
+
+    {#if options.authors.length > 0}
+        <div class="sidebar-section">
+            <div class="sidebar-label">Authors</div>
+            {#each options.authors as author}
+                {@const isActive = activeFilters.author === author}
+                <button
+                    type="button"
+                    class="sidebar-item"
+                    data-state={isActive ? "active" : "inactive"}
+                    title={author}
+                    onclick={() => handleAuthorClick(author)}
+                >
+                    <img
+                        class="sidebar-avatar"
+                        src="https://github.com/{author}.png?size=32"
+                        alt=""
+                        width="16"
+                        height="16"
+                    >
+                    <span class="sidebar-item-label">{author}</span>
+                </button>
+            {/each}
+        </div>
+    {/if}
 </nav>
 
 <style>
@@ -177,6 +275,66 @@ function handleTeamClick(team: string) {
     color: var(--fg-muted);
     font-weight: 400;
     flex-shrink: 0;
+}
+.sidebar-clear {
+    padding: 0 16px;
+    margin-top: -12px;
+}
+.sidebar-clear-btn {
+    font-size: 12px;
+    color: var(--accent-fg);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    font-family: inherit;
+}
+.sidebar-clear-btn:hover {
+    text-decoration: underline;
+}
+.sidebar-status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 0 16px;
+}
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    padding: 3px 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 2em;
+    background: var(--canvas-subtle);
+    color: var(--fg-muted);
+    cursor: pointer;
+    font-family: inherit;
+    text-transform: capitalize;
+}
+.status-pill:hover {
+    background: var(--border-muted);
+    color: var(--fg-default);
+}
+.status-pill[data-state="active"] {
+    border-color: var(--accent-fg);
+    background: var(--accent-subtle);
+    color: var(--fg-default);
+}
+.status-pill-icon {
+    flex-shrink: 0;
+}
+.status-pill-icon-open {
+    color: #3fb950;
+}
+.status-pill-icon-draft {
+    color: var(--fg-muted);
+}
+.status-pill-icon-merged {
+    color: #a371f7;
+}
+.status-pill-icon-closed {
+    color: #f85149;
 }
 :global(.sidebar-item) {
     display: flex;

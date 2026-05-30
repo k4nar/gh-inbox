@@ -1,10 +1,10 @@
 <script lang="ts">
-import { Pagination, Popover, Select, Tooltip } from "bits-ui";
+import { Pagination, Tooltip } from "bits-ui";
 import { apiFetch } from "./api.ts";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
 import { timeAgo } from "./timeago.ts";
 import { showError } from "./toast.svelte.ts";
-import type { ActiveFilters, FilterOptions } from "./types.ts";
+import type { ActiveFilters } from "./types.ts";
 import {
     DEFAULT_PER_PAGE,
     type InboxItem,
@@ -17,25 +17,14 @@ let {
     onSelectionChange = (_notification: InboxItem | null) => {},
     selectedId = null,
     refreshKey = 0,
-    filterOptions = {
-        repos: [],
-        orgs: [],
-        teams: [],
-        authors: [],
-        repo_counts: {},
-        team_counts: {},
-    } as FilterOptions,
     activeFilters = {} as ActiveFilters,
-    onFiltersChange = (_f: ActiveFilters) => {},
 }: {
     currentView?: string;
     onSelect?: (notification: InboxItem) => void;
     onSelectionChange?: (notification: InboxItem | null) => void;
     selectedId?: string | null;
     refreshKey?: number;
-    filterOptions?: FilterOptions;
     activeFilters?: ActiveFilters;
-    onFiltersChange?: (f: ActiveFilters) => void;
 } = $props();
 
 let notifications: InboxItem[] = $state([]);
@@ -51,10 +40,6 @@ let totalCount = $state(0);
 const PER_PAGE = DEFAULT_PER_PAGE;
 
 let lastFiltersKey = $state("");
-const FILTER_STATES = ["open", "draft", "merged", "closed"] as const;
-const hasActiveFilters = $derived(
-    Object.values(activeFilters).some((v) => v !== undefined && v !== ""),
-);
 
 function buildInboxUrl(view: string, page: number): string {
     const params = new URLSearchParams({
@@ -363,265 +348,6 @@ function initials(login: string | null): string {
             {/if}</span
         >
         <div class="list-spacer"></div>
-        <Popover.Root>
-            <Popover.Trigger class="filter-btn" aria-label="Filter">
-                <svg
-                    aria-hidden="true"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
-                >
-                    <path
-                        d="M.75 3h14.5a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1 0-1.5ZM3 7.75A.75.75 0 0 1 3.75 7h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 3 7.75Zm3 4a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1-.75-.75Z"
-                    />
-                </svg>
-                Filter
-                {#if hasActiveFilters}
-                    <span class="filter-active-dot"></span>
-                {/if}
-            </Popover.Trigger>
-            <Popover.Content class="filter-popover">
-                <div class="filter-row">
-                    <span class="filter-label">Repository</span>
-                    <Select.Root
-                        type="single"
-                        value={activeFilters.repo ?? ""}
-                        onValueChange={(v) =>
-                            onFiltersChange({ ...activeFilters, repo: v || undefined, org: undefined })}
-                    >
-                        <Select.Trigger class="filter-select-trigger">
-                            {#if activeFilters.repo}
-                                <img
-                                    class="filter-avatar"
-                                    src="https://github.com/{activeFilters.repo.split('/')[0]}.png?size=32"
-                                    alt=""
-                                    width="14"
-                                    height="14"
-                                >
-                            {/if}
-                            {activeFilters.repo ?? "—"}
-                        </Select.Trigger>
-                        <Select.Portal>
-                            <Select.Content class="filter-select-content">
-                                <Select.Viewport>
-                                    <Select.Item value="" label="—"
-                                        >—</Select.Item
-                                    >
-                                    {#each filterOptions.repos as repo}
-                                        <Select.Item value={repo} label={repo}>
-                                            <img
-                                                class="filter-avatar"
-                                                src="https://github.com/{repo.split('/')[0]}.png?size=32"
-                                                alt=""
-                                                width="14"
-                                                height="14"
-                                            >
-                                            {repo}
-                                        </Select.Item>
-                                    {/each}
-                                </Select.Viewport>
-                            </Select.Content>
-                        </Select.Portal>
-                    </Select.Root>
-                </div>
-                <div class="filter-row">
-                    <span class="filter-label">Org</span>
-                    <Select.Root
-                        type="single"
-                        value={activeFilters.org ?? ""}
-                        onValueChange={(v) =>
-                            onFiltersChange({ ...activeFilters, org: v || undefined, repo: undefined })}
-                    >
-                        <Select.Trigger class="filter-select-trigger">
-                            {#if activeFilters.org}
-                                <img
-                                    class="filter-avatar"
-                                    src="https://github.com/{activeFilters.org}.png?size=32"
-                                    alt=""
-                                    width="14"
-                                    height="14"
-                                >
-                            {/if}
-                            {activeFilters.org ?? "—"}
-                        </Select.Trigger>
-                        <Select.Portal>
-                            <Select.Content class="filter-select-content">
-                                <Select.Viewport>
-                                    <Select.Item value="" label="—"
-                                        >—</Select.Item
-                                    >
-                                    {#each filterOptions.orgs as org}
-                                        <Select.Item value={org} label={org}>
-                                            <img
-                                                class="filter-avatar"
-                                                src="https://github.com/{org}.png?size=32"
-                                                alt=""
-                                                width="14"
-                                                height="14"
-                                            >
-                                            {org}
-                                        </Select.Item>
-                                    {/each}
-                                </Select.Viewport>
-                            </Select.Content>
-                        </Select.Portal>
-                    </Select.Root>
-                </div>
-                <div class="filter-row">
-                    <span class="filter-label">Team</span>
-                    <Select.Root
-                        type="single"
-                        value={activeFilters.team ?? ""}
-                        onValueChange={(v) =>
-                            onFiltersChange({ ...activeFilters, team: v || undefined })}
-                    >
-                        <Select.Trigger class="filter-select-trigger">
-                            {#if activeFilters.team}
-                                <img
-                                    class="filter-avatar"
-                                    src="https://github.com/{activeFilters.team.split('/')[0]}.png?size=32"
-                                    alt=""
-                                    width="14"
-                                    height="14"
-                                >
-                            {/if}
-                            {activeFilters.team ?? "—"}
-                        </Select.Trigger>
-                        <Select.Portal>
-                            <Select.Content class="filter-select-content">
-                                <Select.Viewport>
-                                    <Select.Item value="" label="—"
-                                        >—</Select.Item
-                                    >
-                                    {#each filterOptions.teams as team}
-                                        <Select.Item value={team} label={team}>
-                                            <img
-                                                class="filter-avatar"
-                                                src="https://github.com/{team.split('/')[0]}.png?size=32"
-                                                alt=""
-                                                width="14"
-                                                height="14"
-                                            >
-                                            {team}
-                                        </Select.Item>
-                                    {/each}
-                                </Select.Viewport>
-                            </Select.Content>
-                        </Select.Portal>
-                    </Select.Root>
-                </div>
-                <div class="filter-row">
-                    <span class="filter-label">Author</span>
-                    <Select.Root
-                        type="single"
-                        value={activeFilters.author ?? ""}
-                        onValueChange={(v) =>
-                            onFiltersChange({ ...activeFilters, author: v || undefined })}
-                    >
-                        <Select.Trigger class="filter-select-trigger">
-                            {#if activeFilters.author}
-                                <img
-                                    class="filter-avatar"
-                                    src="https://github.com/{activeFilters.author}.png?size=32"
-                                    alt=""
-                                    width="14"
-                                    height="14"
-                                >
-                            {/if}
-                            {activeFilters.author ?? "—"}
-                        </Select.Trigger>
-                        <Select.Portal>
-                            <Select.Content class="filter-select-content">
-                                <Select.Viewport>
-                                    <Select.Item value="" label="—"
-                                        >—</Select.Item
-                                    >
-                                    {#each filterOptions.authors as author}
-                                        <Select.Item
-                                            value={author}
-                                            label={author}
-                                        >
-                                            <img
-                                                class="filter-avatar"
-                                                src="https://github.com/{author}.png?size=32"
-                                                alt=""
-                                                width="14"
-                                                height="14"
-                                            >
-                                            {author}
-                                        </Select.Item>
-                                    {/each}
-                                </Select.Viewport>
-                            </Select.Content>
-                        </Select.Portal>
-                    </Select.Root>
-                </div>
-                <div class="filter-row">
-                    <span class="filter-label">State</span>
-                    <Select.Root
-                        type="single"
-                        value={activeFilters.state ?? ""}
-                        onValueChange={(v) =>
-                            onFiltersChange({ ...activeFilters, state: v || undefined })}
-                    >
-                        <Select.Trigger class="filter-select-trigger">
-                            {#if activeFilters.state && STATUS_ICONS[activeFilters.state]}
-                                <svg
-                                    aria-hidden="true"
-                                    class="filter-state-icon filter-state-icon-{activeFilters.state}"
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 16 16"
-                                    fill="currentColor"
-                                >
-                                    <path
-                                        d={STATUS_ICONS[activeFilters.state]}
-                                    />
-                                </svg>
-                            {/if}
-                            {activeFilters.state ?? "—"}
-                        </Select.Trigger>
-                        <Select.Portal>
-                            <Select.Content class="filter-select-content">
-                                <Select.Viewport>
-                                    <Select.Item value="" label="—"
-                                        >—</Select.Item
-                                    >
-                                    {#each FILTER_STATES as state}
-                                        <Select.Item
-                                            value={state}
-                                            label={state}
-                                        >
-                                            <svg
-                                                aria-hidden="true"
-                                                class="filter-state-icon filter-state-icon-{state}"
-                                                width="14"
-                                                height="14"
-                                                viewBox="0 0 16 16"
-                                                fill="currentColor"
-                                            >
-                                                <path d={STATUS_ICONS[state]} />
-                                            </svg>
-                                            {state}
-                                        </Select.Item>
-                                    {/each}
-                                </Select.Viewport>
-                            </Select.Content>
-                        </Select.Portal>
-                    </Select.Root>
-                </div>
-                {#if hasActiveFilters}
-                    <button
-                        type="button"
-                        class="filter-clear-all"
-                        onclick={() => onFiltersChange({})}
-                    >
-                        Clear all
-                    </button>
-                {/if}
-            </Popover.Content>
-        </Popover.Root>
     </div>
 
     <div class="pr-list" bind:this={listEl}>
@@ -875,23 +601,6 @@ function initials(login: string | null): string {
 }
 .list-spacer {
     flex: 1;
-}
-:global(.filter-btn) {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background: var(--canvas-subtle);
-    border: 1px solid var(--border-default);
-    border-radius: 6px;
-    padding: 5px 12px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--fg-default);
-    cursor: pointer;
-    font-family: inherit;
-}
-:global(.filter-btn:hover) {
-    background: var(--border-muted);
 }
 .pr-list {
     flex: 1;
@@ -1188,111 +897,5 @@ function initials(login: string | null): string {
 }
 .statusbar-count {
     color: var(--fg-subtle);
-}
-.filter-active-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--accent-fg);
-    flex-shrink: 0;
-}
-:global(.filter-popover) {
-    background: var(--canvas-default);
-    border: 1px solid var(--border-default);
-    border-radius: 8px;
-    padding: 12px;
-    min-width: 260px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    z-index: 50;
-}
-.filter-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-}
-.filter-label {
-    font-size: 12px;
-    color: var(--fg-muted);
-    flex-shrink: 0;
-    width: 72px;
-}
-:global(.filter-select-trigger) {
-    font-size: 12px;
-    color: var(--fg-default);
-    background: var(--canvas-subtle);
-    border: 1px solid var(--border-default);
-    border-radius: 6px;
-    padding: 3px 8px;
-    cursor: pointer;
-    flex: 1;
-    text-align: left;
-    font-family: inherit;
-    min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-:global(.filter-select-content) {
-    background: var(--canvas-default);
-    border: 1px solid var(--border-default);
-    border-radius: 6px;
-    padding: 4px;
-    min-width: 160px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-    z-index: 100;
-    max-height: 200px;
-    overflow-y: auto;
-}
-:global(.filter-select-content [data-bits-select-item]) {
-    font-size: 12px;
-    color: var(--fg-default);
-    padding: 4px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-}
-:global(.filter-select-content [data-bits-select-item][data-highlighted]) {
-    background: var(--canvas-subtle);
-}
-:global(.filter-select-content [data-bits-select-item][data-selected]) {
-    color: var(--accent-fg);
-}
-.filter-clear-all {
-    margin-top: 4px;
-    font-size: 12px;
-    color: var(--accent-fg);
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    text-align: left;
-    font-family: inherit;
-}
-.filter-clear-all:hover {
-    text-decoration: underline;
-}
-.filter-avatar {
-    border-radius: 3px;
-    flex-shrink: 0;
-    vertical-align: middle;
-}
-.filter-state-icon {
-    flex-shrink: 0;
-    vertical-align: middle;
-}
-.filter-state-icon-open {
-    color: #3fb950;
-}
-.filter-state-icon-draft {
-    color: var(--fg-muted);
-}
-.filter-state-icon-merged {
-    color: #a371f7;
-}
-.filter-state-icon-closed {
-    color: #f85149;
 }
 </style>

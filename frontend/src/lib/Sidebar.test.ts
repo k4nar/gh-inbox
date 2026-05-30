@@ -194,3 +194,125 @@ describe("Sidebar filter lists", () => {
         expect(called.team).toBeUndefined();
     });
 });
+
+describe("Sidebar status filter", () => {
+    it("renders the Status section label", () => {
+        render(Sidebar, { props: { options: OPTS, activeFilters: {} } });
+        expect(screen.getByText("Status")).toBeInTheDocument();
+    });
+
+    it("renders a pill for each PR state", () => {
+        render(Sidebar, { props: { options: OPTS, activeFilters: {} } });
+        for (const state of ["open", "draft", "merged", "closed"]) {
+            expect(screen.getByText(state)).toBeInTheDocument();
+        }
+    });
+
+    it("clicking a status pill calls onFiltersChange with that state", async () => {
+        const onFiltersChange = vi.fn();
+        render(Sidebar, {
+            props: { options: OPTS, activeFilters: {}, onFiltersChange },
+        });
+        await fireEvent.click(screen.getByText("open"));
+        expect(onFiltersChange).toHaveBeenCalledWith(
+            expect.objectContaining({ state: "open" }),
+        );
+    });
+
+    it("clicking the active status pill clears it (toggle off)", async () => {
+        const onFiltersChange = vi.fn();
+        render(Sidebar, {
+            props: {
+                options: OPTS,
+                activeFilters: { state: "open" },
+                onFiltersChange,
+            },
+        });
+        await fireEvent.click(screen.getByText("open"));
+        const called = onFiltersChange.mock.calls[0][0] as ActiveFilters;
+        expect(called.state).toBeUndefined();
+    });
+
+    it("active status pill has data-state=active", () => {
+        render(Sidebar, {
+            props: { options: OPTS, activeFilters: { state: "merged" } },
+        });
+        expect(
+            screen
+                .getByText("merged")
+                .closest("button")
+                ?.getAttribute("data-state"),
+        ).toBe("active");
+    });
+});
+
+describe("Sidebar authors filter", () => {
+    it("renders the Authors section label", () => {
+        render(Sidebar, { props: { options: OPTS, activeFilters: {} } });
+        expect(screen.getByText("Authors")).toBeInTheDocument();
+    });
+
+    it("renders author items from options", () => {
+        render(Sidebar, { props: { options: OPTS, activeFilters: {} } });
+        expect(screen.getByTitle("alice")).toBeInTheDocument();
+    });
+
+    it("hides Authors section when authors is empty", () => {
+        render(Sidebar, {
+            props: { options: { ...OPTS, authors: [] }, activeFilters: {} },
+        });
+        expect(screen.queryByText("Authors")).not.toBeInTheDocument();
+    });
+
+    it("clicking an author item calls onFiltersChange with that author", async () => {
+        const onFiltersChange = vi.fn();
+        render(Sidebar, {
+            props: { options: OPTS, activeFilters: {}, onFiltersChange },
+        });
+        await fireEvent.click(screen.getByTitle("alice"));
+        expect(onFiltersChange).toHaveBeenCalledWith(
+            expect.objectContaining({ author: "alice" }),
+        );
+    });
+
+    it("clicking the active author item clears it (toggle off)", async () => {
+        const onFiltersChange = vi.fn();
+        render(Sidebar, {
+            props: {
+                options: OPTS,
+                activeFilters: { author: "alice" },
+                onFiltersChange,
+            },
+        });
+        await fireEvent.click(screen.getByTitle("alice"));
+        const called = onFiltersChange.mock.calls[0][0] as ActiveFilters;
+        expect(called.author).toBeUndefined();
+    });
+});
+
+describe("Sidebar clear filters", () => {
+    it("hides the Clear filters link when no filter is active", () => {
+        render(Sidebar, { props: { options: OPTS, activeFilters: {} } });
+        expect(screen.queryByText("Clear filters")).not.toBeInTheDocument();
+    });
+
+    it("shows the Clear filters link when a filter is active", () => {
+        render(Sidebar, {
+            props: { options: OPTS, activeFilters: { repo: "acme/api" } },
+        });
+        expect(screen.getByText("Clear filters")).toBeInTheDocument();
+    });
+
+    it("clicking Clear filters calls onFiltersChange with empty filters", async () => {
+        const onFiltersChange = vi.fn();
+        render(Sidebar, {
+            props: {
+                options: OPTS,
+                activeFilters: { repo: "acme/api", state: "open" },
+                onFiltersChange,
+            },
+        });
+        await fireEvent.click(screen.getByText("Clear filters"));
+        expect(onFiltersChange).toHaveBeenCalledWith({});
+    });
+});

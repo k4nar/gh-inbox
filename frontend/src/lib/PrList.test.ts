@@ -2,12 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PrList from "./PrList.test-helpers.svelte";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
-import {
-    type ActiveFilters,
-    DEFAULT_PER_PAGE,
-    type FilterOptions,
-    type InboxItem,
-} from "./types.ts";
+import { DEFAULT_PER_PAGE, type InboxItem } from "./types.ts";
 
 vi.mock("./sse.svelte.ts", async (importOriginal) => {
     const actual = await importOriginal<typeof import("./sse.svelte.ts")>();
@@ -804,69 +799,14 @@ describe("PrList", () => {
     });
 });
 
-const FILTER_OPTIONS: FilterOptions = {
-    repos: ["acme/api", "acme/web"],
-    orgs: ["acme"],
-    teams: ["acme/platform"],
-    authors: ["alice", "bob"],
-    repo_counts: { "acme/api": 2, "acme/web": 1 },
-    team_counts: { "acme/platform": 1 },
-};
-
-describe("PrList filter button", () => {
-    it("renders the Filter button", async () => {
-        globalThis.fetch = vi.fn(() =>
-            Promise.resolve(Response.json(paginatedResponse([]))),
-        ) as typeof fetch;
-        render(PrList, {
-            props: { activeFilters: {}, filterOptions: FILTER_OPTIONS },
-        });
-        expect(
-            screen.getByRole("button", { name: /filter/i }),
-        ).toBeInTheDocument();
-    });
-
-    it("filter button has no active dot when no filters are set", async () => {
-        globalThis.fetch = vi.fn(() =>
-            Promise.resolve(Response.json(paginatedResponse([]))),
-        ) as typeof fetch;
-        render(PrList, {
-            props: { activeFilters: {}, filterOptions: FILTER_OPTIONS },
-        });
-        await waitFor(() => {
-            expect(
-                document.querySelector(".filter-active-dot"),
-            ).not.toBeInTheDocument();
-        });
-    });
-
-    it("filter button shows active dot when a filter is set", async () => {
-        globalThis.fetch = vi.fn(() =>
-            Promise.resolve(Response.json(paginatedResponse([]))),
-        ) as typeof fetch;
-        render(PrList, {
-            props: {
-                activeFilters: { repo: "acme/api" },
-                filterOptions: FILTER_OPTIONS,
-            },
-        });
-        await waitFor(() => {
-            expect(
-                document.querySelector(".filter-active-dot"),
-            ).toBeInTheDocument();
-        });
-    });
-
+describe("PrList filter params", () => {
     it("fetch URL includes repo filter param when activeFilters.repo is set", async () => {
         const fetchSpy = vi.fn(() =>
             Promise.resolve(Response.json(paginatedResponse([]))),
         );
         globalThis.fetch = fetchSpy as unknown as typeof fetch;
         render(PrList, {
-            props: {
-                activeFilters: { repo: "acme/api" },
-                filterOptions: FILTER_OPTIONS,
-            },
+            props: { activeFilters: { repo: "acme/api" } },
         });
         await waitFor(() => {
             const urls = (fetchSpy.mock.calls as unknown as [unknown][]).map(
@@ -884,10 +824,7 @@ describe("PrList filter button", () => {
         );
         globalThis.fetch = fetchSpy as unknown as typeof fetch;
         render(PrList, {
-            props: {
-                activeFilters: { author: "alice" },
-                filterOptions: FILTER_OPTIONS,
-            },
+            props: { activeFilters: { author: "alice" } },
         });
         await waitFor(() => {
             const urls = (fetchSpy.mock.calls as unknown as [unknown][]).map(
@@ -905,10 +842,7 @@ describe("PrList filter button", () => {
         );
         globalThis.fetch = fetchSpy as unknown as typeof fetch;
         render(PrList, {
-            props: {
-                activeFilters: { state: "open" },
-                filterOptions: FILTER_OPTIONS,
-            },
+            props: { activeFilters: { state: "open" } },
         });
         await waitFor(() => {
             const urls = (fetchSpy.mock.calls as unknown as [unknown][]).map(
