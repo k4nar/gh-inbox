@@ -40,7 +40,6 @@ mod tests {
         assert!(result.is_ok());
         let Json(options) = result.unwrap();
         assert!(options.repos.is_empty());
-        assert!(options.orgs.is_empty());
         assert!(options.teams.is_empty());
         assert!(options.authors.is_empty());
     }
@@ -62,6 +61,5 @@ mod tests {
         assert!(result.is_ok());
         let Json(options) = result.unwrap();
         assert_eq!(options.repos, vec!["acme/api"]);
-        assert_eq!(options.orgs, vec!["acme"]);
     }
 }

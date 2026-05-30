@@ -65,11 +65,9 @@ pub struct PullRequestRow {
 }
 
 /// Filter parameters for inbox queries. All fields are AND-combined.
-/// `repo` and `org` are mutually exclusive — callers must clear the other when setting one.
 #[derive(Debug, Default)]
 pub struct FilterParams {
     pub repo: Option<String>,
-    pub org: Option<String>,
     pub team: Option<String>,
     pub author: Option<String>,
     /// Show only PRs whose status is in this set (empty = no include filter).
@@ -96,10 +94,6 @@ fn push_filter_conditions(qb: &mut QueryBuilder<sqlx::Sqlite>, filters: &FilterP
     if let Some(repo) = &filters.repo {
         qb.push(" AND n.repository = ");
         qb.push_bind(repo.clone());
-    }
-    if let Some(org) = &filters.org {
-        qb.push(" AND n.repository LIKE ");
-        qb.push_bind(format!("{org}/%"));
     }
     if let Some(team) = &filters.team {
         qb.push(" AND EXISTS (SELECT 1 FROM json_each(pr.teams) WHERE value = ");
@@ -776,22 +770,6 @@ mod tests {
         insert_notif_with_pr(&pool, "n2", "acme/web", 2, "bob", "open", false, false).await;
         let f = FilterParams {
             repo: Some("acme/api".to_string()),
-            ..Default::default()
-        };
-        let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
-            .await
-            .unwrap();
-        assert_eq!(total, 1);
-        assert_eq!(items[0].repository, "acme/api");
-    }
-
-    #[tokio::test]
-    async fn filter_by_org() {
-        let pool = test_pool().await;
-        insert_notif_with_pr(&pool, "n1", "acme/api", 1, "alice", "open", false, false).await;
-        insert_notif_with_pr(&pool, "n2", "beta/app", 2, "bob", "open", false, false).await;
-        let f = FilterParams {
-            org: Some("acme".to_string()),
             ..Default::default()
         };
         let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)

@@ -138,7 +138,6 @@ export type StateFilterMode = "include" | "exclude";
 
 export interface ActiveFilters {
     repo?: string;
-    org?: string;
     team?: string;
     author?: string;
     /** Per-status filter: "include" shows only those statuses, "exclude" hides them. */
@@ -147,7 +146,6 @@ export interface ActiveFilters {
 
 export interface FilterOptions {
     repos: string[];
-    orgs: string[];
     teams: string[];
     authors: string[];
     repo_counts: Record<string, number>;

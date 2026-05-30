@@ -188,7 +188,6 @@ function installFetchMock(): void {
             return Promise.resolve(
                 Response.json({
                     repos: ["owner/repo", "org/api"],
-                    orgs: ["owner", "org"],
                     teams: ["owner/platform"],
                     authors: ["alice", "bob"],
                     repo_counts: { "owner/repo": 1, "org/api": 1 },

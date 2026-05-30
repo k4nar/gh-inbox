@@ -12,7 +12,6 @@ pub struct InboxQuery {
     pub page: Option<u32>,
     pub per_page: Option<u32>,
     pub repo: Option<String>,
-    pub org: Option<String>,
     pub team: Option<String>,
     pub author: Option<String>,
     /// Comma-separated PR statuses to show exclusively (e.g. "open,draft").
@@ -53,7 +52,6 @@ pub async fn get_inbox(
 
     let filters = queries::FilterParams {
         repo: query.repo,
-        org: query.org,
         team: query.team,
         author: query.author,
         state_include: parse_csv(query.state_include),

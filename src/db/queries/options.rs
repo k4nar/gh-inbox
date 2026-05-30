@@ -5,7 +5,6 @@ use sqlx::SqlitePool;
 #[derive(Debug, serde::Serialize)]
 pub struct InboxOptions {
     pub repos: Vec<String>,
-    pub orgs: Vec<String>,
     pub teams: Vec<String>,
     pub authors: Vec<String>,
     pub repo_counts: HashMap<String, i64>,
@@ -45,16 +44,6 @@ pub async fn get_inbox_options(pool: &SqlitePool, archived: bool) -> sqlx::Resul
     .fetch_all(pool)
     .await?;
     let repo_counts: HashMap<String, i64> = repo_count_rows.into_iter().collect();
-
-    let orgs: Vec<String> = {
-        let mut seen = std::collections::HashSet::new();
-        repos
-            .iter()
-            .filter_map(|r| r.split_once('/').map(|(org, _)| org.to_string()))
-            .filter(|org| seen.insert(org.clone()))
-            .take(100)
-            .collect()
-    };
 
     let team_rows: Vec<(String,)> =
         sqlx::query_as("SELECT slug FROM user_teams ORDER BY slug LIMIT 100")
@@ -109,7 +98,6 @@ pub async fn get_inbox_options(pool: &SqlitePool, archived: bool) -> sqlx::Resul
 
     Ok(InboxOptions {
         repos,
-        orgs,
         teams,
         authors: author_rows.into_iter().map(|a| a.0).collect(),
         repo_counts,
@@ -130,13 +118,12 @@ mod tests {
         let pool = test_pool().await;
         let opts = get_inbox_options(&pool, false).await.unwrap();
         assert!(opts.repos.is_empty());
-        assert!(opts.orgs.is_empty());
         assert!(opts.teams.is_empty());
         assert!(opts.authors.is_empty());
     }
 
     #[tokio::test]
-    async fn returns_distinct_repos_and_derives_orgs() {
+    async fn returns_distinct_repos() {
         let pool = test_pool().await;
         for (id, repo) in [("n1", "acme/api"), ("n2", "acme/web"), ("n3", "beta/app")] {
             sqlx::query(
@@ -151,7 +138,6 @@ mod tests {
         }
         let opts = get_inbox_options(&pool, false).await.unwrap();
         assert_eq!(opts.repos, vec!["acme/api", "acme/web", "beta/app"]);
-        assert_eq!(opts.orgs, vec!["acme", "beta"]);
     }
 
     #[tokio::test]

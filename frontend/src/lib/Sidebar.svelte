@@ -8,7 +8,6 @@ let {
     onViewChange = (_view: string) => {},
     options = {
         repos: [],
-        orgs: [],
         teams: [],
         authors: [],
         repo_counts: {},
@@ -39,9 +38,9 @@ const activeFilterCount = $derived(activeFilterList.length);
 
 function handleRepoClick(repo: string) {
     if (activeFilters.repo === repo) {
-        onFiltersChange({ ...activeFilters, repo: undefined, org: undefined });
+        onFiltersChange({ ...activeFilters, repo: undefined });
     } else {
-        onFiltersChange({ ...activeFilters, repo, org: undefined });
+        onFiltersChange({ ...activeFilters, repo });
     }
 }
 

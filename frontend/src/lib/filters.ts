@@ -17,7 +17,6 @@ const STATE_ORDER = ["open", "draft", "merged", "closed"] as const;
 export function describeActiveFilters(f: ActiveFilters): string[] {
     const out: string[] = [];
     if (f.repo) out.push(`Repository: ${f.repo}`);
-    if (f.org) out.push(`Organization: ${f.org}`);
     if (f.team) out.push(`Team: ${f.team}`);
     if (f.author) out.push(`Author: ${f.author}`);
 

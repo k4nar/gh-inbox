@@ -19,7 +19,6 @@ describe("Sidebar", () => {
             props: {
                 options: {
                     repos: ["acme/api"],
-                    orgs: [],
                     teams: [],
                     authors: [],
                     repo_counts: {},
@@ -35,7 +34,6 @@ describe("Sidebar", () => {
             props: {
                 options: {
                     repos: [],
-                    orgs: [],
                     teams: ["acme/platform"],
                     authors: [],
                     repo_counts: {},
@@ -79,7 +77,6 @@ describe("Sidebar", () => {
 
 const OPTS: FilterOptions = {
     repos: ["acme/api", "acme/web"],
-    orgs: ["acme"],
     teams: ["acme/platform"],
     authors: ["alice"],
     repo_counts: { "acme/api": 3, "acme/web": 1 },

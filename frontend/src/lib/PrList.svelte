@@ -48,7 +48,6 @@ function buildInboxUrl(view: string, page: number): string {
         per_page: String(PER_PAGE),
     });
     if (activeFilters.repo) params.set("repo", activeFilters.repo);
-    if (activeFilters.org) params.set("org", activeFilters.org);
     if (activeFilters.team) params.set("team", activeFilters.team);
     if (activeFilters.author) params.set("author", activeFilters.author);
     const states = activeFilters.states ?? {};

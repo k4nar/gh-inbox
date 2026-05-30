@@ -32,7 +32,6 @@ let theme: Theme = $state("system");
 let activeFilters: ActiveFilters = $state({});
 let filterOptions: FilterOptions = $state({
     repos: [],
-    orgs: [],
     teams: [],
     authors: [],
     repo_counts: {},
