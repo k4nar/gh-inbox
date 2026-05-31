@@ -120,6 +120,23 @@ onMount(() => {
         console.error("GitHub sync error:", message);
     });
 
+    // The SSE socket can die without the browser noticing (after a long idle
+    // period, a network drop, etc.), so `onerror`/`open` never fire and the UI
+    // sits on stale data. Force a fresh connection (which refetches via the
+    // `open` handler) and a backend sync whenever the tab becomes visible or
+    // the network comes back.
+    function resync(): void {
+        connectSSE();
+        handleSync();
+    }
+    function handleVisibility(): void {
+        if (document.visibilityState === "visible") {
+            resync();
+        }
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("online", resync);
+
     apiFetch<Preferences>("/api/preferences")
         .then((prefs) => {
             theme = prefs.theme;
@@ -132,6 +149,8 @@ onMount(() => {
     return () => {
         unsubNotifications();
         unsubGithubError();
+        document.removeEventListener("visibilitychange", handleVisibility);
+        window.removeEventListener("online", resync);
         disconnectSSE();
     };
 });

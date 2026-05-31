@@ -119,6 +119,12 @@ export function connectSSE(): void {
     eventSource.addEventListener("open", () => {
         syncStatus = "idle";
         syncErrorMessage = null;
+        // A (re)connect means we may have missed `notifications:new` pushes
+        // while disconnected (broadcast events are not replayed). Refetch so the
+        // UI reflects whatever the backend synced in the meantime.
+        for (const cb of newNotificationCallbacks) {
+            cb();
+        }
     });
 
     eventSource.onerror = () => {
