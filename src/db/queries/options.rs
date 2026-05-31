@@ -15,106 +15,103 @@ pub struct InboxOptions {
 pub async fn get_inbox_options(pool: &SqlitePool, archived: bool) -> sqlx::Result<InboxOptions> {
     let archived_flag: i32 = i32::from(archived);
 
-    // Repos shown in the sidebar. The archived view is limited to repos seen in the
-    // most recent 200 archived notifications; the inbox shows all repos. Capped at 100.
-    let repos: Vec<String> = if archived {
-        let rows: Vec<(String,)> = sqlx::query_as(
+    // Repos shown in the sidebar, with notification counts.
+    //
+    // Inbox: one grouped query yields both the ordered list (capped at 100) and the
+    // counts. Archived: the list is windowed to repos seen in the most recent 200
+    // archived notifications, but counts must cover the full archived set (matching
+    // what a repo filter shows in the list), so those need separate queries.
+    let (repos, repo_counts): (Vec<String>, HashMap<String, i64>) = if archived {
+        let repo_rows: Vec<(String,)> = sqlx::query_as(
             "SELECT DISTINCT repository \
              FROM (SELECT repository FROM notifications WHERE archived = 1 ORDER BY updated_at DESC LIMIT 200) \
              ORDER BY repository LIMIT 100",
         )
         .fetch_all(pool)
         .await?;
-        rows.into_iter().map(|r| r.0).collect()
-    } else {
-        let rows: Vec<(String,)> = sqlx::query_as(
-            "SELECT DISTINCT repository FROM notifications WHERE archived = 0 ORDER BY repository LIMIT 100",
+        let count_rows: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT repository, COUNT(*) FROM notifications WHERE archived = 1 GROUP BY repository",
         )
         .fetch_all(pool)
         .await?;
-        rows.into_iter().map(|r| r.0).collect()
+        (
+            repo_rows.into_iter().map(|r| r.0).collect(),
+            count_rows.into_iter().collect(),
+        )
+    } else {
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT repository, COUNT(*) FROM notifications WHERE archived = 0 \
+             GROUP BY repository ORDER BY repository LIMIT 100",
+        )
+        .fetch_all(pool)
+        .await?;
+        let repos = rows.iter().map(|(r, _)| r.clone()).collect();
+        (repos, rows.into_iter().collect())
     };
 
-    // Notification counts per repo, over the full archived/inbox set so the sidebar
-    // badge matches what a repo filter shows in the list (which is not windowed).
-    let repo_count_rows: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT repository, COUNT(*) as cnt FROM notifications WHERE archived = ? \
-         GROUP BY repository",
+    // Codeowner teams that have notifications in this view, with counts. A single
+    // grouped query (restricted to the user's teams, ordered by slug) gives both the
+    // list and the counts — a team with no matching notifications produces no row, so
+    // it is naturally omitted.
+    let team_count_rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT jt.value, COUNT(DISTINCT n.id) \
+         FROM notifications n \
+         JOIN pull_requests pr ON pr.id = n.pr_id AND pr.repo = n.repository \
+         JOIN json_each(pr.teams) jt \
+         WHERE n.archived = ? AND jt.value IN (SELECT slug FROM user_teams) \
+         GROUP BY jt.value ORDER BY jt.value LIMIT 100",
     )
     .bind(archived_flag)
     .fetch_all(pool)
     .await?;
-    let repo_counts: HashMap<String, i64> = repo_count_rows.into_iter().collect();
+    let teams: Vec<String> = team_count_rows.iter().map(|(t, _)| t.clone()).collect();
+    let team_counts: HashMap<String, i64> = team_count_rows.into_iter().collect();
 
-    let team_rows: Vec<(String,)> =
-        sqlx::query_as("SELECT slug FROM user_teams ORDER BY slug LIMIT 100")
-            .fetch_all(pool)
-            .await?;
-
-    let all_teams: Vec<String> = team_rows.into_iter().map(|t| t.0).collect();
-
-    let team_counts: HashMap<String, i64> = if all_teams.is_empty() {
-        HashMap::new()
-    } else {
-        let rows: Vec<(String, i64)> = sqlx::query_as(
-            "SELECT jt.value, COUNT(DISTINCT n.id) \
-             FROM notifications n \
-             JOIN pull_requests pr ON pr.id = n.pr_id AND pr.repo = n.repository \
-             JOIN json_each(pr.teams) jt \
-             WHERE n.archived = ? AND jt.value IN (SELECT slug FROM user_teams) \
-             GROUP BY jt.value",
-        )
-        .bind(archived_flag)
-        .fetch_all(pool)
-        .await?;
-        rows.into_iter().collect()
-    };
-
-    // Only surface teams that actually have notifications in this view; a team
-    // with no matching notifications is in `team_counts` only when its count > 0,
-    // so membership there is the filter. Preserves the slug ordering.
-    let teams: Vec<String> = all_teams
-        .into_iter()
-        .filter(|t| team_counts.contains_key(t))
-        .collect();
-
-    let author_rows: Vec<(String,)> = if archived {
-        sqlx::query_as(
+    // Authors of linked PRs, with notification counts.
+    //
+    // Inbox: one grouped query yields both the ordered list (capped at 100) and the
+    // counts. Archived: the list is windowed to the recent 200 archived notifications,
+    // but counts cover the full archived set, so they are separate queries.
+    let (authors, author_counts): (Vec<String>, HashMap<String, i64>) = if archived {
+        let author_rows: Vec<(String,)> = sqlx::query_as(
             "SELECT DISTINCT author FROM pull_requests \
              WHERE id IN ( \
                  SELECT pr_id FROM (SELECT pr_id FROM notifications WHERE pr_id IS NOT NULL AND archived = 1 ORDER BY updated_at DESC LIMIT 200) \
              ) ORDER BY author LIMIT 100",
         )
         .fetch_all(pool)
-        .await?
-    } else {
-        sqlx::query_as(
-            "SELECT DISTINCT author FROM pull_requests \
-             WHERE id IN (SELECT pr_id FROM notifications WHERE pr_id IS NOT NULL AND archived = 0) \
-             ORDER BY author LIMIT 100",
+        .await?;
+        let count_rows: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT pr.author, COUNT(*) \
+             FROM notifications n \
+             JOIN pull_requests pr ON pr.id = n.pr_id AND pr.repo = n.repository \
+             WHERE n.archived = 1 \
+             GROUP BY pr.author",
         )
         .fetch_all(pool)
-        .await?
+        .await?;
+        (
+            author_rows.into_iter().map(|a| a.0).collect(),
+            count_rows.into_iter().collect(),
+        )
+    } else {
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT pr.author, COUNT(*) \
+             FROM notifications n \
+             JOIN pull_requests pr ON pr.id = n.pr_id AND pr.repo = n.repository \
+             WHERE n.archived = 0 \
+             GROUP BY pr.author ORDER BY pr.author LIMIT 100",
+        )
+        .fetch_all(pool)
+        .await?;
+        let authors = rows.iter().map(|(a, _)| a.clone()).collect();
+        (authors, rows.into_iter().collect())
     };
-
-    // Notification counts per author, over the full archived/inbox set so the
-    // badge matches what an author filter shows in the list (not windowed).
-    let author_count_rows: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT pr.author, COUNT(*) as cnt \
-         FROM notifications n \
-         JOIN pull_requests pr ON pr.id = n.pr_id AND pr.repo = n.repository \
-         WHERE n.archived = ? \
-         GROUP BY pr.author",
-    )
-    .bind(archived_flag)
-    .fetch_all(pool)
-    .await?;
-    let author_counts: HashMap<String, i64> = author_count_rows.into_iter().collect();
 
     Ok(InboxOptions {
         repos,
         teams,
-        authors: author_rows.into_iter().map(|a| a.0).collect(),
+        authors,
         repo_counts,
         team_counts,
         author_counts,
