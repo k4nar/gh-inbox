@@ -123,6 +123,25 @@ describe("PrList", () => {
         });
     });
 
+    it("shows a filter-aware empty state with a clear button when filters are active", async () => {
+        globalThis.fetch = mockFetch(paginatedResponse([]));
+        const onClearFilters = vi.fn();
+
+        render(PrList, {
+            props: { activeFilters: { repo: "acme/api" }, onClearFilters },
+        });
+
+        await waitFor(() => {
+            expect(
+                screen.getByText("No pull requests match your filters."),
+            ).toBeInTheDocument();
+        });
+        await fireEvent.click(
+            screen.getByRole("button", { name: /clear filters/i }),
+        );
+        expect(onClearFilters).toHaveBeenCalled();
+    });
+
     it("renders PR rows with repo, title, and PR number", async () => {
         globalThis.fetch = mockFetch(paginatedResponse(MOCK_NOTIFICATIONS));
 
@@ -795,6 +814,80 @@ describe("PrList", () => {
 
         await waitFor(() => {
             expect(screen.getByText("alice approved")).toBeInTheDocument();
+        });
+    });
+});
+
+describe("PrList filter params", () => {
+    it("fetch URL includes repo filter param when activeFilters.repo is set", async () => {
+        const fetchSpy = vi.fn(() =>
+            Promise.resolve(Response.json(paginatedResponse([]))),
+        );
+        globalThis.fetch = fetchSpy as unknown as typeof fetch;
+        render(PrList, {
+            props: { activeFilters: { repo: "acme/api" } },
+        });
+        await waitFor(() => {
+            const urls = (fetchSpy.mock.calls as unknown as [unknown][]).map(
+                ([url]) => String(url),
+            );
+            expect(urls.find((u) => u.includes("/api/inbox"))).toContain(
+                "repo=acme%2Fapi",
+            );
+        });
+    });
+
+    it("fetch URL includes author filter param", async () => {
+        const fetchSpy = vi.fn(() =>
+            Promise.resolve(Response.json(paginatedResponse([]))),
+        );
+        globalThis.fetch = fetchSpy as unknown as typeof fetch;
+        render(PrList, {
+            props: { activeFilters: { author: "alice" } },
+        });
+        await waitFor(() => {
+            const urls = (fetchSpy.mock.calls as unknown as [unknown][]).map(
+                ([url]) => String(url),
+            );
+            expect(urls.find((u) => u.includes("/api/inbox"))).toContain(
+                "author=alice",
+            );
+        });
+    });
+
+    it("fetch URL includes state_include param for included statuses", async () => {
+        const fetchSpy = vi.fn(() =>
+            Promise.resolve(Response.json(paginatedResponse([]))),
+        );
+        globalThis.fetch = fetchSpy as unknown as typeof fetch;
+        render(PrList, {
+            props: {
+                activeFilters: {
+                    states: { open: "include", draft: "include" },
+                },
+            },
+        });
+        await waitFor(() => {
+            const url = (fetchSpy.mock.calls as unknown as [unknown][])
+                .map(([u]) => String(u))
+                .find((u) => u.includes("/api/inbox"));
+            expect(url).toContain("state_include=open%2Cdraft");
+        });
+    });
+
+    it("fetch URL includes state_exclude param for hidden statuses", async () => {
+        const fetchSpy = vi.fn(() =>
+            Promise.resolve(Response.json(paginatedResponse([]))),
+        );
+        globalThis.fetch = fetchSpy as unknown as typeof fetch;
+        render(PrList, {
+            props: { activeFilters: { states: { merged: "exclude" } } },
+        });
+        await waitFor(() => {
+            const url = (fetchSpy.mock.calls as unknown as [unknown][])
+                .map(([u]) => String(u))
+                .find((u) => u.includes("/api/inbox"));
+            expect(url).toContain("state_exclude=merged");
         });
     });
 });

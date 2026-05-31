@@ -17,12 +17,27 @@ import {
 import Toast from "./lib/Toast.svelte";
 import Topbar from "./lib/Topbar.svelte";
 import { showError } from "./lib/toast.svelte.ts";
-import type { InboxItem, Preferences, Theme } from "./lib/types.ts";
+import type {
+    ActiveFilters,
+    FilterOptions,
+    InboxItem,
+    Preferences,
+    Theme,
+} from "./lib/types.ts";
 
 let currentView = $state("inbox");
 let selectedNotification: InboxItem | null = $state(null);
 let refreshKey = $state(0);
 let theme: Theme = $state("system");
+let activeFilters: ActiveFilters = $state({});
+let filterOptions: FilterOptions = $state({
+    repos: [],
+    teams: [],
+    authors: [],
+    repo_counts: {},
+    team_counts: {},
+    author_counts: {},
+});
 
 function applyTheme(t: Theme) {
     if (t === "system") {
@@ -58,6 +73,22 @@ async function handleSync(): Promise<void> {
     }
 }
 
+async function fetchFilterOptions(view: string): Promise<void> {
+    try {
+        const params = view === "archived" ? "?status=archived" : "";
+        const opts = await apiFetch<FilterOptions>(
+            `/api/inbox/options${params}`,
+        );
+        filterOptions = opts;
+    } catch {
+        // Non-fatal — sidebar filter lists stay empty
+    }
+}
+
+function handleFiltersChange(f: ActiveFilters): void {
+    activeFilters = f;
+}
+
 function handleSelect(notification: InboxItem | null): void {
     if (notification && selectedNotification?.id === notification.id) {
         selectedNotification = null;
@@ -74,12 +105,15 @@ function handleClose(): void {
 function handleViewChange(view: string): void {
     currentView = view;
     selectedNotification = null;
+    fetchFilterOptions(view);
 }
 
 onMount(() => {
     connectSSE();
+    fetchFilterOptions(currentView);
     const unsubNotifications = onNewNotifications(() => {
         refreshKey++;
+        fetchFilterOptions(currentView);
     });
     const unsubGithubError = onGithubSyncError((_notificationId, message) => {
         showError("Failed to sync with GitHub");
@@ -112,13 +146,21 @@ onMount(() => {
         onSync={handleSync}
     />
     <div class="layout">
-        <Sidebar {currentView} onViewChange={handleViewChange} />
+        <Sidebar
+            {currentView}
+            onViewChange={handleViewChange}
+            options={filterOptions}
+            {activeFilters}
+            onFiltersChange={handleFiltersChange}
+        />
         <PrList
             {currentView}
             onSelect={handleSelect}
             onSelectionChange={handleSelect}
             selectedId={selectedNotification?.id}
             {refreshKey}
+            {activeFilters}
+            onClearFilters={() => handleFiltersChange({})}
         />
         {#if selectedNotification}
             <ResizableDetailPanel>

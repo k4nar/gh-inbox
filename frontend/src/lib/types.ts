@@ -133,3 +133,22 @@ export type Theme =
 export interface Preferences {
     theme: Theme;
 }
+
+export type StateFilterMode = "include" | "exclude";
+
+export interface ActiveFilters {
+    repo?: string;
+    team?: string;
+    author?: string;
+    /** Per-status filter: "include" shows only those statuses, "exclude" hides them. */
+    states?: Record<string, StateFilterMode>;
+}
+
+export interface FilterOptions {
+    repos: string[];
+    teams: string[];
+    authors: string[];
+    repo_counts: Record<string, number>;
+    team_counts: Record<string, number>;
+    author_counts: Record<string, number>;
+}

@@ -1,9 +1,11 @@
 <script lang="ts">
 import { Pagination, Tooltip } from "bits-ui";
 import { apiFetch } from "./api.ts";
+import { countActiveFilters } from "./filters.ts";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
 import { timeAgo } from "./timeago.ts";
 import { showError } from "./toast.svelte.ts";
+import type { ActiveFilters } from "./types.ts";
 import {
     DEFAULT_PER_PAGE,
     type InboxItem,
@@ -16,12 +18,16 @@ let {
     onSelectionChange = (_notification: InboxItem | null) => {},
     selectedId = null,
     refreshKey = 0,
+    activeFilters = {} as ActiveFilters,
+    onClearFilters = () => {},
 }: {
     currentView?: string;
     onSelect?: (notification: InboxItem) => void;
     onSelectionChange?: (notification: InboxItem | null) => void;
     selectedId?: string | null;
     refreshKey?: number;
+    activeFilters?: ActiveFilters;
+    onClearFilters?: () => void;
 } = $props();
 
 let notifications: InboxItem[] = $state([]);
@@ -35,6 +41,25 @@ const prefetchedIds = new Set<string>();
 let currentPage = $state(1);
 let totalCount = $state(0);
 const PER_PAGE = DEFAULT_PER_PAGE;
+
+let lastFiltersKey = $state("");
+
+function buildInboxUrl(view: string, page: number): string {
+    const params = new URLSearchParams({
+        status: view,
+        page: String(page),
+        per_page: String(PER_PAGE),
+    });
+    if (activeFilters.repo) params.set("repo", activeFilters.repo);
+    if (activeFilters.team) params.set("team", activeFilters.team);
+    if (activeFilters.author) params.set("author", activeFilters.author);
+    const states = activeFilters.states ?? {};
+    const include = Object.keys(states).filter((s) => states[s] === "include");
+    const exclude = Object.keys(states).filter((s) => states[s] === "exclude");
+    if (include.length) params.set("state_include", include.join(","));
+    if (exclude.length) params.set("state_exclude", exclude.join(","));
+    return `/api/inbox?${params.toString()}`;
+}
 
 const unsubInfo = onPrInfoUpdated((data) => {
     const item = notifications.find(
@@ -120,7 +145,7 @@ async function fetchNotifications(
 ): Promise<PaginatedInbox | null> {
     try {
         const result = await apiFetch<PaginatedInbox>(
-            `/api/inbox?status=${view}&page=${page}&per_page=${PER_PAGE}`,
+            buildInboxUrl(view, page),
         );
         notifications = result.items;
         totalCount = result.total;
@@ -135,22 +160,29 @@ async function fetchNotifications(
     }
 }
 
-// Single effect: reset to page 1 when view changes, otherwise refetch current page.
+// Single effect: reset to page 1 when view or filters change, otherwise refetch current page.
 let lastView = $state("inbox");
 $effect(() => {
     void refreshKey;
+    const filtersKey = JSON.stringify(activeFilters);
     const viewChanged = currentView !== lastView;
-    if (viewChanged) {
+    const filtersChanged = filtersKey !== lastFiltersKey;
+    if (viewChanged || filtersChanged) {
         lastView = currentView;
+        lastFiltersKey = filtersKey;
         currentPage = 1;
     }
-    fetchNotifications(currentView, viewChanged ? 1 : currentPage);
+    fetchNotifications(
+        currentView,
+        viewChanged || filtersChanged ? 1 : currentPage,
+    );
 });
 
 let count = $derived(notifications.length);
 let unreadCount = $derived(notifications.filter((n) => n.unread).length);
 let viewTitle = $derived(currentView === "archived" ? "Archived" : "Inbox");
 let totalPages = $derived(Math.max(1, Math.ceil(totalCount / PER_PAGE)));
+let hasActiveFilters = $derived(countActiveFilters(activeFilters) > 0);
 let emptyMessage = $derived(
     currentView === "archived"
         ? "No archived notifications."
@@ -323,25 +355,24 @@ function initials(login: string | null): string {
             {/if}</span
         >
         <div class="list-spacer"></div>
-        <button type="button" class="filter-btn">
-            <svg
-                aria-hidden="true"
-                width="14"
-                height="14"
-                viewBox="0 0 16 16"
-                fill="currentColor"
-            >
-                <path
-                    d="M.75 3h14.5a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1 0-1.5ZM3 7.75A.75.75 0 0 1 3.75 7h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 3 7.75Zm3 4a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1-.75-.75Z"
-                />
-            </svg>
-            Filter
-        </button>
     </div>
 
     <div class="pr-list" bind:this={listEl}>
         {#if count === 0}
-            <div class="empty-state">{emptyMessage}</div>
+            <div class="empty-state">
+                {#if hasActiveFilters}
+                    <span>No pull requests match your filters.</span>
+                    <button
+                        type="button"
+                        class="empty-clear-btn"
+                        onclick={onClearFilters}
+                    >
+                        Clear filters
+                    </button>
+                {:else}
+                    {emptyMessage}
+                {/if}
+            </div>
         {:else}
             {#each notifications as notif (notif.id)}
                 {@const sentence = activitySentence(notif)}
@@ -591,23 +622,6 @@ function initials(login: string | null): string {
 .list-spacer {
     flex: 1;
 }
-.filter-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background: var(--canvas-subtle);
-    border: 1px solid var(--border-default);
-    border-radius: 6px;
-    padding: 5px 12px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--fg-default);
-    cursor: pointer;
-    font-family: inherit;
-}
-.filter-btn:hover {
-    background: var(--border-muted);
-}
 .pr-list {
     flex: 1;
     min-width: var(--pr-list-min-w);
@@ -615,11 +629,26 @@ function initials(login: string | null): string {
 }
 .empty-state {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 8px;
     height: 100%;
     color: var(--fg-muted);
     font-size: 14px;
+}
+.empty-clear-btn {
+    font-size: 12px;
+    color: var(--accent-fg);
+    background: none;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-family: inherit;
+}
+.empty-clear-btn:hover {
+    background: var(--canvas-subtle);
 }
 
 /* PR row */
