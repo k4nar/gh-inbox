@@ -43,7 +43,10 @@ pub(crate) async fn fetch_notifications_page(
 pub async fn fetch_all_notifications(
     github: &super::GithubClient,
 ) -> Result<Vec<crate::models::Notification>, reqwest::Error> {
-    let mut url = format!("{}/notifications?per_page=50", github.base_url());
+    // `all=true` so read-but-not-done notifications stay in the feed. Without it
+    // GitHub returns only unread notifications, which makes reconciliation conflate
+    // "read" with "done" and silently archive PRs the user only marked as read.
+    let mut url = format!("{}/notifications?all=true&per_page=50", github.base_url());
     let mut all = Vec::new();
     loop {
         let (page, next) = fetch_notifications_page(github, &url).await?;
@@ -63,7 +66,7 @@ pub async fn fetch_notifications_since(
     since_iso: &str,
 ) -> Result<Vec<crate::models::Notification>, reqwest::Error> {
     let mut url = format!(
-        "{}/notifications?since={since_iso}&per_page=50",
+        "{}/notifications?all=true&since={since_iso}&per_page=50",
         github.base_url()
     );
     let mut all = Vec::new();

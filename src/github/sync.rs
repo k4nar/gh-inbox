@@ -226,6 +226,21 @@ mod tests {
         "repository": { "full_name": "owner/repo" }
     }]"#;
 
+    // Same PR as ONE_NOTIFICATION but already read (unread=false). With `all=true`
+    // GitHub keeps returning read-but-not-done notifications like this one.
+    const READ_NOTIFICATION: &str = r#"[{
+        "id": "1",
+        "reason": "review_requested",
+        "unread": false,
+        "updated_at": "2025-01-01T00:00:00Z",
+        "subject": {
+            "title": "Fix bug",
+            "url": "https://api.github.com/repos/owner/repo/pulls/42",
+            "type": "PullRequest"
+        },
+        "repository": { "full_name": "owner/repo" }
+    }]"#;
+
     // ── preserved tests ───────────────────────────────────────────────────
 
     #[tokio::test]
@@ -286,8 +301,8 @@ mod tests {
             "Full sync should not send since=, got: {uri}"
         );
         assert!(
-            !uri.contains("all=true"),
-            "Should not use all=true, got: {uri}"
+            uri.contains("all=true"),
+            "Sync must use all=true so read notifications stay in the feed, got: {uri}"
         );
     }
 
@@ -402,8 +417,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn full_sync_keeps_read_notification_still_in_github_feed() {
+        // Regression: a notification the user marked read (but not done) is still
+        // returned by GitHub thanks to `all=true`. Reconciliation must NOT archive
+        // it — read keeps the PR in the inbox, only "done" should archive.
+        let state = make_state(start_mock(READ_NOTIFICATION).await).await;
+
+        // Pre-insert id="1" as read + unarchived with stale synced_at (=0).
+        queries::upsert_notification(
+            &state.pool,
+            &queries::NotificationRow {
+                id: "1".to_string(),
+                pr_id: Some(42),
+                title: "Fix bug".to_string(),
+                repository: "owner/repo".to_string(),
+                reason: "review_requested".to_string(),
+                unread: false,
+                archived: false,
+                updated_at: "2025-01-01T00:00:00Z".to_string(),
+            },
+            0,
+        )
+        .await
+        .unwrap();
+
+        // Full sync (no last_fetched_at) — GitHub still returns id="1" as read.
+        sync_notifications(&state).await.unwrap();
+
+        let archived = queries::query_archived(&state.pool).await.unwrap();
+        assert!(
+            archived.is_empty(),
+            "read-but-not-done notification must not be archived, got: {archived:?}"
+        );
+
+        let inbox = queries::query_inbox(&state.pool).await.unwrap();
+        assert_eq!(inbox.len(), 1, "read notification should stay in the inbox");
+        assert_eq!(inbox[0].id, "1");
+        assert!(!inbox[0].unread, "notification should remain read");
+    }
+
+    #[tokio::test]
     async fn full_sync_archives_notifications_missing_from_github() {
-        // id="1" is in the mock response; id="99" is not → should be archived
+        // id="1" is in the mock response; id="99" is not (marked done/gone on
+        // GitHub) → should be archived.
         let state = make_state(start_mock(ONE_NOTIFICATION).await).await;
 
         // Pre-insert two notifications with old synced_at so they appear stale
