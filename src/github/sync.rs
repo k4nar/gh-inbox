@@ -613,9 +613,10 @@ pub(crate) async fn auto_fetch_viewport_prs(
                         .as_deref()
                         .and_then(|json| serde_json::from_str(json).ok());
 
-                    let new_reviews = queries::get_pr_review_activity(&state.pool, pr_id)
-                        .await
-                        .unwrap_or(None);
+                    let new_reviews =
+                        queries::get_pr_review_activity(&state.pool, &notif.repository, pr_id)
+                            .await
+                            .unwrap_or(None);
 
                     let _ = tx.send(SyncEvent::PrInfoUpdated(PrInfoUpdatedData {
                         pr_id,

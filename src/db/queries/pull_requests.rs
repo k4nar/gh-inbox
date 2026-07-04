@@ -132,9 +132,8 @@ pub async fn upsert_pull_request(pool: &SqlitePool, pr: &PullRequestRow) -> sqlx
     sqlx::query(
 		"INSERT INTO pull_requests (id, title, repo, author, author_avatar_url, url, ci_status, last_viewed_at, body, state, head_sha, additions, deletions, changed_files, draft, merged_at, labels)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
+         ON CONFLICT(repo, id) DO UPDATE SET
            title             = excluded.title,
-           repo              = excluded.repo,
            author            = excluded.author,
            author_avatar_url = excluded.author_avatar_url,
            url               = excluded.url,
@@ -189,8 +188,9 @@ pub async fn get_pull_request(
 }
 
 /// Update last_viewed_at to now (ISO 8601) for a pull request.
-pub async fn update_last_viewed_at(pool: &SqlitePool, pr_id: i64) -> sqlx::Result<()> {
-    sqlx::query("UPDATE pull_requests SET last_viewed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?")
+pub async fn update_last_viewed_at(pool: &SqlitePool, repo: &str, pr_id: i64) -> sqlx::Result<()> {
+    sqlx::query("UPDATE pull_requests SET last_viewed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE repo = ? AND id = ?")
+        .bind(repo)
         .bind(pr_id)
         .execute(pool)
         .await?;
@@ -315,13 +315,13 @@ pub async fn get_pr_activity(
     let row: Option<(Option<i64>, Option<String>)> = sqlx::query_as(
         "SELECT
             CASE WHEN pr.last_viewed_at IS NULL THEN NULL
-                 ELSE (SELECT COUNT(*) FROM commits c WHERE c.pr_id = pr.id AND c.committed_at > pr.last_viewed_at)
+                 ELSE (SELECT COUNT(*) FROM commits c WHERE c.repo = pr.repo AND c.pr_id = pr.id AND c.committed_at > pr.last_viewed_at)
             END as new_commits,
             CASE WHEN pr.last_viewed_at IS NULL THEN NULL
                  ELSE COALESCE((
                      SELECT json_group_array(json_object('author', author, 'count', cnt))
                      FROM (SELECT author, COUNT(*) as cnt FROM comments
-                           WHERE pr_id = pr.id AND created_at > pr.last_viewed_at
+                           WHERE repo = pr.repo AND pr_id = pr.id AND created_at > pr.last_viewed_at
                            GROUP BY author ORDER BY cnt DESC, author ASC)
                  ), '[]')
             END as new_comments_json
@@ -335,9 +335,15 @@ pub async fn get_pr_activity(
 }
 
 /// Store the resolved teams JSON for a PR.
-pub async fn update_teams(pool: &SqlitePool, pr_id: i64, teams_json: &str) -> sqlx::Result<()> {
-    sqlx::query("UPDATE pull_requests SET teams = ? WHERE id = ?")
+pub async fn update_teams(
+    pool: &SqlitePool,
+    repo: &str,
+    pr_id: i64,
+    teams_json: &str,
+) -> sqlx::Result<()> {
+    sqlx::query("UPDATE pull_requests SET teams = ? WHERE repo = ? AND id = ?")
         .bind(teams_json)
+        .bind(repo)
         .bind(pr_id)
         .execute(pool)
         .await?;
@@ -410,6 +416,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn same_number_in_different_repos_does_not_collide() {
+        let pool = test_pool().await;
+        let pr_a = sample(100); // repo "owner/repo"
+        let mut pr_b = sample(100);
+        pr_b.repo = "other/repo".to_string();
+        pr_b.title = "Other PR".to_string();
+        upsert_pull_request(&pool, &pr_a).await.unwrap();
+        upsert_pull_request(&pool, &pr_b).await.unwrap();
+
+        let row_a = get_pull_request(&pool, "owner/repo", 100)
+            .await
+            .unwrap()
+            .unwrap();
+        let row_b = get_pull_request(&pool, "other/repo", 100)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row_a.title, "Fix bug");
+        assert_eq!(row_b.title, "Other PR");
+
+        // Scoped updates must not leak into the same number of another repo.
+        update_last_viewed_at(&pool, "owner/repo", 100)
+            .await
+            .unwrap();
+        update_teams(&pool, "owner/repo", 100, "[\"acme/platform\"]")
+            .await
+            .unwrap();
+        let row_b = get_pull_request(&pool, "other/repo", 100)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(row_b.last_viewed_at.is_none());
+        assert!(row_b.teams.is_none());
+    }
+
+    #[tokio::test]
     async fn get_not_found() {
         let pool = test_pool().await;
         let result = get_pull_request(&pool, "owner/repo", 999).await.unwrap();
@@ -421,7 +463,7 @@ mod tests {
         let pool = test_pool().await;
         upsert_pull_request(&pool, &sample(200)).await.unwrap();
         // Manually set teams
-        sqlx::query("UPDATE pull_requests SET teams = '[\"acme/platform\"]' WHERE id = ?")
+        sqlx::query("UPDATE pull_requests SET teams = '[\"acme/platform\"]' WHERE repo = 'owner/repo' AND id = ?")
             .bind(200_i64)
             .execute(&pool)
             .await
@@ -463,7 +505,9 @@ mod tests {
                 .last_viewed_at
                 .is_none()
         );
-        update_last_viewed_at(&pool, 42).await.unwrap();
+        update_last_viewed_at(&pool, "owner/repo", 42)
+            .await
+            .unwrap();
         assert!(
             get_pull_request(&pool, "owner/repo", 42)
                 .await
@@ -634,7 +678,9 @@ mod tests {
     async fn get_pr_activity_returns_zero_after_viewing() {
         let pool = test_pool().await;
         upsert_pull_request(&pool, &sample(20)).await.unwrap();
-        update_last_viewed_at(&pool, 20).await.unwrap();
+        update_last_viewed_at(&pool, "owner/repo", 20)
+            .await
+            .unwrap();
         let (commits, comments) = get_pr_activity(&pool, 20, "owner/repo").await.unwrap();
         assert_eq!(commits, Some(0));
         // No comments yet, but the field should be Some (not None) now that last_viewed_at is set

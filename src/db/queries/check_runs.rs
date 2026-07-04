@@ -4,6 +4,7 @@ use sqlx::SqlitePool;
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct CheckRunRow {
     pub id: i64,
+    pub repo: String,
     pub pr_id: i64,
     pub name: String,
     pub status: String,
@@ -13,13 +14,14 @@ pub struct CheckRunRow {
 /// Insert or update a check run.
 pub async fn upsert_check_run(pool: &SqlitePool, cr: &CheckRunRow) -> sqlx::Result<()> {
     sqlx::query(
-        "INSERT INTO check_runs (id, pr_id, name, status, conclusion)
-         VALUES (?, ?, ?, ?, ?)
+        "INSERT INTO check_runs (id, repo, pr_id, name, status, conclusion)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            status = excluded.status,
            conclusion = excluded.conclusion",
     )
     .bind(cr.id)
+    .bind(&cr.repo)
     .bind(cr.pr_id)
     .bind(&cr.name)
     .bind(&cr.status)
@@ -32,14 +34,16 @@ pub async fn upsert_check_run(pool: &SqlitePool, cr: &CheckRunRow) -> sqlx::Resu
 /// Query all check runs for a given PR.
 pub async fn query_check_runs_for_pr(
     pool: &SqlitePool,
+    repo: &str,
     pr_id: i64,
 ) -> sqlx::Result<Vec<CheckRunRow>> {
     sqlx::query_as::<_, CheckRunRow>(
-        "SELECT id, pr_id, name, status, conclusion
+        "SELECT id, repo, pr_id, name, status, conclusion
          FROM check_runs
-         WHERE pr_id = ?
+         WHERE repo = ? AND pr_id = ?
          ORDER BY name ASC",
     )
+    .bind(repo)
     .bind(pr_id)
     .fetch_all(pool)
     .await
@@ -80,6 +84,7 @@ mod tests {
     fn sample(id: i64, pr_id: i64) -> CheckRunRow {
         CheckRunRow {
             id,
+            repo: "owner/repo".to_string(),
             pr_id,
             name: "CI".to_string(),
             status: "completed".to_string(),
@@ -100,7 +105,9 @@ mod tests {
         upsert_check_run(&pool, &cr1).await.unwrap();
         upsert_check_run(&pool, &cr2).await.unwrap();
 
-        let runs = query_check_runs_for_pr(&pool, 42).await.unwrap();
+        let runs = query_check_runs_for_pr(&pool, "owner/repo", 42)
+            .await
+            .unwrap();
         assert_eq!(runs.len(), 2);
         assert_eq!(runs[0].name, "CI");
         assert_eq!(runs[1].name, "Lint");
@@ -120,7 +127,9 @@ mod tests {
         cr.conclusion = Some("success".to_string());
         upsert_check_run(&pool, &cr).await.unwrap();
 
-        let runs = query_check_runs_for_pr(&pool, 42).await.unwrap();
+        let runs = query_check_runs_for_pr(&pool, "owner/repo", 42)
+            .await
+            .unwrap();
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].status, "completed");
         assert_eq!(runs[0].conclusion, Some("success".to_string()));
@@ -134,7 +143,9 @@ mod tests {
         upsert_check_run(&pool, &sample(1, 42)).await.unwrap();
         upsert_check_run(&pool, &sample(2, 99)).await.unwrap();
 
-        let runs = query_check_runs_for_pr(&pool, 42).await.unwrap();
+        let runs = query_check_runs_for_pr(&pool, "owner/repo", 42)
+            .await
+            .unwrap();
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].pr_id, 42);
     }

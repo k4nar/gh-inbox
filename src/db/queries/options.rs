@@ -74,10 +74,10 @@ pub async fn get_inbox_options(pool: &SqlitePool, archived: bool) -> sqlx::Resul
     // but counts cover the full archived set, so they are separate queries.
     let (authors, author_counts): (Vec<String>, HashMap<String, i64>) = if archived {
         let author_rows: Vec<(String,)> = sqlx::query_as(
-            "SELECT DISTINCT author FROM pull_requests \
-             WHERE id IN ( \
-                 SELECT pr_id FROM (SELECT pr_id FROM notifications WHERE pr_id IS NOT NULL AND archived = 1 ORDER BY updated_at DESC LIMIT 200) \
-             ) ORDER BY author LIMIT 100",
+            "SELECT DISTINCT pr.author \
+             FROM (SELECT repository, pr_id FROM notifications WHERE pr_id IS NOT NULL AND archived = 1 ORDER BY updated_at DESC LIMIT 200) n \
+             JOIN pull_requests pr ON pr.id = n.pr_id AND pr.repo = n.repository \
+             ORDER BY pr.author LIMIT 100",
         )
         .fetch_all(pool)
         .await?;

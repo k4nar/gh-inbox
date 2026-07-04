@@ -6,6 +6,7 @@ use crate::models::ReviewSummary;
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct ReviewRow {
     pub id: i64,
+    pub repo: String,
     pub pr_id: i64,
     pub reviewer: String,
     pub reviewer_avatar_url: Option<String>,
@@ -18,8 +19,8 @@ pub struct ReviewRow {
 /// Insert or update a review. State and body may change on re-submission.
 pub async fn upsert_review(pool: &SqlitePool, row: &ReviewRow) -> sqlx::Result<()> {
     sqlx::query(
-        "INSERT INTO reviews (id, pr_id, reviewer, reviewer_avatar_url, state, body, submitted_at, html_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO reviews (id, repo, pr_id, reviewer, reviewer_avatar_url, state, body, submitted_at, html_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            state                = excluded.state,
            body                 = excluded.body,
@@ -27,6 +28,7 @@ pub async fn upsert_review(pool: &SqlitePool, row: &ReviewRow) -> sqlx::Result<(
            reviewer_avatar_url  = excluded.reviewer_avatar_url",
     )
     .bind(row.id)
+    .bind(&row.repo)
     .bind(row.pr_id)
     .bind(&row.reviewer)
     .bind(&row.reviewer_avatar_url)
@@ -44,11 +46,13 @@ pub async fn upsert_review(pool: &SqlitePool, row: &ReviewRow) -> sqlx::Result<(
 /// Returns `Ok(Some(vec))` (possibly empty) when `last_viewed_at` is set.
 pub async fn get_pr_review_activity(
     pool: &SqlitePool,
+    repo: &str,
     pr_id: i64,
 ) -> sqlx::Result<Option<Vec<ReviewSummary>>> {
     // Fetch last_viewed_at for this PR.
     let row: Option<(Option<String>,)> =
-        sqlx::query_as("SELECT last_viewed_at FROM pull_requests WHERE id = ?")
+        sqlx::query_as("SELECT last_viewed_at FROM pull_requests WHERE repo = ? AND id = ?")
+            .bind(repo)
             .bind(pr_id)
             .fetch_optional(pool)
             .await?;
@@ -60,8 +64,9 @@ pub async fn get_pr_review_activity(
     };
 
     let reviews: Vec<(String, String)> = sqlx::query_as(
-        "SELECT reviewer, state FROM reviews WHERE pr_id = ? AND submitted_at > ? ORDER BY submitted_at ASC",
+        "SELECT reviewer, state FROM reviews WHERE repo = ? AND pr_id = ? AND submitted_at > ? ORDER BY submitted_at ASC",
     )
+    .bind(repo)
     .bind(pr_id)
     .bind(&last_viewed_at)
     .fetch_all(pool)
@@ -76,13 +81,18 @@ pub async fn get_pr_review_activity(
 }
 
 /// Query all reviews for a given PR, ordered by submission time ascending.
-pub async fn query_reviews_for_pr(pool: &SqlitePool, pr_id: i64) -> sqlx::Result<Vec<ReviewRow>> {
+pub async fn query_reviews_for_pr(
+    pool: &SqlitePool,
+    repo: &str,
+    pr_id: i64,
+) -> sqlx::Result<Vec<ReviewRow>> {
     sqlx::query_as::<_, ReviewRow>(
-        "SELECT id, pr_id, reviewer, reviewer_avatar_url, state, body, submitted_at, html_url
+        "SELECT id, repo, pr_id, reviewer, reviewer_avatar_url, state, body, submitted_at, html_url
          FROM reviews
-         WHERE pr_id = ?
+         WHERE repo = ? AND pr_id = ?
          ORDER BY submitted_at ASC",
     )
+    .bind(repo)
     .bind(pr_id)
     .fetch_all(pool)
     .await
@@ -123,6 +133,7 @@ mod tests {
     fn sample_review(id: i64, pr_id: i64, state: &str) -> ReviewRow {
         ReviewRow {
             id,
+            repo: "owner/repo".to_string(),
             pr_id,
             reviewer: "alice".to_string(),
             reviewer_avatar_url: None,
@@ -141,7 +152,7 @@ mod tests {
         let r = sample_review(1, 42, "APPROVED");
         upsert_review(&pool, &r).await.unwrap();
 
-        let rows = query_reviews_for_pr(&pool, 42).await.unwrap();
+        let rows = query_reviews_for_pr(&pool, "owner/repo", 42).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].id, 1);
         assert_eq!(rows[0].reviewer, "alice");
@@ -158,7 +169,7 @@ mod tests {
         r.state = "APPROVED".to_string();
         upsert_review(&pool, &r).await.unwrap();
 
-        let rows = query_reviews_for_pr(&pool, 42).await.unwrap();
+        let rows = query_reviews_for_pr(&pool, "owner/repo", 42).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].state, "APPROVED");
     }
@@ -166,7 +177,9 @@ mod tests {
     #[tokio::test]
     async fn query_returns_empty_for_unknown_pr() {
         let pool = test_pool().await;
-        let rows = query_reviews_for_pr(&pool, 999).await.unwrap();
+        let rows = query_reviews_for_pr(&pool, "owner/repo", 999)
+            .await
+            .unwrap();
         assert!(rows.is_empty());
     }
 
@@ -184,7 +197,7 @@ mod tests {
         upsert_review(&pool, &r1).await.unwrap();
         upsert_review(&pool, &r2).await.unwrap();
 
-        let rows = query_reviews_for_pr(&pool, 42).await.unwrap();
+        let rows = query_reviews_for_pr(&pool, "owner/repo", 42).await.unwrap();
         assert_eq!(rows[0].reviewer, "bob"); // earlier
         assert_eq!(rows[1].reviewer, "alice"); // later
     }
@@ -193,14 +206,18 @@ mod tests {
     async fn get_pr_review_activity_returns_none_when_never_viewed() {
         let pool = test_pool().await;
         upsert_pull_request(&pool, &sample_pr(50)).await.unwrap(); // last_viewed_at = NULL
-        let result = get_pr_review_activity(&pool, 50).await.unwrap();
+        let result = get_pr_review_activity(&pool, "owner/repo", 50)
+            .await
+            .unwrap();
         assert!(result.is_none(), "expect None when last_viewed_at is NULL");
     }
 
     #[tokio::test]
     async fn get_pr_review_activity_returns_none_for_missing_pr() {
         let pool = test_pool().await;
-        let result = get_pr_review_activity(&pool, 999).await.unwrap();
+        let result = get_pr_review_activity(&pool, "owner/repo", 999)
+            .await
+            .unwrap();
         assert!(result.is_none(), "expect None when PR is not in DB");
     }
 
@@ -215,7 +232,9 @@ mod tests {
         old_review.submitted_at = "2025-06-01T10:00:00Z".to_string();
         upsert_review(&pool, &old_review).await.unwrap();
 
-        let result = get_pr_review_activity(&pool, 60).await.unwrap();
+        let result = get_pr_review_activity(&pool, "owner/repo", 60)
+            .await
+            .unwrap();
         let reviews = result.expect("should be Some since last_viewed_at is set");
         assert!(reviews.is_empty(), "old review should not appear");
     }
@@ -232,7 +251,9 @@ mod tests {
         new_review.submitted_at = "2025-06-01T11:00:00Z".to_string();
         upsert_review(&pool, &new_review).await.unwrap();
 
-        let result = get_pr_review_activity(&pool, 70).await.unwrap();
+        let result = get_pr_review_activity(&pool, "owner/repo", 70)
+            .await
+            .unwrap();
         let reviews = result.expect("should be Some");
         assert_eq!(reviews.len(), 1);
         assert_eq!(reviews[0].reviewer, "bob");

@@ -130,7 +130,7 @@ async fn fetch_one(
         Some(json) => Some(serde_json::from_str(json)?),
     };
 
-    let new_reviews = queries::get_pr_review_activity(pool, item.pr_number)
+    let new_reviews = queries::get_pr_review_activity(pool, &item.repository, item.pr_number)
         .await
         .map_err(|e| format!("{e:?}"))?;
 

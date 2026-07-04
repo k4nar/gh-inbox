@@ -125,7 +125,7 @@ pub async fn get_pr(
     let previous_viewed_at = pr.last_viewed_at.clone();
 
     // Now update last_viewed_at to mark the current visit.
-    queries::update_last_viewed_at(&state.pool, number).await?;
+    queries::update_last_viewed_at(&state.pool, &full_repo, number).await?;
 
     // fetch_result carries fresher author/status when we just fetched; fall back to the DB row.
     let (author, pr_status) = match fetch_result {
@@ -159,32 +159,35 @@ pub async fn get_pr(
         body_html,
     };
 
-    let threads = build_threads(queries::query_comments_for_pr(&state.pool, number).await?);
-    let commits = queries::query_commits_for_pr(&state.pool, number).await?;
+    let threads =
+        build_threads(queries::query_comments_for_pr(&state.pool, &full_repo, number).await?);
+    let commits = queries::query_commits_for_pr(&state.pool, &full_repo, number).await?;
 
-    let check_runs: Vec<CheckRunResponse> = queries::query_check_runs_for_pr(&state.pool, number)
-        .await?
-        .into_iter()
-        .map(|cr| CheckRunResponse {
-            name: cr.name,
-            status: cr.status,
-            conclusion: cr.conclusion,
-        })
-        .collect();
+    let check_runs: Vec<CheckRunResponse> =
+        queries::query_check_runs_for_pr(&state.pool, &full_repo, number)
+            .await?
+            .into_iter()
+            .map(|cr| CheckRunResponse {
+                name: cr.name,
+                status: cr.status,
+                conclusion: cr.conclusion,
+            })
+            .collect();
 
-    let reviews: Vec<ReviewResponse> = queries::query_reviews_for_pr(&state.pool, number)
-        .await?
-        .into_iter()
-        .map(|r| ReviewResponse {
-            id: r.id,
-            reviewer: r.reviewer,
-            reviewer_avatar_url: r.reviewer_avatar_url,
-            state: r.state,
-            body: r.body,
-            submitted_at: r.submitted_at,
-            html_url: r.html_url,
-        })
-        .collect();
+    let reviews: Vec<ReviewResponse> =
+        queries::query_reviews_for_pr(&state.pool, &full_repo, number)
+            .await?
+            .into_iter()
+            .map(|r| ReviewResponse {
+                id: r.id,
+                reviewer: r.reviewer,
+                reviewer_avatar_url: r.reviewer_avatar_url,
+                state: r.state,
+                body: r.body,
+                submitted_at: r.submitted_at,
+                html_url: r.html_url,
+            })
+            .collect();
 
     Ok(Json(PrDetailResponse {
         pull_request,

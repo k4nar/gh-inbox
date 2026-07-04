@@ -4,6 +4,7 @@ use sqlx::SqlitePool;
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct CommentRow {
     pub id: i64,
+    pub repo: String,
     pub pr_id: i64,
     pub thread_id: Option<String>,
     pub author: String,
@@ -22,8 +23,8 @@ pub struct CommentRow {
 /// Insert or update a comment.
 pub async fn upsert_comment(pool: &SqlitePool, comment: &CommentRow) -> sqlx::Result<()> {
     sqlx::query(
-        "INSERT INTO comments (id, pr_id, thread_id, author, author_avatar_url, body, created_at, comment_type, path, position, in_reply_to_id, html_url, diff_hunk, resolved)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO comments (id, repo, pr_id, thread_id, author, author_avatar_url, body, created_at, comment_type, path, position, in_reply_to_id, html_url, diff_hunk, resolved)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            body              = excluded.body,
            author_avatar_url = excluded.author_avatar_url,
@@ -33,6 +34,7 @@ pub async fn upsert_comment(pool: &SqlitePool, comment: &CommentRow) -> sqlx::Re
            resolved          = excluded.resolved",
     )
     .bind(comment.id)
+    .bind(&comment.repo)
     .bind(comment.pr_id)
     .bind(&comment.thread_id)
     .bind(&comment.author)
@@ -52,13 +54,18 @@ pub async fn upsert_comment(pool: &SqlitePool, comment: &CommentRow) -> sqlx::Re
 }
 
 /// Query all comments for a given PR, ordered by creation time.
-pub async fn query_comments_for_pr(pool: &SqlitePool, pr_id: i64) -> sqlx::Result<Vec<CommentRow>> {
+pub async fn query_comments_for_pr(
+    pool: &SqlitePool,
+    repo: &str,
+    pr_id: i64,
+) -> sqlx::Result<Vec<CommentRow>> {
     sqlx::query_as::<_, CommentRow>(
-        "SELECT id, pr_id, thread_id, author, author_avatar_url, body, created_at, comment_type, path, position, in_reply_to_id, html_url, diff_hunk, resolved
+        "SELECT id, repo, pr_id, thread_id, author, author_avatar_url, body, created_at, comment_type, path, position, in_reply_to_id, html_url, diff_hunk, resolved
          FROM comments
-         WHERE pr_id = ?
+         WHERE repo = ? AND pr_id = ?
          ORDER BY created_at ASC",
     )
+    .bind(repo)
     .bind(pr_id)
     .fetch_all(pool)
     .await
@@ -99,6 +106,7 @@ mod tests {
     fn sample(id: i64, pr_id: i64) -> CommentRow {
         CommentRow {
             id,
+            repo: "owner/repo".to_string(),
             pr_id,
             thread_id: None,
             author: "bob".to_string(),
@@ -127,7 +135,9 @@ mod tests {
         upsert_comment(&pool, &c1).await.unwrap();
         upsert_comment(&pool, &c2).await.unwrap();
 
-        let comments = query_comments_for_pr(&pool, 42).await.unwrap();
+        let comments = query_comments_for_pr(&pool, "owner/repo", 42)
+            .await
+            .unwrap();
         assert_eq!(comments.len(), 2);
         assert_eq!(comments[0].body, "Looks good!");
         assert_eq!(comments[1].body, "LGTM");
@@ -143,7 +153,9 @@ mod tests {
         c.body = "Updated body".to_string();
         upsert_comment(&pool, &c).await.unwrap();
 
-        let comments = query_comments_for_pr(&pool, 42).await.unwrap();
+        let comments = query_comments_for_pr(&pool, "owner/repo", 42)
+            .await
+            .unwrap();
         assert_eq!(comments.len(), 1);
         assert_eq!(comments[0].body, "Updated body");
     }
@@ -157,7 +169,9 @@ mod tests {
         c.html_url = Some("https://github.com/owner/repo/pull/42#issuecomment-1".to_string());
         upsert_comment(&pool, &c).await.unwrap();
 
-        let comments = query_comments_for_pr(&pool, 42).await.unwrap();
+        let comments = query_comments_for_pr(&pool, "owner/repo", 42)
+            .await
+            .unwrap();
         assert_eq!(
             comments[0].html_url,
             Some("https://github.com/owner/repo/pull/42#issuecomment-1".to_string())
@@ -173,11 +187,39 @@ mod tests {
         c.diff_hunk = Some("@@ -1,4 +1,5 @@\n context\n+added line\n context".to_string());
         upsert_comment(&pool, &c).await.unwrap();
 
-        let comments = query_comments_for_pr(&pool, 42).await.unwrap();
+        let comments = query_comments_for_pr(&pool, "owner/repo", 42)
+            .await
+            .unwrap();
         assert_eq!(
             comments[0].diff_hunk,
             Some("@@ -1,4 +1,5 @@\n context\n+added line\n context".to_string())
         );
+    }
+
+    #[tokio::test]
+    async fn same_pr_number_in_different_repos_stays_separate() {
+        let pool = test_pool().await;
+        upsert_pull_request(&pool, &sample_pr()).await.unwrap();
+        let mut other_pr = sample_pr();
+        other_pr.repo = "other/repo".to_string();
+        upsert_pull_request(&pool, &other_pr).await.unwrap();
+
+        upsert_comment(&pool, &sample(1, 42)).await.unwrap();
+        let mut other = sample(2, 42);
+        other.repo = "other/repo".to_string();
+        other.body = "From the other repo".to_string();
+        upsert_comment(&pool, &other).await.unwrap();
+
+        let comments = query_comments_for_pr(&pool, "owner/repo", 42)
+            .await
+            .unwrap();
+        assert_eq!(comments.len(), 1);
+        assert_eq!(comments[0].body, "Looks good!");
+        let comments = query_comments_for_pr(&pool, "other/repo", 42)
+            .await
+            .unwrap();
+        assert_eq!(comments.len(), 1);
+        assert_eq!(comments[0].body, "From the other repo");
     }
 
     #[tokio::test]
@@ -201,7 +243,9 @@ mod tests {
         reply.created_at = "2025-01-02T00:00:00Z".to_string();
         upsert_comment(&pool, &reply).await.unwrap();
 
-        let comments = query_comments_for_pr(&pool, 42).await.unwrap();
+        let comments = query_comments_for_pr(&pool, "owner/repo", 42)
+            .await
+            .unwrap();
         assert_eq!(comments.len(), 2);
         assert_eq!(comments[0].thread_id, Some("thread-1".to_string()));
         assert_eq!(comments[1].thread_id, Some("thread-1".to_string()));

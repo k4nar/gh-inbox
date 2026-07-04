@@ -116,6 +116,7 @@ pub async fn cache_pr_data(
     for c in &data.issue_comments {
         let row = CommentRow {
             id: c.id,
+            repo: full_repo.to_string(),
             pr_id: number,
             thread_id: Some("conversation".to_string()),
             author: c.user.login.clone(),
@@ -150,6 +151,7 @@ pub async fn cache_pr_data(
             .unwrap_or(false);
         let row = CommentRow {
             id: c.id,
+            repo: full_repo.to_string(),
             pr_id: number,
             thread_id: Some(thread_id),
             author: c.user.login.clone(),
@@ -172,6 +174,7 @@ pub async fn cache_pr_data(
         let first_line = c.commit.message.lines().next().unwrap_or("").to_string();
         let row = CommitRow {
             sha: c.sha.clone(),
+            repo: full_repo.to_string(),
             pr_id: number,
             message: first_line,
             author: c.commit.author.name.clone(),
@@ -187,6 +190,7 @@ pub async fn cache_pr_data(
     for cr in &data.check_runs.check_runs {
         let row = CheckRunRow {
             id: cr.id,
+            repo: full_repo.to_string(),
             pr_id: number,
             name: cr.name.clone(),
             status: cr.status.clone(),
@@ -199,6 +203,7 @@ pub async fn cache_pr_data(
     for r in &data.reviews {
         let row = ReviewRow {
             id: r.id,
+            repo: full_repo.to_string(),
             pr_id: number,
             reviewer: r.user.login.clone(),
             reviewer_avatar_url: r.user.avatar_url.clone(),
@@ -226,7 +231,7 @@ pub async fn cache_pr_data(
             .map(String::as_str)
             .collect();
         let teams_json = serde_json::to_string(&matched).unwrap_or_else(|_| "[]".to_string());
-        if let Err(e) = queries::update_teams(pool, number, &teams_json).await {
+        if let Err(e) = queries::update_teams(pool, full_repo, number, &teams_json).await {
             tracing::warn!(pr_number = number, error = %e, "update_teams failed");
         }
     }
@@ -317,7 +322,9 @@ mod tests {
             .unwrap();
         assert!(result.is_some());
 
-        let reviews = queries::query_reviews_for_pr(&pool, 42).await.unwrap();
+        let reviews = queries::query_reviews_for_pr(&pool, "owner/repo", 42)
+            .await
+            .unwrap();
         assert_eq!(reviews.len(), 1);
         assert_eq!(reviews[0].id, 1);
         assert_eq!(reviews[0].reviewer, "bob");
@@ -369,7 +376,9 @@ mod tests {
             .unwrap();
         assert!(pr.is_some(), "PR should be cached");
 
-        let reviews = queries::query_reviews_for_pr(&pool, 42).await.unwrap();
+        let reviews = queries::query_reviews_for_pr(&pool, "owner/repo", 42)
+            .await
+            .unwrap();
         assert!(reviews.is_empty());
     }
 }
