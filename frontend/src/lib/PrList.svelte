@@ -69,9 +69,11 @@ const unsubInfo = onPrInfoUpdated((data) => {
         item.author = data.author;
         item.pr_status = data.pr_status;
         item.ci_status = data.ci_status;
-        if (data.new_commits !== null) item.new_commits = data.new_commits;
-        if (data.new_comments !== null) item.new_comments = data.new_comments;
-        if (data.new_reviews !== null) item.new_reviews = data.new_reviews;
+        // Assign unconditionally: null is meaningful here (first visit — the
+        // "New pull request" state), only `undefined` means "not enriched yet".
+        item.new_commits = data.new_commits;
+        item.new_comments = data.new_comments;
+        item.new_reviews = data.new_reviews;
         if (data.teams !== null) item.teams = data.teams;
         notifications = [...notifications];
     }
@@ -305,6 +307,7 @@ const STATUS_ICONS: Record<string, string> = {
 
 function activitySentence(item: InboxItem): string | null {
     if (!item.author) return null;
+    if (item.new_commits === undefined) return null; // not yet enriched — render nothing
     if (item.new_commits === null) return null; // first visit — handled separately
     const parts: string[] = [];
     if (item.new_commits > 0) {

@@ -349,6 +349,73 @@ describe("PrList", () => {
         });
     });
 
+    it("activity renders nothing while not yet enriched (fields absent from inbox API)", async () => {
+        // The inbox API never includes activity fields — they arrive as
+        // undefined and are only filled in by the pr:info_updated SSE event.
+        globalThis.fetch = mockFetch(
+            paginatedResponse([
+                makeItem({
+                    new_commits: undefined,
+                    new_comments: undefined,
+                    new_reviews: undefined,
+                }),
+            ]),
+        );
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("owner/repo")).toBeInTheDocument();
+        });
+        expect(
+            screen.queryByText("✦ New pull request"),
+        ).not.toBeInTheDocument();
+        expect(
+            screen.queryByText("No new activity since your last visit"),
+        ).not.toBeInTheDocument();
+    });
+
+    it("SSE event with null activity marks the item as a new pull request", async () => {
+        let capturedInfoCallback: ((data: unknown) => void) | null = null;
+        vi.mocked(onPrInfoUpdated).mockImplementation((cb) => {
+            capturedInfoCallback = cb as (data: unknown) => void;
+            return () => {};
+        });
+
+        globalThis.fetch = mockFetch(
+            paginatedResponse([
+                makeItem({
+                    new_commits: undefined,
+                    new_comments: undefined,
+                    new_reviews: undefined,
+                }),
+            ]),
+        );
+
+        render(PrList);
+
+        await waitFor(() => {
+            expect(screen.getByText("owner/repo")).toBeInTheDocument();
+        });
+
+        // Backend sends null for all three = PR never viewed (first visit).
+        capturedInfoCallback!({
+            pr_id: 42,
+            repository: "owner/repo",
+            author: "alice",
+            pr_status: "open",
+            ci_status: null,
+            new_commits: null,
+            new_comments: null,
+            new_reviews: null,
+            teams: null,
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText("✦ New pull request")).toBeInTheDocument();
+        });
+    });
+
     it("status icon shimmer is rendered when pr_status is null and pr_id is set", async () => {
         globalThis.fetch = mockFetch(
             paginatedResponse([makeItem({ pr_status: null, pr_id: 42 })]),

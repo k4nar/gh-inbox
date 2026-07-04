@@ -106,10 +106,12 @@ export interface InboxItem {
     pr_status: "open" | "draft" | "merged" | "closed" | null;
     ci_status: string | null;
     teams: string[] | null; // null = loading (show shimmer)
-    // Activity fields — populated via SSE pr:info_updated, not from the inbox API.
-    new_commits: number | null; // null = not yet enriched or first visit
-    new_comments: { author: string; count: number }[] | null;
-    new_reviews: { reviewer: string; state: string }[] | null;
+    // Activity fields — the inbox API never includes them, so items arrive with
+    // `undefined` (= not yet enriched, render nothing) and are filled in by SSE
+    // pr:info_updated, where `null` means first visit (never viewed).
+    new_commits?: number | null;
+    new_comments?: { author: string; count: number }[] | null;
+    new_reviews?: { reviewer: string; state: string }[] | null;
 }
 
 export const DEFAULT_PER_PAGE = 20;
