@@ -46,7 +46,9 @@ pub async fn get_inbox(
     State(state): State<AppState>,
     Query(query): Query<InboxQuery>,
 ) -> Result<Json<PaginatedInbox>, AppError> {
-    let page = query.page.unwrap_or(1).max(1);
+    // Cap the page so `(page - 1) * per_page` can never overflow u32
+    // (per_page is clamped to 100): an absurd ?page= must not panic or wrap.
+    let page = query.page.unwrap_or(1).clamp(1, u32::MAX / 100);
     let per_page = query.per_page.unwrap_or(25).clamp(1, 100);
     let offset = (page - 1) * per_page;
 
@@ -152,6 +154,25 @@ mod tests {
         let data: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(data["total"], 1);
         assert_eq!(data["items"][0]["author"], "alice");
+    }
+
+    #[tokio::test]
+    async fn huge_page_number_does_not_overflow() {
+        let app = server_with_two_prs().await;
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method(Method::GET)
+                    .uri("/api/inbox?page=4294967295")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let data: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(data["items"].as_array().unwrap().len(), 0);
     }
 
     #[tokio::test]
