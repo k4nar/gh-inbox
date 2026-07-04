@@ -110,7 +110,15 @@ pub async fn sync_notifications(state: &AppState) -> Result<SyncResult, SyncErro
             repository: notif.repository.full_name.clone(),
             reason: notif.reason.clone(),
             unread: notif.unread && notif.reason != "your_activity",
-            archived: false,
+            // First contact with a thread GitHub already reports as read: the
+            // user handled it outside gh-inbox (read on github.com, possibly
+            // marked done — the REST API cannot tell the two apart within its
+            // ~7-week feed window). Start it archived instead of flooding the
+            // inbox on cold starts; new activity revives it via the conflict
+            // clause. Threads already tracked are unaffected — the conflict
+            // clause never reads excluded.archived, so this value only matters
+            // on fresh inserts.
+            archived: !notif.unread,
             updated_at: notif.updated_at.clone(),
         };
 
@@ -226,7 +234,7 @@ mod tests {
     const NULL_URL_NOTIFICATION: &str = r#"[{
         "id": "2",
         "reason": "mention",
-        "unread": false,
+        "unread": true,
         "updated_at": "2025-01-02T00:00:00Z",
         "subject": {
             "title": "Release note",
@@ -488,6 +496,49 @@ mod tests {
         assert_eq!(inbox.len(), 1, "read notification should stay in the inbox");
         assert_eq!(inbox[0].id, "1");
         assert!(!inbox[0].unread, "notification should remain read");
+    }
+
+    #[tokio::test]
+    async fn first_seen_read_notification_starts_archived() {
+        // A thread the DB has never tracked, already read on GitHub: the user
+        // handled it elsewhere (possibly marked done — the API can't tell), so
+        // it must not flood the inbox on a cold start.
+        let state = make_state(start_mock(READ_NOTIFICATION).await).await;
+
+        sync_notifications(&state).await.unwrap();
+
+        assert!(queries::query_inbox(&state.pool).await.unwrap().is_empty());
+        let archived = queries::query_archived(&state.pool).await.unwrap();
+        assert_eq!(archived.len(), 1);
+        assert_eq!(archived[0].id, "1");
+    }
+
+    #[tokio::test]
+    async fn first_seen_read_notification_revives_on_new_activity() {
+        let state = make_state(start_mock(READ_NOTIFICATION).await).await;
+        sync_notifications(&state).await.unwrap();
+        assert_eq!(queries::query_archived(&state.pool).await.unwrap().len(), 1);
+
+        // New activity arrives: GitHub reports the thread unread again — the
+        // standard revival path must move it back to the inbox.
+        let mut revived = queries::NotificationRow {
+            id: "1".to_string(),
+            pr_id: Some(42),
+            title: "Fix bug".to_string(),
+            repository: "owner/repo".to_string(),
+            reason: "review_requested".to_string(),
+            unread: true,
+            archived: false,
+            updated_at: "2025-01-02T00:00:00Z".to_string(),
+        };
+        revived.unread = true;
+        queries::upsert_notification(&state.pool, &revived, now_epoch())
+            .await
+            .unwrap();
+
+        let inbox = queries::query_inbox(&state.pool).await.unwrap();
+        assert_eq!(inbox.len(), 1);
+        assert!(inbox[0].unread);
     }
 
     #[tokio::test]
