@@ -120,7 +120,9 @@ pub async fn get_pr(
     // Read PR from DB first to capture the previous last_viewed_at.
     let pr = queries::get_pull_request(&state.pool, &full_repo, number)
         .await?
-        .ok_or_else(|| AppError::Database(sqlx::Error::RowNotFound))?;
+        .ok_or_else(|| {
+            AppError::NotFound(format!("pull request {full_repo}#{number} not found"))
+        })?;
 
     let previous_viewed_at = pr.last_viewed_at.clone();
 
@@ -198,4 +200,34 @@ pub async fn get_pr(
         reviews,
         labels,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::{Method, StatusCode};
+    use std::sync::Arc;
+    use tower::util::ServiceExt;
+
+    #[tokio::test]
+    async fn missing_pr_returns_404() {
+        let pool = crate::db::init_with_path(":memory:").await;
+        // Throttle the GitHub fetch so the handler goes straight to the
+        // (empty) cache instead of calling out.
+        crate::db::queries::set_last_fetched_now(&pool, "pr:owner/repo#42")
+            .await
+            .unwrap();
+        let (app, _) = crate::app(pool, Arc::from("token"));
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method(Method::GET)
+                    .uri("/api/pull-requests/owner/repo/42")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
 }
