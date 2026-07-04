@@ -70,25 +70,28 @@ function buildInboxUrl(view: string, page: number): string {
     return `/api/inbox?${params.toString()}`;
 }
 
-const unsubInfo = onPrInfoUpdated((data) => {
-    const item = notifications.find(
-        (n) => n.pr_id === data.pr_id && n.repository === data.repository,
-    );
-    if (item) {
-        item.author = data.author;
-        item.pr_status = data.pr_status;
-        item.ci_status = data.ci_status;
-        // Assign unconditionally: null is meaningful here (first visit — the
-        // "New pull request" state), only `undefined` means "not enriched yet".
-        item.new_commits = data.new_commits;
-        item.new_comments = data.new_comments;
-        item.new_reviews = data.new_reviews;
-        if (data.teams !== null) item.teams = data.teams;
-        notifications = [...notifications];
-    }
-});
+// Subscribe inside the effect so setup and teardown share a lifecycle — a
+// module-level subscription with effect-only cleanup leaks the listener if
+// the component is destroyed before its first effect flush.
 $effect(() => {
-    return unsubInfo;
+    return onPrInfoUpdated((data) => {
+        const item = notifications.find(
+            (n) => n.pr_id === data.pr_id && n.repository === data.repository,
+        );
+        if (item) {
+            item.author = data.author;
+            item.pr_status = data.pr_status;
+            item.ci_status = data.ci_status;
+            // Assign unconditionally: null is meaningful here (first visit —
+            // the "New pull request" state), only `undefined` means "not
+            // enriched yet".
+            item.new_commits = data.new_commits;
+            item.new_comments = data.new_comments;
+            item.new_reviews = data.new_reviews;
+            if (data.teams !== null) item.teams = data.teams;
+            notifications = [...notifications];
+        }
+    });
 });
 
 // IntersectionObserver: prefetch PR data for visible inbox rows.
