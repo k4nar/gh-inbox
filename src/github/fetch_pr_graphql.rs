@@ -12,6 +12,10 @@ use crate::models::{
 
 use super::GithubClient;
 
+// Connections use `last:` so that on PRs exceeding the page size the newest
+// activity is kept — dropping the oldest, never what changed since last view.
+// Exception: comments inside a review thread use `first:` because the first
+// node must be the thread root (thread grouping and resolved state key off it).
 const PULL_REQUEST_QUERY: &str = r#"
 query PullRequestFull($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -31,7 +35,7 @@ query PullRequestFull($owner: String!, $repo: String!, $number: Int!) {
       labels(first: 100) {
         nodes { name color }
       }
-      comments(first: 100) {
+      comments(last: 100) {
         nodes {
           databaseId
           author { login avatarUrl }
@@ -40,7 +44,7 @@ query PullRequestFull($owner: String!, $repo: String!, $number: Int!) {
           url
         }
       }
-      reviewThreads(first: 100) {
+      reviewThreads(last: 100) {
         nodes {
           isResolved
           comments(first: 100) {
@@ -59,7 +63,7 @@ query PullRequestFull($owner: String!, $repo: String!, $number: Int!) {
           }
         }
       }
-      allCommits: commits(first: 250) {
+      allCommits: commits(last: 250) {
         nodes {
           commit {
             oid
@@ -87,7 +91,7 @@ query PullRequestFull($owner: String!, $repo: String!, $number: Int!) {
           }
         }
       }
-      reviews(first: 100) {
+      reviews(last: 100) {
         nodes {
           databaseId
           author { login avatarUrl }
