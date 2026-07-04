@@ -30,6 +30,9 @@ pub async fn patch_preferences(
     let map: Map<String, Value> = serde_json::from_slice(&body)
         .map_err(|e| AppError::BadRequest(format!("invalid JSON: {e}")))?;
 
+    // Validate the whole map before writing anything, so a request that is
+    // partially invalid is rejected without persisting its valid keys.
+    let mut validated: Vec<(&String, &str)> = Vec::with_capacity(map.len());
     for (key, value) in &map {
         let v = value
             .as_str()
@@ -50,6 +53,10 @@ pub async fn patch_preferences(
             }
         }
 
+        validated.push((key, v));
+    }
+
+    for (key, v) in validated {
         queries::upsert_preference(&state.pool, key, v).await?;
     }
 
@@ -62,4 +69,35 @@ pub fn router() -> axum::Router<AppState> {
         "/api/preferences",
         get(get_preferences).patch(patch_preferences),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::{Method, StatusCode};
+    use std::sync::Arc;
+    use tower::util::ServiceExt;
+
+    use crate::db::queries;
+
+    #[tokio::test]
+    async fn partially_invalid_patch_persists_nothing() {
+        let pool = crate::db::init_with_path(":memory:").await;
+        let (app, _) = crate::app(pool.clone(), Arc::from("token"));
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method(Method::PATCH)
+                    .uri("/api/preferences")
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(r#"{"theme":"dark","zzz":"x"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let theme = queries::get_preference(&pool, "theme").await.unwrap();
+        assert_eq!(theme, None, "the valid key must not have been applied");
+    }
 }
