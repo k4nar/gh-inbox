@@ -38,6 +38,9 @@ impl From<sqlx::Error> for SyncError {
 
 const FULL_SYNC_THRESHOLD_SECS: i64 = 2 * 60 * 60; // 2 hours
 
+/// Clock-skew tolerance subtracted from the incremental `since` cursor.
+const SINCE_OVERLAP_SECS: i64 = 60;
+
 pub(crate) fn now_epoch() -> i64 {
     chrono::Utc::now().timestamp()
 }
@@ -82,7 +85,10 @@ pub async fn sync_notifications(state: &AppState) -> Result<SyncResult, SyncErro
     let notifications = if is_full_sync {
         super::fetch_all_notifications(&state.github).await?
     } else {
-        let since_iso = epoch_to_iso(last_fetched.unwrap())?;
+        // GitHub filters `since` by *its* clock while the cursor comes from
+        // ours; overlap the window by a margin so moderate clock skew cannot
+        // silently drop notifications. Re-fetched ones are no-op upserts.
+        let since_iso = epoch_to_iso(last_fetched.unwrap() - SINCE_OVERLAP_SECS)?;
         super::fetch_notifications_since(&state.github, &since_iso).await?
     };
 
@@ -125,7 +131,10 @@ pub async fn sync_notifications(state: &AppState) -> Result<SyncResult, SyncErro
         0
     };
 
-    queries::set_last_fetched_now(&state.pool, "notifications").await?;
+    // Record the sync *start* time, not completion: notifications updated while
+    // the multi-page fetch was in flight are not in this snapshot and must fall
+    // inside the next incremental window.
+    queries::set_last_fetched_epoch(&state.pool, "notifications", now).await?;
 
     Ok(SyncResult {
         changed,
