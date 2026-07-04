@@ -543,6 +543,53 @@ mod tests {
     }
 }
 
+/// Clears `sync_in_progress` on drop, so the flag is released even when the
+/// sync task panics. A stuck flag would silently disable both the background
+/// loop and POST /api/sync for the rest of the session.
+pub struct SyncInProgressGuard(pub std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for SyncInProgressGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
+/// One tick of the sync loop: broadcast Started, sync, broadcast the outcome.
+/// Flag handling lives with the callers.
+async fn sync_tick(state: &AppState, tx: &broadcast::Sender<SyncEvent>) {
+    // Ignore send errors — they just mean no clients are listening
+    let _ = tx.send(SyncEvent::SyncStatus {
+        status: SyncStatusKind::Started,
+    });
+
+    match sync_notifications(state).await {
+        Ok(SyncResult {
+            changed,
+            reconciled,
+        }) => {
+            let count = changed.len() + reconciled;
+            if count > 0 {
+                tracing::info!(count, "inbox changed");
+                let _ = tx.send(SyncEvent::NewNotifications { count });
+
+                // Auto-fetch PR data for changed notifications in the viewport.
+                auto_fetch_viewport_prs(state, tx, &changed).await;
+            }
+            let _ = tx.send(SyncEvent::SyncStatus {
+                status: SyncStatusKind::Completed,
+            });
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "notification sync failed");
+            let _ = tx.send(SyncEvent::SyncStatus {
+                status: SyncStatusKind::Errored {
+                    message: format!("{e:?}"),
+                },
+            });
+        }
+    }
+}
+
 /// Run the background notification sync loop.
 /// Fetches notifications immediately, then every `interval` seconds.
 /// Sends events to `tx` for SSE clients.
@@ -569,39 +616,21 @@ pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>) {
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .is_ok()
         {
-            // Ignore send errors — they just mean no clients are listening
-            let _ = tx.send(SyncEvent::SyncStatus {
-                status: SyncStatusKind::Started,
+            // Run the tick in its own task: a panic surfaces here as a
+            // JoinError instead of unwinding through — and killing — the loop.
+            // The guard travels into the task so the flag is released either way.
+            let guard = SyncInProgressGuard(state.sync_in_progress.clone());
+            let tick = tokio::spawn({
+                let state = state.clone();
+                let tx = tx.clone();
+                async move {
+                    let _guard = guard;
+                    sync_tick(&state, &tx).await;
+                }
             });
-
-            match sync_notifications(&state).await {
-                Ok(SyncResult {
-                    changed,
-                    reconciled,
-                }) => {
-                    let count = changed.len() + reconciled;
-                    if count > 0 {
-                        tracing::info!(count, "inbox changed");
-                        let _ = tx.send(SyncEvent::NewNotifications { count });
-
-                        // Auto-fetch PR data for changed notifications in the viewport.
-                        auto_fetch_viewport_prs(&state, &tx, &changed).await;
-                    }
-                    let _ = tx.send(SyncEvent::SyncStatus {
-                        status: SyncStatusKind::Completed,
-                    });
-                }
-                Err(e) => {
-                    tracing::warn!(error = %e, "notification sync failed");
-                    let _ = tx.send(SyncEvent::SyncStatus {
-                        status: SyncStatusKind::Errored {
-                            message: format!("{e:?}"),
-                        },
-                    });
-                }
+            if let Err(e) = tick.await {
+                tracing::error!(error = %e, "sync tick panicked");
             }
-
-            state.sync_in_progress.store(false, Ordering::SeqCst);
         }
 
         tokio::time::sleep(interval).await;

@@ -5,7 +5,9 @@ use axum::http::StatusCode;
 
 use crate::api::AppError;
 use crate::db::queries;
-use crate::github::sync::{SyncResult, auto_fetch_viewport_prs, sync_notifications};
+use crate::github::sync::{
+    SyncInProgressGuard, SyncResult, auto_fetch_viewport_prs, sync_notifications,
+};
 use crate::models::{SyncEvent, SyncStatusKind};
 use crate::server::AppState;
 
@@ -26,6 +28,10 @@ pub async fn post_sync(State(state): State<AppState>) -> Result<StatusCode, AppE
 
     let state_clone = state.clone();
     tokio::spawn(async move {
+        // Release the flag on every exit path, including a panic — otherwise
+        // all future syncs (manual and background) are silently skipped.
+        let _guard = SyncInProgressGuard(state_clone.sync_in_progress.clone());
+
         // Force full sync by clearing last_fetched_at.
         let _ = queries::clear_last_fetched(&state_clone.pool, "notifications").await;
 
@@ -56,8 +62,6 @@ pub async fn post_sync(State(state): State<AppState>) -> Result<StatusCode, AppE
                 });
             }
         }
-
-        state_clone.sync_in_progress.store(false, Ordering::SeqCst);
     });
 
     Ok(StatusCode::ACCEPTED)
