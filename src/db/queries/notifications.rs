@@ -20,6 +20,11 @@ pub struct NotificationRow {
 ///
 /// `synced_at` is always written unconditionally (even on no-op upserts) so that
 /// full-sync reconciliation can archive stale rows by comparing timestamps.
+///
+/// `synced_at` is also the sync's start time: the fetched snapshot cannot contain
+/// anything newer. When a local mutation (read/archive/unarchive) is stamped at or
+/// after that time, the snapshot is stale for the unread/archived flags and must
+/// not overwrite them; a later sync (started after the local write) clears the stamp.
 pub async fn upsert_notification(
     pool: &SqlitePool,
     notif: &NotificationRow,
@@ -34,16 +39,25 @@ pub async fn upsert_notification(
            repository = excluded.repository,
            reason     = excluded.reason,
            unread     = CASE
+                          WHEN notifications.local_write_epoch >= excluded.synced_at THEN notifications.unread
                           WHEN excluded.reason = 'your_activity' THEN notifications.unread
                           ELSE excluded.unread
                         END,
            updated_at = excluded.updated_at,
            archived   = CASE
+                          WHEN notifications.local_write_epoch >= excluded.synced_at THEN notifications.archived
                           WHEN excluded.reason = 'your_activity' THEN notifications.archived
                           WHEN excluded.unread = 1               THEN 0
                           ELSE notifications.archived
                         END,
-           locally_unarchived = 0,
+           locally_unarchived = CASE
+                          WHEN notifications.local_write_epoch >= excluded.synced_at THEN notifications.locally_unarchived
+                          ELSE 0
+                        END,
+           local_write_epoch = CASE
+                          WHEN notifications.local_write_epoch >= excluded.synced_at THEN notifications.local_write_epoch
+                          ELSE NULL
+                        END,
            synced_at  = excluded.synced_at
          WHERE notifications.updated_at != excluded.updated_at
             OR notifications.unread     != excluded.unread
@@ -64,13 +78,20 @@ pub async fn upsert_notification(
     // When the upsert was a no-op (nothing changed), synced_at wasn't touched
     // by the ON CONFLICT clause. Stamp it now so reconciliation can tell this
     // notification was returned by GitHub during this sync cycle. GitHub
-    // returning the thread also means unarchive protection is no longer needed.
+    // returning the thread also means unarchive protection is no longer needed —
+    // unless a local write postdates this sync's snapshot.
     if result.rows_affected() == 0 {
-        sqlx::query("UPDATE notifications SET synced_at = ?, locally_unarchived = 0 WHERE id = ?")
-            .bind(synced_at)
-            .bind(&notif.id)
-            .execute(pool)
-            .await?;
+        sqlx::query(
+            "UPDATE notifications SET
+               synced_at = ?1,
+               locally_unarchived = CASE WHEN local_write_epoch >= ?1 THEN locally_unarchived ELSE 0 END,
+               local_write_epoch  = CASE WHEN local_write_epoch >= ?1 THEN local_write_epoch ELSE NULL END
+             WHERE id = ?2",
+        )
+        .bind(synced_at)
+        .bind(&notif.id)
+        .execute(pool)
+        .await?;
     }
 
     Ok(result.rows_affected())
@@ -100,13 +121,16 @@ pub async fn query_archived(pool: &SqlitePool) -> sqlx::Result<Vec<NotificationR
     .await
 }
 
-/// Archive a notification by ID. Returns the number of rows affected.
-pub async fn archive_notification(pool: &SqlitePool, id: &str) -> sqlx::Result<u64> {
-    let result =
-        sqlx::query("UPDATE notifications SET archived = 1, locally_unarchived = 0 WHERE id = ?")
-            .bind(id)
-            .execute(pool)
-            .await?;
+/// Archive a notification by ID, stamping the local write time so an in-flight
+/// sync snapshot cannot revert it. Returns the number of rows affected.
+pub async fn archive_notification(pool: &SqlitePool, id: &str, now: i64) -> sqlx::Result<u64> {
+    let result = sqlx::query(
+        "UPDATE notifications SET archived = 1, locally_unarchived = 0, local_write_epoch = ? WHERE id = ?",
+    )
+    .bind(now)
+    .bind(id)
+    .execute(pool)
+    .await?;
     Ok(result.rows_affected())
 }
 
@@ -114,21 +138,26 @@ pub async fn archive_notification(pool: &SqlitePool, id: &str) -> sqlx::Result<u
 /// The row is flagged so full-sync reconciliation does not re-archive it: the thread
 /// is marked done on GitHub, so GitHub no longer returns it and it would otherwise
 /// look stale on the next full sync.
-pub async fn unarchive_notification(pool: &SqlitePool, id: &str) -> sqlx::Result<u64> {
-    let result =
-        sqlx::query("UPDATE notifications SET archived = 0, locally_unarchived = 1 WHERE id = ?")
-            .bind(id)
-            .execute(pool)
-            .await?;
+pub async fn unarchive_notification(pool: &SqlitePool, id: &str, now: i64) -> sqlx::Result<u64> {
+    let result = sqlx::query(
+        "UPDATE notifications SET archived = 0, locally_unarchived = 1, local_write_epoch = ? WHERE id = ?",
+    )
+    .bind(now)
+    .bind(id)
+    .execute(pool)
+    .await?;
     Ok(result.rows_affected())
 }
 
-/// Mark a notification as read. Returns the number of rows affected.
-pub async fn mark_read(pool: &SqlitePool, id: &str) -> sqlx::Result<u64> {
-    let result = sqlx::query("UPDATE notifications SET unread = 0 WHERE id = ?")
-        .bind(id)
-        .execute(pool)
-        .await?;
+/// Mark a notification as read, stamping the local write time so an in-flight
+/// sync snapshot cannot flip it back to unread. Returns the number of rows affected.
+pub async fn mark_read(pool: &SqlitePool, id: &str, now: i64) -> sqlx::Result<u64> {
+    let result =
+        sqlx::query("UPDATE notifications SET unread = 0, local_write_epoch = ? WHERE id = ?")
+            .bind(now)
+            .bind(id)
+            .execute(pool)
+            .await?;
     Ok(result.rows_affected())
 }
 
@@ -185,11 +214,11 @@ mod tests {
         let pool = test_pool().await;
         upsert_notification(&pool, &sample("n2"), 1).await.unwrap();
 
-        archive_notification(&pool, "n2").await.unwrap();
+        archive_notification(&pool, "n2", 1).await.unwrap();
         assert_eq!(query_inbox(&pool).await.unwrap().len(), 0);
         assert_eq!(query_archived(&pool).await.unwrap().len(), 1);
 
-        unarchive_notification(&pool, "n2").await.unwrap();
+        unarchive_notification(&pool, "n2", 1).await.unwrap();
         assert_eq!(query_inbox(&pool).await.unwrap().len(), 1);
         assert_eq!(query_archived(&pool).await.unwrap().len(), 0);
     }
@@ -212,9 +241,10 @@ mod tests {
         let pool = test_pool().await;
         let notif = sample("n4");
         upsert_notification(&pool, &notif, 1).await.unwrap();
-        archive_notification(&pool, "n4").await.unwrap();
-        // Re-upserting with unread=true should unarchive (new activity)
-        upsert_notification(&pool, &notif, 1).await.unwrap();
+        archive_notification(&pool, "n4", 1).await.unwrap();
+        // Re-upserting with unread=true should unarchive (new activity).
+        // The sync started after the local archive, so the guard does not apply.
+        upsert_notification(&pool, &notif, 2).await.unwrap();
         assert_eq!(query_inbox(&pool).await.unwrap().len(), 1);
         assert_eq!(query_archived(&pool).await.unwrap().len(), 0);
     }
@@ -224,10 +254,10 @@ mod tests {
         let pool = test_pool().await;
         let mut notif = sample("n6");
         upsert_notification(&pool, &notif, 1).await.unwrap();
-        archive_notification(&pool, "n6").await.unwrap();
+        archive_notification(&pool, "n6", 1).await.unwrap();
         // Re-upserting with unread=false should preserve archived status
         notif.unread = false;
-        upsert_notification(&pool, &notif, 1).await.unwrap();
+        upsert_notification(&pool, &notif, 2).await.unwrap();
         assert_eq!(query_inbox(&pool).await.unwrap().len(), 0);
         assert_eq!(query_archived(&pool).await.unwrap().len(), 1);
     }
@@ -236,7 +266,7 @@ mod tests {
     async fn mark_read_works() {
         let pool = test_pool().await;
         upsert_notification(&pool, &sample("n5"), 1).await.unwrap();
-        mark_read(&pool, "n5").await.unwrap();
+        mark_read(&pool, "n5", 1).await.unwrap();
         let inbox = query_inbox(&pool).await.unwrap();
         assert!(!inbox[0].unread);
     }
@@ -273,8 +303,8 @@ mod tests {
     async fn archive_stale_spares_locally_unarchived() {
         let pool = test_pool().await;
         upsert_notification(&pool, &sample("n1"), 5).await.unwrap();
-        archive_notification(&pool, "n1").await.unwrap();
-        unarchive_notification(&pool, "n1").await.unwrap();
+        archive_notification(&pool, "n1", 6).await.unwrap();
+        unarchive_notification(&pool, "n1", 6).await.unwrap();
 
         // n1 is stale (GitHub no longer returns done threads) but was
         // unarchived locally — reconciliation must leave it in the inbox.
@@ -288,8 +318,8 @@ mod tests {
         let pool = test_pool().await;
         let mut notif = sample("n1");
         upsert_notification(&pool, &notif, 5).await.unwrap();
-        archive_notification(&pool, "n1").await.unwrap();
-        unarchive_notification(&pool, "n1").await.unwrap();
+        archive_notification(&pool, "n1", 6).await.unwrap();
+        unarchive_notification(&pool, "n1", 6).await.unwrap();
 
         // GitHub returns the thread again (new activity) — protection lifts,
         // so a later full sync that no longer sees the thread re-archives it.
@@ -301,10 +331,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stale_sync_does_not_revert_fresh_local_read() {
+        let pool = test_pool().await;
+        // Sync starts at t=10 and snapshots the notification as unread.
+        upsert_notification(&pool, &sample("n1"), 10).await.unwrap();
+        // User marks it read at t=12, while the next sync (started t=11,
+        // snapshot predates the click) is still in flight.
+        mark_read(&pool, "n1", 12).await.unwrap();
+        upsert_notification(&pool, &sample("n1"), 11).await.unwrap();
+
+        let inbox = query_inbox(&pool).await.unwrap();
+        assert!(!inbox[0].unread, "stale snapshot must not revert the read");
+    }
+
+    #[tokio::test]
+    async fn stale_sync_does_not_resurrect_fresh_local_archive() {
+        let pool = test_pool().await;
+        upsert_notification(&pool, &sample("n1"), 10).await.unwrap();
+        // User archives at t=12; in-flight sync started at t=11 still has the
+        // thread as unread in its snapshot.
+        archive_notification(&pool, "n1", 12).await.unwrap();
+        upsert_notification(&pool, &sample("n1"), 11).await.unwrap();
+
+        assert_eq!(query_inbox(&pool).await.unwrap().len(), 0);
+        assert_eq!(query_archived(&pool).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn newer_sync_overrides_local_state_and_clears_stamp() {
+        let pool = test_pool().await;
+        let mut notif = sample("n1");
+        upsert_notification(&pool, &notif, 10).await.unwrap();
+        mark_read(&pool, "n1", 12).await.unwrap();
+
+        // A sync that started after the local write reflects real GitHub
+        // state (new activity arrived): it may flip the flags again.
+        notif.updated_at = "2025-01-02T00:00:00Z".to_string();
+        upsert_notification(&pool, &notif, 15).await.unwrap();
+        let inbox = query_inbox(&pool).await.unwrap();
+        assert!(inbox[0].unread, "newer sync state must apply");
+
+        // The stamp was cleared, so an even later stale-looking snapshot
+        // isn't blocked by the old local write.
+        mark_read(&pool, "n1", 20).await.unwrap();
+        upsert_notification(&pool, &notif, 21).await.unwrap();
+        let inbox = query_inbox(&pool).await.unwrap();
+        assert!(inbox[0].unread);
+    }
+
+    #[tokio::test]
     async fn archive_stale_skips_already_archived() {
         let pool = test_pool().await;
         upsert_notification(&pool, &sample("n1"), 5).await.unwrap();
-        archive_notification(&pool, "n1").await.unwrap();
+        archive_notification(&pool, "n1", 6).await.unwrap();
 
         // n1 is stale but already archived — rows_affected should be 0
         let count = archive_stale(&pool, 10).await.unwrap();

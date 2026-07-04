@@ -88,8 +88,10 @@ pub async fn mark_thread_read(
     let response = github
         .patch(&format!("/notifications/threads/{thread_id}"))
         .await?;
-    let status = response.status();
-    if status == 403 || status == 404 {
+    // 404: the thread is gone on GitHub — nothing to mark, not an error.
+    // 403 (e.g. token missing the `notifications` scope) must surface, or
+    // read state silently never reaches GitHub and every full sync reverts it.
+    if response.status() == 404 {
         return Ok(());
     }
     response.error_for_status()?;
@@ -103,8 +105,8 @@ pub async fn mark_thread_done(
     let response = github
         .delete(&format!("/notifications/threads/{thread_id}"))
         .await?;
-    let status = response.status();
-    if status == 403 || status == 404 {
+    // 404 is fine (thread already gone); 403 must surface — see mark_thread_read.
+    if response.status() == 404 {
         return Ok(());
     }
     response.error_for_status()?;
@@ -315,11 +317,11 @@ mod action_tests {
     }
 
     #[tokio::test]
-    async fn mark_thread_read_noops_on_403() {
+    async fn mark_thread_read_errors_on_403() {
         let (base, _) = start_mock_recording(403, "PATCH").await;
         let github = GithubClient::new(std::sync::Arc::from("tok"), base);
         let result = mark_thread_read(&github, "42").await;
-        assert!(result.is_ok());
+        assert!(result.is_err(), "missing-scope 403 must surface");
     }
 
     #[tokio::test]
@@ -347,11 +349,11 @@ mod action_tests {
     }
 
     #[tokio::test]
-    async fn mark_thread_done_noops_on_403() {
+    async fn mark_thread_done_errors_on_403() {
         let (base, _) = start_mock_recording(403, "DELETE").await;
         let github = GithubClient::new(std::sync::Arc::from("tok"), base);
         let result = mark_thread_done(&github, "42").await;
-        assert!(result.is_ok());
+        assert!(result.is_err(), "missing-scope 403 must surface");
     }
 
     #[tokio::test]
