@@ -1,5 +1,6 @@
 <script lang="ts">
 import { Pagination, Tooltip } from "bits-ui";
+import { untrack } from "svelte";
 import { apiFetch } from "./api.ts";
 import { countActiveFilters } from "./filters.ts";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
@@ -42,7 +43,9 @@ let currentPage = $state(1);
 let totalCount = $state(0);
 const PER_PAGE = DEFAULT_PER_PAGE;
 
-let lastFiltersKey = $state("");
+// Deliberately non-reactive: only compared inside the refetch effect, and
+// making them $state would re-trigger the effect it just ran in.
+let lastFiltersKey = "";
 
 function buildInboxUrl(view: string, page: number): string {
     const params = new URLSearchParams({
@@ -141,14 +144,20 @@ $effect(() => {
     };
 });
 
+// Monotonic id per fetch: rapid page/filter changes can resolve out of order,
+// and an older response must not overwrite a newer one.
+let fetchSeq = 0;
+
 async function fetchNotifications(
     view: string,
     page: number = currentPage,
 ): Promise<PaginatedInbox | null> {
+    const seq = ++fetchSeq;
     try {
         const result = await apiFetch<PaginatedInbox>(
             buildInboxUrl(view, page),
         );
+        if (seq !== fetchSeq) return null; // superseded by a newer fetch
         notifications = result.items;
         totalCount = result.total;
         currentPage = result.page;
@@ -157,27 +166,29 @@ async function fetchNotifications(
         return result;
     } catch (err) {
         console.error("Failed to fetch notifications:", err);
-        showError("Failed to load notifications");
+        if (seq === fetchSeq) showError("Failed to load notifications");
         return null;
     }
 }
 
-// Single effect: reset to page 1 when view or filters change, otherwise refetch current page.
-let lastView = $state("inbox");
+// Single effect: reset to page 1 when view or filters change, otherwise refetch
+// current page. Only refreshKey, currentView and activeFilters are tracked;
+// everything else (the change bookkeeping, currentPage, the fetch's own state
+// writes) runs untracked so the effect never re-triggers itself into a
+// duplicate fetch.
+let lastView = "inbox";
 $effect(() => {
     void refreshKey;
+    void currentView;
     const filtersKey = JSON.stringify(activeFilters);
-    const viewChanged = currentView !== lastView;
-    const filtersChanged = filtersKey !== lastFiltersKey;
-    if (viewChanged || filtersChanged) {
+    untrack(() => {
+        const changed =
+            currentView !== lastView || filtersKey !== lastFiltersKey;
         lastView = currentView;
         lastFiltersKey = filtersKey;
-        currentPage = 1;
-    }
-    fetchNotifications(
-        currentView,
-        viewChanged || filtersChanged ? 1 : currentPage,
-    );
+        if (changed) currentPage = 1;
+        fetchNotifications(currentView, changed ? 1 : currentPage);
+    });
 });
 
 let count = $derived(notifications.length);

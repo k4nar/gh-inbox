@@ -321,6 +321,24 @@ describe("PrList", () => {
         });
     });
 
+    it("fetches exactly once per filter change (no self-retriggering effect)", async () => {
+        globalThis.fetch = mockFetch(paginatedResponse([]));
+
+        const { rerender } = render(PrList, { props: { activeFilters: {} } });
+        await waitFor(() => {
+            expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+        });
+
+        await rerender({ activeFilters: { repo: "acme/api" } });
+        await waitFor(() => {
+            expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+        });
+
+        // Let any spurious re-run of the refetch effect fire before asserting.
+        await vi.advanceTimersByTimeAsync(50);
+        expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    });
+
     it("activity shows '✦ New pull request' when new_commits is null", async () => {
         globalThis.fetch = mockFetch(
             paginatedResponse([
