@@ -60,8 +60,14 @@ pub struct PullRequestRow {
     pub changed_files: i64,
     pub draft: bool,
     pub merged_at: Option<String>,
-    pub teams: Option<String>, // raw JSON string; deserialized at API layer
-    pub labels: String,        // JSON array, default "[]"
+    /// Raw JSON string, deserialized at the API layer.
+    /// NULL = team fetch not yet attempted; '[]' = fetched, no matching teams;
+    /// '[...]' = matched team slugs. Note: migration 009 also documents a
+    /// 'fetching' sentinel, but no code ever wrote it — the migration comment
+    /// can't be corrected because sqlx checksums applied migration files.
+    /// A literal 'fetching' value would fail the JSON parse in to_inbox_item.
+    pub teams: Option<String>,
+    pub labels: String, // JSON array, default "[]"
 }
 
 /// Filter parameters for inbox queries. All fields are AND-combined.
