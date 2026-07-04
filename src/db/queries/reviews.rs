@@ -17,7 +17,10 @@ pub struct ReviewRow {
 }
 
 /// Insert or update a review. State and body may change on re-submission.
-pub async fn upsert_review(pool: &SqlitePool, row: &ReviewRow) -> sqlx::Result<()> {
+pub async fn upsert_review<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Sqlite>,
+    row: &ReviewRow,
+) -> sqlx::Result<()> {
     sqlx::query(
         "INSERT INTO reviews (id, repo, pr_id, reviewer, reviewer_avatar_url, state, body, submitted_at, html_url)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -36,7 +39,7 @@ pub async fn upsert_review(pool: &SqlitePool, row: &ReviewRow) -> sqlx::Result<(
     .bind(&row.body)
     .bind(&row.submitted_at)
     .bind(&row.html_url)
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(())
 }

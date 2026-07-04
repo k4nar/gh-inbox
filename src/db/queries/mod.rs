@@ -22,7 +22,7 @@ pub use notifications::{
 pub use options::{InboxOptions, get_inbox_options};
 pub use preferences::{get_preference, upsert_preference};
 pub use pull_requests::{
-    FilterParams, InboxItem, PullRequestRow, get_pr_activity, get_pull_request,
+    FilterParams, InboxItem, PullRequestRow, delete_pr_children, get_pr_activity, get_pull_request,
     query_archived_enriched_paginated, query_inbox_enriched_paginated, update_ci_status,
     update_last_viewed_at, update_teams, upsert_pull_request,
 };

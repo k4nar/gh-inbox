@@ -21,7 +21,10 @@ pub struct CommentRow {
 }
 
 /// Insert or update a comment.
-pub async fn upsert_comment(pool: &SqlitePool, comment: &CommentRow) -> sqlx::Result<()> {
+pub async fn upsert_comment<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Sqlite>,
+    comment: &CommentRow,
+) -> sqlx::Result<()> {
     sqlx::query(
         "INSERT INTO comments (id, repo, pr_id, thread_id, author, author_avatar_url, body, created_at, comment_type, path, position, in_reply_to_id, html_url, diff_hunk, resolved)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -48,7 +51,7 @@ pub async fn upsert_comment(pool: &SqlitePool, comment: &CommentRow) -> sqlx::Re
     .bind(&comment.html_url)
     .bind(&comment.diff_hunk)
     .bind(comment.resolved)
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(())
 }

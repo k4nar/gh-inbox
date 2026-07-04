@@ -80,6 +80,10 @@ pub async fn fetch_and_cache_pr(
 }
 
 /// Cache all PR data from a GraphQL response into SQLite.
+///
+/// Runs in a single transaction: readers never observe a half-written PR, and
+/// child rows are wiped before re-insertion so the cache mirrors the snapshot —
+/// check runs from a previous push or comments deleted on GitHub do not linger.
 pub async fn cache_pr_data(
     pool: &SqlitePool,
     data: &GraphqlPrData,
@@ -89,6 +93,14 @@ pub async fn cache_pr_data(
     let gh_pr = &data.pull_request;
 
     let labels_json = serde_json::to_string(&gh_pr.labels).unwrap_or_else(|_| String::from("[]"));
+
+    // Read before opening the write transaction — keeps the write window short.
+    let user_teams: std::collections::HashSet<String> = queries::get_all_user_teams(pool)
+        .await?
+        .into_iter()
+        .collect();
+
+    let mut tx = pool.begin().await?;
 
     let pr_row = PullRequestRow {
         id: gh_pr.number,
@@ -110,7 +122,10 @@ pub async fn cache_pr_data(
         teams: None,
         labels: labels_json,
     };
-    queries::upsert_pull_request(pool, &pr_row).await?;
+    queries::upsert_pull_request(&mut *tx, &pr_row).await?;
+
+    // Wipe cached children so the re-insert below is an exact mirror of GitHub.
+    queries::delete_pr_children(&mut tx, full_repo, number).await?;
 
     // Issue comments
     for c in &data.issue_comments {
@@ -131,7 +146,7 @@ pub async fn cache_pr_data(
             diff_hunk: None,
             resolved: false,
         };
-        queries::upsert_comment(pool, &row).await?;
+        queries::upsert_comment(&mut *tx, &row).await?;
     }
 
     // Review comments
@@ -166,7 +181,7 @@ pub async fn cache_pr_data(
             diff_hunk: c.diff_hunk.clone(),
             resolved,
         };
-        queries::upsert_comment(pool, &row).await?;
+        queries::upsert_comment(&mut *tx, &row).await?;
     }
 
     // Commits
@@ -180,12 +195,12 @@ pub async fn cache_pr_data(
             author: c.commit.author.name.clone(),
             committed_at: c.commit.author.date.clone(),
         };
-        queries::upsert_commit(pool, &row).await?;
+        queries::upsert_commit(&mut *tx, &row).await?;
     }
 
     // Check runs
     let ci_status = derive_ci_status(&data.check_runs.check_runs);
-    queries::update_ci_status(pool, number, full_repo, ci_status.as_deref()).await?;
+    queries::update_ci_status(&mut *tx, number, full_repo, ci_status.as_deref()).await?;
 
     for cr in &data.check_runs.check_runs {
         let row = CheckRunRow {
@@ -196,7 +211,7 @@ pub async fn cache_pr_data(
             status: cr.status.clone(),
             conclusion: cr.conclusion.clone(),
         };
-        queries::upsert_check_run(pool, &row).await?;
+        queries::upsert_check_run(&mut *tx, &row).await?;
     }
 
     // Reviews
@@ -212,17 +227,13 @@ pub async fn cache_pr_data(
             submitted_at: r.submitted_at.clone(),
             html_url: r.html_url.clone(),
         };
-        if let Err(e) = queries::upsert_review(pool, &row).await {
+        if let Err(e) = queries::upsert_review(&mut *tx, &row).await {
             tracing::warn!(review_id = row.id, error = %e, "upsert_review failed");
         }
     }
 
     // Teams: intersect requested reviewer teams with the user's own teams.
     // Only update if user_teams is populated (i.e. ensure_user_teams_fresh has run).
-    let user_teams: std::collections::HashSet<String> = queries::get_all_user_teams(pool)
-        .await?
-        .into_iter()
-        .collect();
     if !user_teams.is_empty() {
         let matched: Vec<&str> = data
             .requested_reviewer_team_slugs
@@ -231,10 +242,12 @@ pub async fn cache_pr_data(
             .map(String::as_str)
             .collect();
         let teams_json = serde_json::to_string(&matched).unwrap_or_else(|_| "[]".to_string());
-        if let Err(e) = queries::update_teams(pool, full_repo, number, &teams_json).await {
+        if let Err(e) = queries::update_teams(&mut *tx, full_repo, number, &teams_json).await {
             tracing::warn!(pr_number = number, error = %e, "update_teams failed");
         }
     }
+
+    tx.commit().await?;
 
     Ok(())
 }
@@ -361,6 +374,93 @@ mod tests {
             pr.labels.contains("d73a4a"),
             "labels JSON should contain color"
         );
+    }
+
+    fn graphql_response_with_check_runs(check_runs_json: &str) -> String {
+        format!(
+            r#"{{
+              "data": {{
+                "repository": {{
+                  "pullRequest": {{
+                    "number": 42,
+                    "title": "Test PR",
+                    "body": "body text",
+                    "state": "OPEN",
+                    "isDraft": false,
+                    "mergedAt": null,
+                    "additions": 10,
+                    "deletions": 2,
+                    "changedFiles": 1,
+                    "url": "https://github.com/owner/repo/pull/42",
+                    "author": {{ "login": "alice" }},
+                    "headRefOid": "deadbeef",
+                    "labels": {{ "nodes": [] }},
+                    "comments": {{ "nodes": [] }},
+                    "reviewThreads": {{ "nodes": [] }},
+                    "allCommits": {{ "nodes": [] }},
+                    "headCommit": {{ "nodes": [{{ "commit": {{ "statusCheckRollup": {{ "contexts": {{ "nodes": {check_runs_json} }} }} }} }}] }},
+                    "reviews": {{ "nodes": [] }}
+                  }}
+                }}
+              }}
+            }}"#
+        )
+    }
+
+    #[tokio::test]
+    async fn refetch_prunes_check_runs_from_previous_push() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        // First fetch: failing run id 111. Second fetch (new push): only run 222.
+        let first = graphql_response_with_check_runs(
+            r#"[{ "__typename": "CheckRun", "databaseId": 111, "name": "CI", "status": "COMPLETED", "conclusion": "FAILURE" }]"#,
+        );
+        let second = graphql_response_with_check_runs(
+            r#"[{ "__typename": "CheckRun", "databaseId": 222, "name": "CI", "status": "COMPLETED", "conclusion": "SUCCESS" }]"#,
+        );
+        let calls = std::sync::Arc::new(AtomicUsize::new(0));
+        let calls_clone = calls.clone();
+
+        let app = Router::new().route(
+            "/graphql",
+            post(move || {
+                let n = calls_clone.fetch_add(1, Ordering::SeqCst);
+                let body = if n == 0 {
+                    first.clone()
+                } else {
+                    second.clone()
+                };
+                async move { ([("content-type", "application/json")], body) }
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let pool = crate::db::init_with_path(":memory:").await;
+        let github = GithubClient::new(std::sync::Arc::from("tok"), format!("http://{addr}"));
+
+        fetch_and_cache_pr(&pool, &github, "owner", "repo", 42)
+            .await
+            .unwrap();
+        let runs = queries::query_check_runs_for_pr(&pool, "owner/repo", 42)
+            .await
+            .unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].id, 111);
+
+        // Expire the fetch throttle, then refetch: the old run must be gone.
+        queries::clear_last_fetched(&pool, "pr:owner/repo#42")
+            .await
+            .unwrap();
+        fetch_and_cache_pr(&pool, &github, "owner", "repo", 42)
+            .await
+            .unwrap();
+        let runs = queries::query_check_runs_for_pr(&pool, "owner/repo", 42)
+            .await
+            .unwrap();
+        assert_eq!(runs.len(), 1, "run from the previous push must be pruned");
+        assert_eq!(runs[0].id, 222);
     }
 
     #[tokio::test]

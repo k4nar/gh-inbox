@@ -12,7 +12,10 @@ pub struct CheckRunRow {
 }
 
 /// Insert or update a check run.
-pub async fn upsert_check_run(pool: &SqlitePool, cr: &CheckRunRow) -> sqlx::Result<()> {
+pub async fn upsert_check_run<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Sqlite>,
+    cr: &CheckRunRow,
+) -> sqlx::Result<()> {
     sqlx::query(
         "INSERT INTO check_runs (id, repo, pr_id, name, status, conclusion)
          VALUES (?, ?, ?, ?, ?, ?)
@@ -26,7 +29,7 @@ pub async fn upsert_check_run(pool: &SqlitePool, cr: &CheckRunRow) -> sqlx::Resu
     .bind(&cr.name)
     .bind(&cr.status)
     .bind(&cr.conclusion)
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(())
 }

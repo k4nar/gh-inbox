@@ -12,7 +12,10 @@ pub struct CommitRow {
 }
 
 /// Insert or update a commit.
-pub async fn upsert_commit(pool: &SqlitePool, commit: &CommitRow) -> sqlx::Result<()> {
+pub async fn upsert_commit<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Sqlite>,
+    commit: &CommitRow,
+) -> sqlx::Result<()> {
     sqlx::query(
         "INSERT INTO commits (sha, repo, pr_id, message, author, committed_at)
          VALUES (?, ?, ?, ?, ?, ?)
@@ -24,7 +27,7 @@ pub async fn upsert_commit(pool: &SqlitePool, commit: &CommitRow) -> sqlx::Resul
     .bind(&commit.message)
     .bind(&commit.author)
     .bind(&commit.committed_at)
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(())
 }

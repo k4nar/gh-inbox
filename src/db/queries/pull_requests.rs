@@ -128,7 +128,10 @@ fn push_filter_conditions(qb: &mut QueryBuilder<sqlx::Sqlite>, filters: &FilterP
 }
 
 /// Insert or update a pull request.
-pub async fn upsert_pull_request(pool: &SqlitePool, pr: &PullRequestRow) -> sqlx::Result<()> {
+pub async fn upsert_pull_request<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Sqlite>,
+    pr: &PullRequestRow,
+) -> sqlx::Result<()> {
     sqlx::query(
 		"INSERT INTO pull_requests (id, title, repo, author, author_avatar_url, url, ci_status, last_viewed_at, body, state, head_sha, additions, deletions, changed_files, draft, merged_at, labels)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -165,8 +168,40 @@ pub async fn upsert_pull_request(pool: &SqlitePool, pr: &PullRequestRow) -> sqlx
 	.bind(pr.draft)
 	.bind(&pr.merged_at)
 	.bind(&pr.labels)
-	.execute(pool)
+	.execute(executor)
 	.await?;
+    Ok(())
+}
+
+/// Delete all cached child rows (comments, commits, check runs, reviews) for a
+/// PR. Called before re-inserting from a fresh GitHub snapshot so rows that no
+/// longer exist upstream (deleted comments, check runs from a previous push)
+/// do not linger in the cache.
+pub async fn delete_pr_children(
+    conn: &mut sqlx::SqliteConnection,
+    repo: &str,
+    pr_id: i64,
+) -> sqlx::Result<()> {
+    sqlx::query("DELETE FROM comments WHERE repo = ? AND pr_id = ?")
+        .bind(repo)
+        .bind(pr_id)
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query("DELETE FROM commits WHERE repo = ? AND pr_id = ?")
+        .bind(repo)
+        .bind(pr_id)
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query("DELETE FROM check_runs WHERE repo = ? AND pr_id = ?")
+        .bind(repo)
+        .bind(pr_id)
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query("DELETE FROM reviews WHERE repo = ? AND pr_id = ?")
+        .bind(repo)
+        .bind(pr_id)
+        .execute(&mut *conn)
+        .await?;
     Ok(())
 }
 
@@ -335,8 +370,8 @@ pub async fn get_pr_activity(
 }
 
 /// Store the resolved teams JSON for a PR.
-pub async fn update_teams(
-    pool: &SqlitePool,
+pub async fn update_teams<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Sqlite>,
     repo: &str,
     pr_id: i64,
     teams_json: &str,
@@ -345,14 +380,14 @@ pub async fn update_teams(
         .bind(teams_json)
         .bind(repo)
         .bind(pr_id)
-        .execute(pool)
+        .execute(executor)
         .await?;
     Ok(())
 }
 
 /// Update the CI status for a PR. Passing `None` clears it.
-pub async fn update_ci_status(
-    pool: &SqlitePool,
+pub async fn update_ci_status<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Sqlite>,
     pr_id: i64,
     repo: &str,
     ci_status: Option<&str>,
@@ -361,7 +396,7 @@ pub async fn update_ci_status(
         .bind(ci_status)
         .bind(pr_id)
         .bind(repo)
-        .execute(pool)
+        .execute(executor)
         .await?;
     Ok(())
 }
