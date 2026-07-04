@@ -940,6 +940,61 @@ async fn sse_receives_sync_events() {
 }
 
 #[tokio::test]
+async fn sse_lagged_client_receives_refetch_hint() {
+    let mock_base_url = start_mock_github().await;
+    let pool = gh_inbox::db::init_with_path(":memory:").await;
+    let (router, state) = gh_inbox::app_with_base_url(pool, Arc::from("fake-token"), mock_base_url);
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+
+    let client = reqwest::Client::new();
+    let mut response = client
+        .get(format!("http://{addr}/api/events"))
+        .send()
+        .await
+        .unwrap();
+
+    // Overflow the broadcast channel in a tight loop (no await points, so on
+    // the single-threaded test runtime the SSE task cannot drain in between):
+    // the subscriber lags and must be told to refetch, not left silently stale.
+    use gh_inbox::models::{SyncEvent, SyncStatusKind};
+    for _ in 0..400 {
+        state
+            .tx
+            .send(SyncEvent::SyncStatus {
+                status: SyncStatusKind::Started,
+            })
+            .unwrap();
+    }
+
+    let mut events = Vec::new();
+    let timeout = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while let Some(chunk) = response.chunk().await.unwrap() {
+            let text = String::from_utf8_lossy(&chunk);
+            for line in text.lines() {
+                if line.starts_with("event:") {
+                    events.push(line.trim_start_matches("event:").trim().to_string());
+                }
+            }
+            if !events.is_empty() {
+                break;
+            }
+        }
+    })
+    .await;
+
+    assert!(timeout.is_ok(), "Timed out waiting for SSE events");
+    assert_eq!(
+        events[0], "notifications:new",
+        "a lagged client must receive a refetch hint first"
+    );
+}
+
+#[tokio::test]
 async fn get_inbox_is_db_only_after_initial_fetch() {
     let call_count = Arc::new(AtomicUsize::new(0));
     let counter = call_count.clone();

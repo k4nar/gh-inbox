@@ -221,7 +221,11 @@ pub fn app_with_base_url(
     token: Arc<str>,
     github_base_url: String,
 ) -> (Router, AppState) {
-    let (tx, _rx) = broadcast::channel(64);
+    // Sized for the burstiest producer: prefetch emits one pr:info_updated per
+    // viewport row, and a backgrounded tab may not drain for a while. Overflow
+    // is still handled (lagged clients get a refetch hint) — this just makes
+    // it rare.
+    let (tx, _rx) = broadcast::channel(256);
     let session_token: Arc<str> = Arc::from(
         rand::thread_rng()
             .sample_iter(&rand::distributions::Alphanumeric)

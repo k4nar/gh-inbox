@@ -55,9 +55,14 @@ pub async fn get_events(
             Some(Ok(Event::default().event(event_type).data(data)))
         }
         Err(_) => {
-            // Lagged — skip missed messages
-            tracing::warn!("SSE client lagged, skipping missed events");
-            None
+            // Lagged: the channel overflowed and this client missed an unknown
+            // set of events. Unlike a disconnect, no `open` fires client-side,
+            // so dropping silently would leave the UI stale. Emit a
+            // notifications:new so the client refetches everything it renders.
+            tracing::warn!("SSE client lagged; asking it to refetch");
+            Some(Ok(Event::default()
+                .event("notifications:new")
+                .data("{\"count\":0}")))
         }
     });
 
