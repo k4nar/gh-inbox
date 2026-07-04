@@ -353,6 +353,48 @@ describe("PrDetail — labels", () => {
     });
 });
 
+describe("PrDetail — background reloads", () => {
+    it("keeps the current timeline visible while an SSE-triggered reload is in flight", async () => {
+        let capturedCallback: ((data: unknown) => void) | null = null;
+        vi.mocked(onPrInfoUpdated).mockImplementation((cb) => {
+            capturedCallback = cb as unknown as (data: unknown) => void;
+            return () => {};
+        });
+
+        const { container } = renderDetail();
+        await waitFor(() => {
+            expect(
+                container.querySelector(".status-author"),
+            ).toBeInTheDocument();
+        });
+
+        // Subsequent fetches hang: the reload stays in flight.
+        globalThis.fetch = vi.fn(
+            () => new Promise(() => {}),
+        ) as unknown as typeof fetch;
+
+        capturedCallback!({
+            pr_id: 42,
+            repository: "owner/repo",
+            author: "alice",
+            pr_status: "open",
+            ci_status: "success",
+            new_commits: 1,
+            new_comments: [],
+            new_reviews: [],
+            teams: null,
+        });
+
+        // The panel must not blank to "Loading..." — the reader keeps the
+        // current content (and scroll position) until fresh data arrives.
+        await new Promise((r) => setTimeout(r, 0));
+        expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+        expect(container.querySelector(".status-author")!.textContent).toBe(
+            "alice",
+        );
+    });
+});
+
 describe("PrDetail — stale responses", () => {
     it("ignores a slow response for a previously-selected PR", async () => {
         // fetch resolves only when the test decides, keyed by URL.

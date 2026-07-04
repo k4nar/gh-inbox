@@ -1,5 +1,6 @@
 <script lang="ts">
 import { Collapsible, Tooltip } from "bits-ui";
+import { untrack } from "svelte";
 import { SvelteSet } from "svelte/reactivity";
 import { apiFetch } from "./api.ts";
 import CiWheel from "./CiWheel.svelte";
@@ -32,6 +33,14 @@ let loading = $state(true);
 let error: string | null = $state(null);
 $effect(() => {
     if (notification?.pr_id && notification?.repository) {
+        // Switching PRs: drop the previous PR's content so the panel shows
+        // "Loading..." instead of the wrong PR under the new title. SSE-driven
+        // reloads for the *same* PR call loadDetail() directly and keep the
+        // current content visible while the refresh happens in the background.
+        detail = null;
+        threads = [];
+        reviews = [];
+        labels = [];
         loadDetail();
     }
 });
@@ -57,7 +66,13 @@ let loadSeq = 0;
 
 async function loadDetail(): Promise<void> {
     const seq = ++loadSeq;
-    loading = true;
+    // Only blank the panel when there is nothing to show yet (first load or PR
+    // switch). Background reloads keep the current timeline — and the reader's
+    // scroll position — while fresh data arrives. Untracked: loadDetail runs
+    // inside the prop-change effect, which also writes `detail` — a tracked
+    // read here would make that effect re-trigger itself forever.
+    const isInitialLoad = untrack(() => detail) === null;
+    if (isInitialLoad) loading = true;
     error = null;
 
     const [owner, repo] = notification.repository.split("/");
@@ -72,6 +87,12 @@ async function loadDetail(): Promise<void> {
         reviews = result.reviews ?? [];
         labels = result.labels ?? [];
         threads = result.threads ?? [];
+        // Description default is decided once per PR: expanded on first visit.
+        // Background reloads must not reset a manual expand/collapse (each GET
+        // advances last_viewed_at server-side, so previous_viewed_at changes).
+        if (isInitialLoad) {
+            expandedDescription = result.previous_viewed_at === null;
+        }
     } catch (e) {
         if (seq !== loadSeq) return;
         error = e instanceof Error ? e.message : String(e);
@@ -183,17 +204,10 @@ let oldReviews = $derived(sortedReviews.filter((r) => !isNew(r.submitted_at)));
 // .add()/.delete() in onOpenChange would never re-render the review body.
 let expandedReviews = new SvelteSet<number>();
 
-// Description toggling logic: expand by default if PR hasn't been viewed
+// Description toggling logic: expand by default if PR hasn't been viewed.
+// Set in loadDetail on each PR's initial load, so manual collapse/expand state
+// neither carries over between PRs nor gets reset by background reloads.
 let expandedDescription = $state(true);
-
-$effect(() => {
-    // Re-run whenever the notification (PR) changes, so manual collapse/expand
-    // state doesn't carry over from one PR to the next.
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    notification.pr_id;
-    notification.repository;
-    expandedDescription = previousViewedAt === null;
-});
 
 function hasRenderableDescription(
     pr: PrDetailResponse["pull_request"],
