@@ -20,10 +20,16 @@ pub async fn init() -> SqlitePool {
 
 /// Initializes the SQLite database at the given path. Used by tests to provide a custom path.
 pub async fn init_with_path(path: &str) -> SqlitePool {
+    // WAL lets the sync loop, prefetch tasks and request handlers write
+    // concurrently with readers; the busy timeout makes contending writers
+    // wait instead of failing with SQLITE_BUSY. (In-memory test databases
+    // silently ignore WAL.)
     let options = SqliteConnectOptions::from_str(&format!("sqlite:{}", path))
         .expect("invalid database path")
         .create_if_missing(true)
-        .foreign_keys(true);
+        .foreign_keys(true)
+        .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+        .busy_timeout(std::time::Duration::from_secs(5));
 
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
