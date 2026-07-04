@@ -95,10 +95,11 @@ pub async fn sync_notifications(state: &AppState) -> Result<SyncResult, SyncErro
     let mut changed = Vec::new();
 
     for notif in &notifications {
-        let pr_id = notif
-            .subject
-            .url
-            .as_deref()
+        // Only PullRequest subjects carry a PR number; an Issue URL like
+        // …/issues/431 would otherwise be mistaken for PR #431 of the repo.
+        let pr_id = (notif.subject.subject_type == "PullRequest")
+            .then_some(notif.subject.url.as_deref())
+            .flatten()
             .and_then(|url| url.rsplit('/').next())
             .and_then(|s| s.parse::<i64>().ok());
 
@@ -283,6 +284,30 @@ mod tests {
 
         let inbox = queries::query_inbox(&state.pool).await.unwrap();
         assert_eq!(inbox[0].pr_id, Some(42));
+    }
+
+    #[tokio::test]
+    async fn issue_subject_gives_null_pr_id() {
+        const ISSUE_NOTIFICATION: &str = r#"[{
+            "id": "3",
+            "reason": "mention",
+            "unread": true,
+            "updated_at": "2025-01-03T00:00:00Z",
+            "subject": {
+                "title": "Crash on startup",
+                "url": "https://api.github.com/repos/owner/repo/issues/431",
+                "type": "Issue"
+            },
+            "repository": { "full_name": "owner/repo" }
+        }]"#;
+        let state = make_state(start_mock(ISSUE_NOTIFICATION).await).await;
+        sync_notifications(&state).await.unwrap();
+
+        let inbox = queries::query_inbox(&state.pool).await.unwrap();
+        assert_eq!(
+            inbox[0].pr_id, None,
+            "an Issue notification must not be linked to a same-number PR"
+        );
     }
 
     #[tokio::test]
