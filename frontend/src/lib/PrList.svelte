@@ -1,6 +1,7 @@
 <script lang="ts">
 import { Pagination, Tooltip } from "bits-ui";
 import { untrack } from "svelte";
+import { SvelteSet } from "svelte/reactivity";
 import { apiFetch } from "./api.ts";
 import { countActiveFilters } from "./filters.ts";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
@@ -46,6 +47,11 @@ const PER_PAGE = DEFAULT_PER_PAGE;
 // Deliberately non-reactive: only compared inside the refetch effect, and
 // making them $state would re-trigger the effect it just ran in.
 let lastFiltersKey = "";
+
+// Authors whose avatar failed to load: render an initials fallback instead.
+// A reactive Set (not an onerror outerHTML swap) so Svelte keeps owning the
+// DOM and the scoped .author-avatar styles actually apply.
+const failedAvatars = new SvelteSet<string>();
 
 function buildInboxUrl(view: string, page: number): string {
     const params = new URLSearchParams({
@@ -434,15 +440,21 @@ function initials(login: string | null): string {
                                 <span class="divider">·</span>
                                 <span class="pr-author">
                                     by
-                                    <img
-                                        class="author-avatar"
-                                        src={avatarUrl(notif.author, notif.author_avatar_url)}
-                                        alt={notif.author}
-                                        onerror={(e) => {
-                                            const el = e.currentTarget as HTMLElement;
-                                            el.outerHTML = `<div class="author-avatar author-avatar-initials">${initials(notif.author)}</div>`;
-                                        }}
-                                    >
+                                    {#if failedAvatars.has(notif.author)}
+                                        <span
+                                            class="author-avatar author-avatar-initials"
+                                            >{initials(notif.author)}</span
+                                        >
+                                    {:else}
+                                        <img
+                                            class="author-avatar"
+                                            src={avatarUrl(notif.author, notif.author_avatar_url)}
+                                            alt={notif.author}
+                                            onerror={() =>
+                                                notif.author &&
+                                                failedAvatars.add(notif.author)}
+                                        >
+                                    {/if}
                                     <span class="author-name"
                                         >{notif.author}</span
                                     >
