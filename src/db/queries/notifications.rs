@@ -43,6 +43,7 @@ pub async fn upsert_notification(
                           WHEN excluded.unread = 1               THEN 0
                           ELSE notifications.archived
                         END,
+           locally_unarchived = 0,
            synced_at  = excluded.synced_at
          WHERE notifications.updated_at != excluded.updated_at
             OR notifications.unread     != excluded.unread
@@ -62,9 +63,10 @@ pub async fn upsert_notification(
 
     // When the upsert was a no-op (nothing changed), synced_at wasn't touched
     // by the ON CONFLICT clause. Stamp it now so reconciliation can tell this
-    // notification was returned by GitHub during this sync cycle.
+    // notification was returned by GitHub during this sync cycle. GitHub
+    // returning the thread also means unarchive protection is no longer needed.
     if result.rows_affected() == 0 {
-        sqlx::query("UPDATE notifications SET synced_at = ? WHERE id = ?")
+        sqlx::query("UPDATE notifications SET synced_at = ?, locally_unarchived = 0 WHERE id = ?")
             .bind(synced_at)
             .bind(&notif.id)
             .execute(pool)
@@ -100,19 +102,24 @@ pub async fn query_archived(pool: &SqlitePool) -> sqlx::Result<Vec<NotificationR
 
 /// Archive a notification by ID. Returns the number of rows affected.
 pub async fn archive_notification(pool: &SqlitePool, id: &str) -> sqlx::Result<u64> {
-    let result = sqlx::query("UPDATE notifications SET archived = 1 WHERE id = ?")
-        .bind(id)
-        .execute(pool)
-        .await?;
+    let result =
+        sqlx::query("UPDATE notifications SET archived = 1, locally_unarchived = 0 WHERE id = ?")
+            .bind(id)
+            .execute(pool)
+            .await?;
     Ok(result.rows_affected())
 }
 
 /// Unarchive a notification by ID (move back to inbox). Returns the number of rows affected.
+/// The row is flagged so full-sync reconciliation does not re-archive it: the thread
+/// is marked done on GitHub, so GitHub no longer returns it and it would otherwise
+/// look stale on the next full sync.
 pub async fn unarchive_notification(pool: &SqlitePool, id: &str) -> sqlx::Result<u64> {
-    let result = sqlx::query("UPDATE notifications SET archived = 0 WHERE id = ?")
-        .bind(id)
-        .execute(pool)
-        .await?;
+    let result =
+        sqlx::query("UPDATE notifications SET archived = 0, locally_unarchived = 1 WHERE id = ?")
+            .bind(id)
+            .execute(pool)
+            .await?;
     Ok(result.rows_affected())
 }
 
@@ -127,11 +134,13 @@ pub async fn mark_read(pool: &SqlitePool, id: &str) -> sqlx::Result<u64> {
 
 /// Archive all non-archived notifications that were not touched during the
 /// current sync cycle (i.e. `synced_at < sync_started_at`).
+/// Locally-unarchived rows are exempt — GitHub never returns them again
+/// (their thread is marked done), so staleness says nothing about them.
 /// Returns the number of rows affected.
 pub async fn archive_stale(pool: &SqlitePool, sync_started_at: i64) -> sqlx::Result<u64> {
     let result = sqlx::query(
         "UPDATE notifications SET archived = 1 \
-         WHERE archived = 0 AND synced_at < ?",
+         WHERE archived = 0 AND synced_at < ? AND locally_unarchived = 0",
     )
     .bind(sync_started_at)
     .execute(pool)
@@ -258,6 +267,37 @@ mod tests {
         assert_eq!(count, 0);
 
         assert_eq!(query_inbox(&pool).await.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn archive_stale_spares_locally_unarchived() {
+        let pool = test_pool().await;
+        upsert_notification(&pool, &sample("n1"), 5).await.unwrap();
+        archive_notification(&pool, "n1").await.unwrap();
+        unarchive_notification(&pool, "n1").await.unwrap();
+
+        // n1 is stale (GitHub no longer returns done threads) but was
+        // unarchived locally — reconciliation must leave it in the inbox.
+        let count = archive_stale(&pool, 10).await.unwrap();
+        assert_eq!(count, 0);
+        assert_eq!(query_inbox(&pool).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn new_activity_clears_unarchive_protection() {
+        let pool = test_pool().await;
+        let mut notif = sample("n1");
+        upsert_notification(&pool, &notif, 5).await.unwrap();
+        archive_notification(&pool, "n1").await.unwrap();
+        unarchive_notification(&pool, "n1").await.unwrap();
+
+        // GitHub returns the thread again (new activity) — protection lifts,
+        // so a later full sync that no longer sees the thread re-archives it.
+        notif.updated_at = "2025-01-02T00:00:00Z".to_string();
+        upsert_notification(&pool, &notif, 8).await.unwrap();
+        let count = archive_stale(&pool, 10).await.unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(query_archived(&pool).await.unwrap().len(), 1);
     }
 
     #[tokio::test]
