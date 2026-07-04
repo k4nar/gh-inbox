@@ -51,7 +51,12 @@ $effect(() => {
     });
 });
 
+// Monotonic id per loadDetail call: a slow response for a previously-selected
+// PR must not overwrite the panel after a faster load for the current one.
+let loadSeq = 0;
+
 async function loadDetail(): Promise<void> {
+    const seq = ++loadSeq;
     loading = true;
     error = null;
 
@@ -59,16 +64,19 @@ async function loadDetail(): Promise<void> {
     const number = notification.pr_id;
 
     try {
-        detail = await apiFetch<PrDetailResponse>(
+        const result = await apiFetch<PrDetailResponse>(
             `/api/pull-requests/${owner}/${repo}/${number}`,
         );
-        reviews = detail.reviews ?? [];
-        labels = detail.labels ?? [];
-        threads = detail.threads ?? [];
+        if (seq !== loadSeq) return; // superseded by a newer load
+        detail = result;
+        reviews = result.reviews ?? [];
+        labels = result.labels ?? [];
+        threads = result.threads ?? [];
     } catch (e) {
+        if (seq !== loadSeq) return;
         error = e instanceof Error ? e.message : String(e);
     } finally {
-        loading = false;
+        if (seq === loadSeq) loading = false;
     }
 }
 

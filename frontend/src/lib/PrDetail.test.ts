@@ -353,6 +353,70 @@ describe("PrDetail — labels", () => {
     });
 });
 
+describe("PrDetail — stale responses", () => {
+    it("ignores a slow response for a previously-selected PR", async () => {
+        // fetch resolves only when the test decides, keyed by URL.
+        const resolvers = new Map<string, (json: unknown) => void>();
+        globalThis.fetch = vi.fn(
+            (input: string | URL | Request) =>
+                new Promise((resolve) => {
+                    resolvers.set(String(input), (json) =>
+                        resolve({
+                            ok: true,
+                            json: () => Promise.resolve(json),
+                        }),
+                    );
+                }),
+        ) as unknown as typeof fetch;
+
+        const { container, rerender } = render(PrDetail, {
+            props: {
+                notification: {
+                    repository: "owner/repo",
+                    pr_id: 42,
+                    title: "Fix bug in parser",
+                },
+                onClose: vi.fn(),
+            },
+        });
+
+        // Select another PR while the first request is still in flight.
+        await rerender({
+            notification: {
+                repository: "org/api",
+                pr_id: 10,
+                title: "Refactor auth",
+            },
+            onClose: vi.fn(),
+        });
+        await waitFor(() => {
+            expect(resolvers.has("/api/pull-requests/org/api/10")).toBe(true);
+        });
+
+        // The newer PR's response arrives first…
+        resolvers.get("/api/pull-requests/org/api/10")!({
+            ...BASE_DETAIL,
+            pull_request: {
+                ...BASE_DETAIL.pull_request,
+                id: 10,
+                author: "bob",
+            },
+        });
+        await waitFor(() => {
+            expect(container.querySelector(".status-author")!.textContent).toBe(
+                "bob",
+            );
+        });
+
+        // …then the stale one resolves and must NOT overwrite the panel.
+        resolvers.get("/api/pull-requests/owner/repo/42")!(BASE_DETAIL);
+        await new Promise((r) => setTimeout(r, 0));
+        expect(container.querySelector(".status-author")!.textContent).toBe(
+            "bob",
+        );
+    });
+});
+
 describe("PrDetail — reviews", () => {
     it("renders a review with no body compactly (no body paragraph)", async () => {
         const detail = {
