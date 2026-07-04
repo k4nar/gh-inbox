@@ -535,8 +535,15 @@ pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>) {
     let _ = queries::clear_last_fetched(&state.pool, "notifications").await;
 
     loop {
-        // Skip this tick if a manually-triggered sync is already running.
-        if !state.sync_in_progress.load(Ordering::SeqCst) {
+        // Take the same guard POST /api/sync uses, so a manual sync can never
+        // start while a loop tick is mid-flight (and vice versa): two
+        // interleaved syncs run reconciliation against each other's snapshots
+        // and can spuriously archive rows. Skip the tick if the flag is held.
+        if state
+            .sync_in_progress
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
             // Ignore send errors — they just mean no clients are listening
             let _ = tx.send(SyncEvent::SyncStatus {
                 status: SyncStatusKind::Started,
@@ -568,6 +575,8 @@ pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>) {
                     });
                 }
             }
+
+            state.sync_in_progress.store(false, Ordering::SeqCst);
         }
 
         tokio::time::sleep(interval).await;

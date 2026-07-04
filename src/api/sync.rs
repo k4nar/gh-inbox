@@ -15,7 +15,7 @@ use crate::server::AppState;
 /// `sync_notifications` in a fire-and-forget task. Returns 202 immediately.
 /// If a sync is already in progress, returns 202 without spawning a second one.
 pub async fn post_sync(State(state): State<AppState>) -> Result<StatusCode, AppError> {
-    // Guard: only one manual sync at a time.
+    // Guard: only one sync at a time — shared with the background loop's ticks.
     if state
         .sync_in_progress
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
