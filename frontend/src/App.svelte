@@ -98,6 +98,13 @@ function handleSelect(notification: InboxItem | null): void {
     selectedNotification = notification;
 }
 
+// Programmatic selection changes (select-next after archive, restore after a
+// failed action) must never toggle: restoring the currently-selected item
+// through handleSelect would close the detail panel instead.
+function setSelection(notification: InboxItem | null): void {
+    selectedNotification = notification;
+}
+
 function handleClose(): void {
     selectedNotification = null;
 }
@@ -175,7 +182,7 @@ onMount(() => {
         <PrList
             {currentView}
             onSelect={handleSelect}
-            onSelectionChange={handleSelect}
+            onSelectionChange={setSelection}
             selectedId={selectedNotification?.id}
             {refreshKey}
             {activeFilters}

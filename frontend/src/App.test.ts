@@ -282,6 +282,49 @@ describe("App", () => {
         });
     });
 
+    it("keeps the detail panel open when archiving the selected notification fails", async () => {
+        // Fail the archive endpoint; everything else uses the standard mock.
+        const baseFetch = globalThis.fetch;
+        globalThis.fetch = vi.fn((input: string | URL | Request, init?) => {
+            const url = String(input);
+            if (url.includes("/api/inbox/") && url.endsWith("/archive")) {
+                return Promise.resolve(
+                    new Response(null, { status: 500 }),
+                ) as Promise<Response>;
+            }
+            return baseFetch(input, init);
+        }) as typeof fetch;
+
+        const { container } = render(App);
+
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+
+        screen.getByText("Fix bug in parser").click();
+
+        await waitFor(() => {
+            expect(
+                screen.getByLabelText("Resize PR detail panel"),
+            ).toBeInTheDocument();
+        });
+
+        const archiveButtons = container.querySelectorAll(
+            'button[aria-label="Archive"]',
+        );
+        await fireEvent.click(archiveButtons[0] as HTMLButtonElement);
+
+        // The row is restored and the detail panel must stay open — restoring
+        // the same selection must not act as a toggle that closes it. The
+        // title appears twice: once in the list, once in the open panel.
+        await waitFor(() => {
+            expect(screen.getAllByText("Fix bug in parser")).toHaveLength(2);
+        });
+        expect(
+            screen.getByLabelText("Resize PR detail panel"),
+        ).toBeInTheDocument();
+    });
+
     it("shows the next item after archiving the selected notification", async () => {
         const { container } = render(App);
 
