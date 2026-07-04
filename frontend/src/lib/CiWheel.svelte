@@ -4,23 +4,18 @@ import type { CheckRun } from "./types.ts";
 let { checkRuns, size = 16 }: { checkRuns: CheckRun[]; size?: number } =
     $props();
 
-function isPassing(cr: CheckRun): boolean {
+// A completed run with an unknown (null) conclusion counts as failing — never
+// as passing — matching the backend's derive_ci_status.
+function isFailing(cr: CheckRun): boolean {
     return (
         cr.status === "completed" &&
-        (cr.conclusion === "success" ||
-            cr.conclusion === "skipped" ||
-            cr.conclusion === "neutral")
+        !["success", "skipped", "neutral"].includes(cr.conclusion ?? "")
     );
 }
 
 let label = $derived.by(() => {
     if (checkRuns.length === 0) return "";
-    const failing = checkRuns.filter(
-        (cr) =>
-            cr.status === "completed" &&
-            cr.conclusion &&
-            !["success", "skipped", "neutral"].includes(cr.conclusion),
-    ).length;
+    const failing = checkRuns.filter(isFailing).length;
     const pending = checkRuns.filter((cr) => cr.status !== "completed").length;
     if (failing > 0) return `${failing} failing`;
     if (pending > 0) return `${pending} running`;
@@ -33,12 +28,7 @@ let segments = $derived.by(() => {
     const r = 6;
     const circ = 2 * Math.PI * r;
     const counts = {
-        failing: checkRuns.filter(
-            (cr) =>
-                cr.status === "completed" &&
-                cr.conclusion &&
-                !["success", "skipped", "neutral"].includes(cr.conclusion),
-        ).length,
+        failing: checkRuns.filter(isFailing).length,
         pending: checkRuns.filter((cr) => cr.status !== "completed").length,
         success: checkRuns.filter(
             (cr) => cr.status === "completed" && cr.conclusion === "success",

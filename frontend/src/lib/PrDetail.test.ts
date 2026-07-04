@@ -207,6 +207,21 @@ describe("PrDetail — status bar", () => {
         });
     });
 
+    it("counts a completed run with unknown conclusion as failing, not passing", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            check_runs: [
+                { name: "CI", status: "completed", conclusion: null },
+                { name: "Lint", status: "completed", conclusion: "success" },
+            ],
+        };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            const svg = container.querySelector(".ci-wrapper svg");
+            expect(svg?.getAttribute("aria-label")).toMatch(/1 failing/i);
+        });
+    });
+
     it("shows failing count when some checks fail", async () => {
         const { container } = renderDetail();
         await waitFor(() => {

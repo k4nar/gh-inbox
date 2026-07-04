@@ -148,11 +148,10 @@ function ciLabel(cr: CheckRun): string {
 
 let ciSummary = $derived.by((): { text: string; cls: string } => {
     if (!detail || detail.check_runs.length === 0) return { text: "", cls: "" };
+    // A completed run with an unknown (null) conclusion counts as failing,
+    // never as passing — matching the backend's derive_ci_status.
     const failing = detail.check_runs.filter(
-        (cr) =>
-            !isPassing(cr) &&
-            cr.status === "completed" &&
-            cr.conclusion !== null,
+        (cr) => !isPassing(cr) && cr.status === "completed",
     );
     const pending = detail.check_runs.filter((cr) => cr.status !== "completed");
     if (failing.length > 0)
