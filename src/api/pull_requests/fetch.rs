@@ -149,19 +149,14 @@ pub async fn cache_pr_data(
         queries::upsert_comment(&mut *tx, &row).await?;
     }
 
-    // Review comments
+    // Review comments — thread identity comes from the reviewThreads grouping
+    // GitHub already returned, not from reply chains (a deep reply's replyTo
+    // may not point at the thread root).
     for c in &data.review_comments {
-        let thread_id = match c.in_reply_to_id {
-            Some(parent_id) => format!("review:{parent_id}"),
-            None => format!("review:{}", c.id),
-        };
-        let resolved = data
-            .review_thread_states
-            .get(&c.id)
-            .or_else(|| {
-                c.in_reply_to_id
-                    .and_then(|pid| data.review_thread_states.get(&pid))
-            })
+        let root_id = data.review_comment_threads.get(&c.id).copied();
+        let thread_id = format!("review:{}", root_id.unwrap_or(c.id));
+        let resolved = root_id
+            .and_then(|root| data.review_thread_states.get(&root))
             .copied()
             .unwrap_or(false);
         let row = CommentRow {

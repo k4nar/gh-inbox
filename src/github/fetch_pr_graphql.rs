@@ -340,6 +340,9 @@ pub struct GraphqlPrData {
     pub check_runs: GithubCheckRunList,
     pub reviews: Vec<GithubReview>,
     pub review_thread_states: HashMap<i64, bool>,
+    /// Comment id → id of its thread's root comment, straight from the
+    /// reviewThreads grouping (not reconstructed from reply chains).
+    pub review_comment_threads: HashMap<i64, i64>,
     /// Team slugs (formatted as "org/slug") requested to review this PR.
     pub requested_reviewer_team_slugs: Vec<String>,
 }
@@ -436,6 +439,7 @@ fn convert(gql_pr: GqlPullRequest) -> GraphqlPrData {
 
     let mut review_comments = Vec::new();
     let mut review_thread_states = HashMap::new();
+    let mut review_comment_threads = HashMap::new();
 
     for thread in gql_pr.review_threads.nodes {
         // Track the root comment id for resolved state
@@ -448,6 +452,9 @@ fn convert(gql_pr: GqlPullRequest) -> GraphqlPrData {
             let Some(id) = comment.database_id else {
                 continue;
             };
+            if let Some(root_id) = root_id {
+                review_comment_threads.insert(id, root_id);
+            }
             review_comments.push(GithubReviewComment {
                 id,
                 user: GithubUser {
@@ -570,6 +577,7 @@ fn convert(gql_pr: GqlPullRequest) -> GraphqlPrData {
         check_runs,
         reviews,
         review_thread_states,
+        review_comment_threads,
         requested_reviewer_team_slugs,
     }
 }
@@ -797,6 +805,10 @@ mod tests {
 
         // Review thread states
         assert_eq!(data.review_thread_states.get(&200), Some(&true));
+
+        // Thread membership straight from the reviewThreads grouping
+        assert_eq!(data.review_comment_threads.get(&200), Some(&200));
+        assert_eq!(data.review_comment_threads.get(&201), Some(&200));
 
         // Commits
         assert_eq!(data.commits.len(), 1);
