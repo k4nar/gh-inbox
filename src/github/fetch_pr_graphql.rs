@@ -85,6 +85,10 @@ query PullRequestFull($owner: String!, $repo: String!, $number: Int!) {
                     status
                     conclusion
                   }
+                  ... on StatusContext {
+                    context
+                    state
+                  }
                 }
               }
             }
@@ -276,6 +280,9 @@ struct GqlStatusCheckRollup {
     contexts: GqlConnection<GqlCheckContext>,
 }
 
+/// One node of the status-check rollup: either a CheckRun (checks API) or a
+/// StatusContext (legacy commit-status API — Jenkins, external CI). Fields of
+/// the other variant are absent in JSON.
 #[derive(Debug, Deserialize)]
 struct GqlCheckContext {
     #[serde(rename = "__typename")]
@@ -285,6 +292,9 @@ struct GqlCheckContext {
     name: Option<String>,
     status: Option<String>,
     conclusion: Option<String>,
+    // StatusContext fields
+    context: Option<String>,
+    state: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -343,6 +353,25 @@ fn author_login(author: &Option<GqlAuthor>) -> String {
 
 fn author_avatar_url(author: &Option<GqlAuthor>) -> Option<String> {
     author.as_ref().and_then(|a| a.avatar_url.clone())
+}
+
+/// Map a commit-status state (EXPECTED/PENDING/SUCCESS/FAILURE/ERROR) onto the
+/// check-run (status, conclusion) model used everywhere else.
+fn convert_status_state(state: &str) -> (&'static str, Option<&'static str>) {
+    match state {
+        "SUCCESS" => ("completed", Some("success")),
+        "FAILURE" => ("completed", Some("failure")),
+        "ERROR" => ("completed", Some("error")),
+        // EXPECTED, PENDING and anything unknown count as still running.
+        _ => ("pending", None),
+    }
+}
+
+fn status_context_id(name: &str) -> i64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    name.hash(&mut hasher);
+    -((hasher.finish() >> 1) as i64) - 1
 }
 
 fn convert_pr_state(gql_state: &str) -> String {
@@ -471,6 +500,20 @@ fn convert(gql_pr: GqlPullRequest) -> GraphqlPrData {
                     name: ctx.name.unwrap_or_default(),
                     status: ctx.status.map(|s| s.to_lowercase()).unwrap_or_default(),
                     conclusion: ctx.conclusion.map(|c| c.to_lowercase()),
+                });
+            } else if ctx.typename == "StatusContext"
+                && let (Some(name), Some(state)) = (ctx.context, ctx.state)
+            {
+                let (status, conclusion) = convert_status_state(&state);
+                check_runs_vec.push(GithubCheckRun {
+                    // StatusContext has no databaseId; synthesize a negative id
+                    // (real check-run ids are positive). Rows are wiped and
+                    // re-inserted on every fetch, so it only needs to be unique
+                    // within one snapshot.
+                    id: status_context_id(&name),
+                    name,
+                    status: status.to_string(),
+                    conclusion: conclusion.map(str::to_string),
                 });
             }
         }
@@ -668,10 +711,8 @@ mod tests {
                           },
                           {
                             "__typename": "StatusContext",
-                            "databaseId": null,
-                            "name": null,
-                            "status": null,
-                            "conclusion": null
+                            "context": "ci/jenkins: build",
+                            "state": "FAILURE"
                           }
                         ]
                       }
@@ -763,13 +804,21 @@ mod tests {
         assert_eq!(data.commits[0].commit.message, "Fix parser bug");
         assert_eq!(data.commits[0].commit.author.name, "Alice");
 
-        // Check runs (only CheckRun, not StatusContext)
-        assert_eq!(data.check_runs.total_count, 1);
+        // Check runs: both CheckRun and legacy StatusContext nodes are kept
+        assert_eq!(data.check_runs.total_count, 2);
         assert_eq!(data.check_runs.check_runs[0].name, "CI");
         assert_eq!(data.check_runs.check_runs[0].status, "completed");
         assert_eq!(
             data.check_runs.check_runs[0].conclusion,
             Some("success".to_string())
+        );
+        let status_ctx = &data.check_runs.check_runs[1];
+        assert_eq!(status_ctx.name, "ci/jenkins: build");
+        assert_eq!(status_ctx.status, "completed");
+        assert_eq!(status_ctx.conclusion, Some("failure".to_string()));
+        assert!(
+            status_ctx.id < 0,
+            "synthesized id must not collide with real check-run ids"
         );
 
         // Reviews (COMMENTED filtered out)
