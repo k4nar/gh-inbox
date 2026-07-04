@@ -415,6 +415,52 @@ describe("PrDetail — reviews", () => {
         ).not.toBeInTheDocument();
     });
 
+    it("expands and collapses the review body on header click", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            reviews: [
+                {
+                    id: 2,
+                    reviewer: "dave",
+                    reviewer_avatar_url: null,
+                    state: "CHANGES_REQUESTED",
+                    body: "Please fix the typo on line 42.",
+                    submitted_at: "2025-06-01T08:00:00Z",
+                    html_url:
+                        "https://github.com/owner/repo/pull/42#pullrequestreview-2",
+                },
+            ],
+        };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            expect(container.querySelector(".review-item")).toBeInTheDocument();
+        });
+        const reviewItem = container.querySelector(".review-item")!;
+        const header = reviewItem.querySelector<HTMLButtonElement>(
+            ".review-thread-header",
+        )!;
+
+        await fireEvent.click(header);
+        await waitFor(() => {
+            expect(
+                reviewItem.querySelector(".review-comment"),
+            ).toBeInTheDocument();
+        });
+        expect(reviewItem.textContent).toContain(
+            "Please fix the typo on line 42.",
+        );
+        expect(
+            reviewItem.querySelector(".thread-chevron.open"),
+        ).toBeInTheDocument();
+
+        await fireEvent.click(header);
+        await waitFor(() => {
+            expect(
+                reviewItem.querySelector(".review-comment"),
+            ).not.toBeInTheDocument();
+        });
+    });
+
     it("shows New badge for a review submitted after previous_viewed_at", async () => {
         const detail = {
             ...BASE_DETAIL,

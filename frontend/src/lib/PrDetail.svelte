@@ -1,5 +1,6 @@
 <script lang="ts">
 import { Collapsible, Tooltip } from "bits-ui";
+import { SvelteSet } from "svelte/reactivity";
 import { apiFetch } from "./api.ts";
 import CiWheel from "./CiWheel.svelte";
 import CommentThread from "./CommentThread.svelte";
@@ -170,7 +171,9 @@ let sortedReviews = $derived(
 let newReviews = $derived(sortedReviews.filter((r) => isNew(r.submitted_at)));
 let oldReviews = $derived(sortedReviews.filter((r) => !isNew(r.submitted_at)));
 
-let expandedReviews = $state<Set<number>>(new Set());
+// SvelteSet: plain Set mutations are invisible to Svelte's reactivity, so
+// .add()/.delete() in onOpenChange would never re-render the review body.
+let expandedReviews = new SvelteSet<number>();
 
 // Description toggling logic: expand by default if PR hasn't been viewed
 let expandedDescription = $state(true);
