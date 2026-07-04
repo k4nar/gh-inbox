@@ -22,37 +22,31 @@ pub async fn get_events(
     let rx = state.tx.subscribe();
     let stream = BroadcastStream::new(rx).filter_map(|result| match result {
         Ok(event) => {
-            let (event_type, data) = match &event {
-                SyncEvent::NewNotifications { count } => {
-                    let payload = NewNotificationsData { count: *count };
-                    (
-                        "notifications:new",
-                        serde_json::to_string(&payload)
-                            .expect("serialization of NewNotificationsData cannot fail"),
-                    )
-                }
-                SyncEvent::SyncStatus { status } => {
-                    let payload = SyncStatusData {
+            let (event_type, payload) = match &event {
+                SyncEvent::NewNotifications { count } => (
+                    "notifications:new",
+                    serde_json::to_string(&NewNotificationsData { count: *count }),
+                ),
+                SyncEvent::SyncStatus { status } => (
+                    "sync:status",
+                    serde_json::to_string(&SyncStatusData {
                         status: status.clone(),
-                    };
-                    (
-                        "sync:status",
-                        serde_json::to_string(&payload)
-                            .expect("serialization of SyncStatusData cannot fail"),
-                    )
-                }
-                SyncEvent::PrInfoUpdated(data) => {
-                    let payload = serde_json::to_string(data)
-                        .expect("serialization of PrInfoUpdatedData cannot fail");
-                    ("pr:info_updated", payload)
-                }
+                    }),
+                ),
+                SyncEvent::PrInfoUpdated(data) => ("pr:info_updated", serde_json::to_string(data)),
                 SyncEvent::GithubSyncError(data) => {
-                    let payload = serde_json::to_string(data)
-                        .expect("serialization of GithubSyncErrorData cannot fail");
-                    ("github:sync_error", payload)
+                    ("github:sync_error", serde_json::to_string(data))
                 }
             };
-            Some(Ok(Event::default().event(event_type).data(data)))
+            match payload {
+                Ok(data) => Some(Ok(Event::default().event(event_type).data(data))),
+                // Serialization of these payloads can't fail in practice, but
+                // a handler must not panic — drop the event and log instead.
+                Err(e) => {
+                    tracing::error!(error = %e, event_type, "failed to serialize SSE event");
+                    None
+                }
+            }
         }
         Err(_) => {
             // Lagged: the channel overflowed and this client missed an unknown
