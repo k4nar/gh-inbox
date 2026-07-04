@@ -30,4 +30,21 @@ describe("timeAgo", () => {
         vi.useFakeTimers({ now: new Date("2025-06-04T12:00:00Z") });
         expect(timeAgo("2025-06-01T12:00:00Z")).toBe("3 days ago");
     });
+
+    it("returns months ago instead of large day counts", () => {
+        vi.useFakeTimers({ now: new Date("2025-06-01T12:00:00Z") });
+        expect(timeAgo("2025-03-01T12:00:00Z")).toBe("3 months ago");
+        expect(timeAgo("2025-04-25T12:00:00Z")).toBe("1 month ago");
+    });
+
+    it("returns years ago beyond twelve months", () => {
+        vi.useFakeTimers({ now: new Date("2025-06-01T12:00:00Z") });
+        expect(timeAgo("2023-05-01T12:00:00Z")).toBe("2 years ago");
+        expect(timeAgo("2024-01-01T12:00:00Z")).toBe("1 year ago");
+    });
+
+    it("returns an empty string for unparseable dates", () => {
+        expect(timeAgo("not a date")).toBe("");
+        expect(timeAgo("")).toBe("");
+    });
 });
