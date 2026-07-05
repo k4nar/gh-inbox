@@ -1,6 +1,7 @@
 pub(crate) mod clock;
 
 pub mod api;
+pub mod config;
 pub mod db;
 pub mod github;
 pub(crate) mod markdown;

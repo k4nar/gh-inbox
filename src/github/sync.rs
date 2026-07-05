@@ -196,16 +196,10 @@ async fn sync_tick(state: &AppState, tx: &broadcast::Sender<SyncEvent>) {
 }
 
 /// Run the background notification sync loop.
-/// Fetches notifications immediately, then every `interval` seconds.
+/// Fetches notifications immediately, then every `interval`.
 /// Sends events to `tx` for SSE clients.
 /// When notifications change for PRs in the viewport, auto-fetches their data.
-pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>) {
-    let interval_secs: u64 = std::env::var("GH_INBOX_SYNC_INTERVAL")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(30);
-    let interval = Duration::from_secs(interval_secs);
-
+pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>, interval: Duration) {
     // Always start with a full sync so that any state accumulated while the
     // service was stopped (notifications cleared on GitHub, etc.) is reconciled
     // immediately on startup rather than waiting up to 2h.

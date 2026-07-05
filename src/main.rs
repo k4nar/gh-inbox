@@ -1,3 +1,4 @@
+use gh_inbox::config::Config;
 use gh_inbox::{app, db};
 
 use std::net::SocketAddr;
@@ -19,18 +20,15 @@ async fn main() {
         )
         .init();
 
+    let config = Config::from_env();
+
     let pool = db::init().await;
     tracing::info!("database initialized");
 
     let token = acquire_token();
     tracing::info!("GitHub token acquired");
 
-    let addr = match std::env::var("GH_INBOX_PORT") {
-        Ok(port) => format!("127.0.0.1:{port}"),
-        Err(_) => "127.0.0.1:0".to_string(),
-    };
-
-    let listener = TcpListener::bind(&addr)
+    let listener = TcpListener::bind(&config.bind_addr)
         .await
         .expect("failed to bind to port");
 
@@ -67,7 +65,7 @@ async fn main() {
     let sync_state = state.clone();
     let sync_tx = state.tx.clone();
     tokio::spawn(async move {
-        gh_inbox::github::sync::run_sync_loop(sync_state, sync_tx).await;
+        gh_inbox::github::sync::run_sync_loop(sync_state, sync_tx, config.sync_interval).await;
     });
 
     axum::serve(listener, router).await.expect("server error");
