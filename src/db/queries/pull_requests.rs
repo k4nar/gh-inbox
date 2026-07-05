@@ -3,7 +3,8 @@ use sqlx::{QueryBuilder, SqlitePool};
 /// Enriched inbox row: notification joined with PR data.
 /// Activity counts (new_commits, new_comments, new_reviews) are delivered via SSE,
 /// not from this query.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
+#[ts(export)]
 pub struct InboxItem {
     // from notifications
     pub id: String,
@@ -17,6 +18,8 @@ pub struct InboxItem {
     // from pull_requests (None when no linked PR row)
     pub author: Option<String>,
     pub author_avatar_url: Option<String>,
+    // Values come from a SQL CASE mirroring the PrStatus enum.
+    #[ts(as = "Option<crate::models::PrStatus>")]
     pub pr_status: Option<String>,
     pub ci_status: Option<String>,
     // teams (None = fetch not attempted or in progress)
@@ -42,7 +45,8 @@ struct InboxItemRow {
 }
 
 /// A pull request row from the database.
-#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, ts_rs::TS)]
+#[ts(export)]
 pub struct PullRequestRow {
     pub id: i64,
     pub title: String,

@@ -6,6 +6,7 @@ function makeComment(overrides: Record<string, unknown> = {}) {
     const body = (overrides.body as string) ?? "Looks good!";
     return {
         id: 1,
+        repo: "owner/repo",
         pr_id: 0,
         thread_id: "conversation",
         author: "bob",
@@ -19,6 +20,7 @@ function makeComment(overrides: Record<string, unknown> = {}) {
         in_reply_to_id: null,
         html_url: "https://github.com/owner/repo/pull/1#issuecomment-1",
         diff_hunk: null,
+        resolved: false,
         ...overrides,
     };
 }

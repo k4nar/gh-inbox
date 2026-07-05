@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use sqlx::SqlitePool;
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, ts_rs::TS)]
+#[ts(export)]
 pub struct InboxOptions {
     pub repos: Vec<String>,
     pub teams: Vec<String>,

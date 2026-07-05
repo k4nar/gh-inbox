@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 /// The four possible PR statuses, matching the SQL CASE expression in INBOX_ENRICHED_SQL.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export)]
 pub enum PrStatus {
     Open,
     Draft,
@@ -21,8 +23,9 @@ pub enum SyncEvent {
     GithubSyncError(GithubSyncErrorData),
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export)]
 pub enum SyncStatusKind {
     Started,
     Completed,
@@ -30,19 +33,22 @@ pub enum SyncStatusKind {
 }
 
 /// Payload serialized into the SSE `data:` field for NewNotifications.
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
+#[ts(export)]
 pub struct NewNotificationsData {
     pub count: usize,
 }
 
 /// Payload serialized into the SSE `data:` field for SyncStatus.
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
+#[ts(export)]
 pub struct SyncStatusData {
     pub status: SyncStatusKind,
 }
 
 /// Payload serialized into the SSE `data:` field for PrInfoUpdated.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export)]
 pub struct PrInfoUpdatedData {
     pub pr_id: i64,
     pub repository: String,
@@ -59,19 +65,22 @@ pub struct PrInfoUpdatedData {
 }
 
 /// Payload serialized into the SSE `data:` field for GithubSyncError.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export)]
 pub struct GithubSyncErrorData {
     pub notification_id: String,
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct PrNewComment {
     pub author: String,
     pub count: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct ReviewSummary {
     pub reviewer: String,
     pub state: String,

@@ -83,11 +83,14 @@ const DETAIL_BY_PR: Record<number, PrDetailResponse> = {
             changed_files: 2,
             draft: false,
             merged_at: null,
+            teams: null,
+            labels: "[]",
         },
         threads: [],
         commits: [
             {
                 sha: "abc123",
+                repo: "owner/repo",
                 pr_id: 42,
                 message: "Initial commit",
                 author: "alice",
@@ -118,11 +121,14 @@ const DETAIL_BY_PR: Record<number, PrDetailResponse> = {
             changed_files: 4,
             draft: true,
             merged_at: null,
+            teams: null,
+            labels: "[]",
         },
         threads: [],
         commits: [
             {
                 sha: "def456",
+                repo: "org/api",
                 pr_id: 10,
                 message: "Follow-up cleanup",
                 author: "bob",

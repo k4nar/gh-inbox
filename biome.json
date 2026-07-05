@@ -6,7 +6,7 @@
         "useIgnoreFile": true
     },
     "files": {
-        "includes": ["frontend/**", "!!frontend/dist"]
+        "includes": ["frontend/**", "!!frontend/dist", "!!frontend/src/lib/generated"]
     },
     "formatter": {
         "enabled": true,

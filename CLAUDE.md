@@ -22,6 +22,10 @@ Keep things simple.
 - Route handlers are thin adapters; business logic stays in Rust modules
 - All async handlers must propagate typed errors (no `.unwrap()` in handlers)
 - Frontend never holds auth tokens
+- Types crossing the API/SSE boundary are generated from the Rust structs
+  (ts-rs, `#[derive(TS)] #[ts(export)]`) into `frontend/src/lib/generated/`
+  by `cargo test` — never hand-edit those files or redefine API payload
+  shapes in the frontend; commit the regenerated files with the Rust change
 
 ## Dev tooling
 

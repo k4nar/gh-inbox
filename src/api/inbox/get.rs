@@ -33,7 +33,8 @@ fn parse_csv(value: Option<String>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, ts_rs::TS)]
+#[ts(export)]
 pub struct PaginatedInbox {
     pub items: Vec<InboxItem>,
     pub total: i64,

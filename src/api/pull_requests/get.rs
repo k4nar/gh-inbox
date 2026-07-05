@@ -13,7 +13,8 @@ use crate::server::AppState;
 use super::fetch::{derive_pr_status_from_row, fetch_and_cache_pr};
 
 /// PR data returned in the API response (DB row + rendered body).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ts_rs::TS)]
+#[ts(export)]
 pub struct PullRequestResponse {
     #[serde(flatten)]
     pub inner: PullRequestRow,
@@ -21,14 +22,16 @@ pub struct PullRequestResponse {
 }
 
 /// Comment data returned in the API response (DB row + rendered body).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ts_rs::TS)]
+#[ts(export)]
 pub struct CommentResponse {
     #[serde(flatten)]
     pub inner: CommentRow,
     pub body_html: String,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)]
+#[ts(export)]
 pub struct ReviewResponse {
     pub id: i64,
     pub reviewer: String,
@@ -39,14 +42,16 @@ pub struct ReviewResponse {
     pub html_url: String,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)]
+#[ts(export)]
 pub struct LabelResponse {
     pub name: String,
     pub color: String,
 }
 
 /// A thread of comments grouped by thread_id.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ts_rs::TS)]
+#[ts(export)]
 pub struct ThreadResponse {
     pub thread_id: String,
     pub path: Option<String>,
@@ -55,7 +60,8 @@ pub struct ThreadResponse {
 }
 
 /// Response payload for GET /api/pull-requests/:owner/:repo/:number
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ts_rs::TS)]
+#[ts(export)]
 pub struct PrDetailResponse {
     pub pull_request: PullRequestResponse,
     pub threads: Vec<ThreadResponse>,
@@ -66,7 +72,8 @@ pub struct PrDetailResponse {
     pub labels: Vec<LabelResponse>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ts_rs::TS)]
+#[ts(export)]
 pub struct CheckRunResponse {
     pub name: String,
     pub status: String,

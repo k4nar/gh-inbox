@@ -21,6 +21,7 @@ vi.mock("./sse.svelte.ts", async (importOriginal) => {
 function makeComment(overrides: object = {}) {
     return {
         id: 1,
+        repo: "owner/repo",
         pr_id: 42,
         thread_id: "conversation",
         author: "bob",
@@ -34,6 +35,7 @@ function makeComment(overrides: object = {}) {
         in_reply_to_id: null,
         html_url: "https://github.com/owner/repo/pull/42#issuecomment-1",
         diff_hunk: null,
+        resolved: false,
         ...overrides,
     };
 }
@@ -57,6 +59,8 @@ const BASE_DETAIL: PrDetailResponse = {
         changed_files: 2,
         draft: false,
         merged_at: null,
+        teams: null,
+        labels: "[]",
     },
     threads: [
         {
@@ -69,6 +73,7 @@ const BASE_DETAIL: PrDetailResponse = {
     commits: [
         {
             sha: "abc123",
+            repo: "owner/repo",
             pr_id: 42,
             message: "Old commit",
             author: "alice",
@@ -76,6 +81,7 @@ const BASE_DETAIL: PrDetailResponse = {
         },
         {
             sha: "def456",
+            repo: "owner/repo",
             pr_id: 42,
             message: "New commit",
             author: "alice",

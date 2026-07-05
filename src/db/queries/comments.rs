@@ -1,7 +1,8 @@
 use sqlx::SqlitePool;
 
 /// A comment row from the database.
-#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, ts_rs::TS)]
+#[ts(export)]
 pub struct CommentRow {
     pub id: i64,
     pub repo: String,

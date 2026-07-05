@@ -1,3 +1,7 @@
+import type { GithubSyncErrorData } from "./generated/GithubSyncErrorData";
+import type { PrInfoUpdatedData } from "./generated/PrInfoUpdatedData";
+import type { SyncStatusData } from "./generated/SyncStatusData";
+
 type SyncStatus = "idle" | "syncing" | "error";
 
 let syncStatus: SyncStatus = $state("idle");
@@ -5,17 +9,9 @@ let syncErrorMessage: string | null = $state(null);
 
 let newNotificationCallbacks: Array<() => void> = [];
 
-export interface PrInfoUpdatedPayload {
-    pr_id: number;
-    repository: string;
-    author: string;
-    pr_status: "open" | "draft" | "merged" | "closed";
-    ci_status: string | null;
-    new_commits: number | null;
-    new_comments: { author: string; count: number }[] | null;
-    new_reviews: { reviewer: string; state: string }[] | null;
-    teams: string[] | null;
-}
+// Generated from the Rust PrInfoUpdatedData — re-exported under the name the
+// components already use.
+export type PrInfoUpdatedPayload = PrInfoUpdatedData;
 type PrInfoUpdatedCallback = (data: PrInfoUpdatedPayload) => void;
 let prInfoUpdatedCallbacks: PrInfoUpdatedCallback[] = [];
 
@@ -72,7 +68,9 @@ export function connectSSE(): void {
     eventSource = new EventSource("/api/events");
 
     eventSource.addEventListener("sync:status", (e) => {
-        const { status } = JSON.parse((e as MessageEvent).data);
+        const { status } = JSON.parse(
+            (e as MessageEvent).data,
+        ) as SyncStatusData;
         if (status === "started") {
             syncStatus = "syncing";
             syncErrorMessage = null;
@@ -110,7 +108,7 @@ export function connectSSE(): void {
     eventSource.addEventListener("github:sync_error", (e) => {
         const { notification_id, message } = JSON.parse(
             (e as MessageEvent).data,
-        ) as { notification_id: string; message: string };
+        ) as GithubSyncErrorData;
         for (const cb of githubSyncErrorCallbacks) {
             cb(notification_id, message);
         }
