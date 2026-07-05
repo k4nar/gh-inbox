@@ -13,88 +13,175 @@ pub struct NotificationRow {
     pub updated_at: String,
 }
 
-/// Insert or update a notification.
-/// Returns the number of rows affected (0 if nothing changed, 1 if inserted or updated).
-/// The ON CONFLICT WHERE clause ensures the UPDATE only fires when `updated_at` or `unread`
-/// actually changed, so `rows_affected` is 0 for no-op upserts — atomically, no separate SELECT.
+/// The sync-relevant local state of a tracked notification row.
+#[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
+struct LocalFlags {
+    unread: bool,
+    archived: bool,
+    locally_unarchived: bool,
+    local_write_epoch: Option<i64>,
+    updated_at: String,
+}
+
+/// What `reconcile` decided to store for one incoming snapshot row.
+#[derive(Debug, Clone, PartialEq)]
+struct Resolution {
+    /// The snapshot brought real news: apply its metadata and the flags below,
+    /// and report the row as changed (drives SSE + viewport auto-fetch).
+    /// When false, only the sync bookkeeping fields below are written.
+    changed: bool,
+    unread: bool,
+    archived: bool,
+    locally_unarchived: bool,
+    local_write_epoch: Option<i64>,
+}
+
+/// The notification state machine: how one row of a GitHub snapshot combines
+/// with local state. Pure so every transition can be unit-tested. Rules:
 ///
-/// `synced_at` is always written unconditionally (even on no-op upserts) so that
-/// full-sync reconciliation can archive stale rows by comparing timestamps.
+/// - First contact (`local` is None): store the snapshot as the caller shaped
+///   it — the cold-start read→archived policy lives in the sync layer.
+/// - A local mutation stamped at or after `synced_at` (the sync's *start*
+///   time) postdates the snapshot: the snapshot's unread/archived flags are
+///   stale and must not overwrite local state. A later sync clears the stamp.
+/// - The user's own activity (`your_activity`) never flips read/archived.
+/// - New activity (snapshot says unread) revives an archived row.
+/// - Metadata only refreshes when the snapshot brought real news; either way
+///   GitHub returning the thread lifts unarchive protection (unless the
+///   snapshot is stale per the rule above).
+fn reconcile(local: Option<&LocalFlags>, incoming: &NotificationRow, synced_at: i64) -> Resolution {
+    let Some(local) = local else {
+        return Resolution {
+            changed: true,
+            unread: incoming.unread,
+            archived: incoming.archived,
+            locally_unarchived: false,
+            local_write_epoch: None,
+        };
+    };
+
+    let stale_snapshot = local.local_write_epoch.is_some_and(|e| e >= synced_at);
+    let own_activity = incoming.reason == "your_activity";
+
+    let changed = local.updated_at != incoming.updated_at
+        || local.unread != incoming.unread
+        || (local.archived && incoming.unread);
+
+    let (unread, archived) = if !changed || stale_snapshot || own_activity {
+        (local.unread, local.archived)
+    } else {
+        (
+            incoming.unread,
+            // New activity revives an archived thread.
+            if incoming.unread {
+                false
+            } else {
+                local.archived
+            },
+        )
+    };
+
+    Resolution {
+        changed,
+        unread,
+        archived,
+        locally_unarchived: stale_snapshot && local.locally_unarchived,
+        local_write_epoch: if stale_snapshot {
+            local.local_write_epoch
+        } else {
+            None
+        },
+    }
+}
+
+/// Insert or update a notification from a sync snapshot.
+/// Returns the number of rows affected (0 if nothing changed, 1 if inserted or
+/// updated) — the caller counts non-zero results as inbox changes.
 ///
-/// `synced_at` is also the sync's start time: the fetched snapshot cannot contain
-/// anything newer. When a local mutation (read/archive/unarchive) is stamped at or
-/// after that time, the snapshot is stale for the unread/archived flags and must
-/// not overwrite them; a later sync (started after the local write) clears the stamp.
+/// `synced_at` is always written (even on no-op upserts) so that full-sync
+/// reconciliation can archive stale rows by comparing timestamps. All decision
+/// logic lives in [`reconcile`]; this function is read-decide-write inside a
+/// `BEGIN IMMEDIATE` transaction, so the write lock is held from the read
+/// onward and a concurrent local mutation (mark_read/archive) cannot slip in
+/// between and be overwritten.
 pub async fn upsert_notification(
     pool: &SqlitePool,
     notif: &NotificationRow,
     synced_at: i64,
 ) -> sqlx::Result<u64> {
-    let result = sqlx::query(
-        "INSERT INTO notifications (id, pr_id, title, repository, reason, unread, archived, updated_at, synced_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           pr_id      = excluded.pr_id,
-           title      = excluded.title,
-           repository = excluded.repository,
-           reason     = excluded.reason,
-           unread     = CASE
-                          WHEN notifications.local_write_epoch >= excluded.synced_at THEN notifications.unread
-                          WHEN excluded.reason = 'your_activity' THEN notifications.unread
-                          ELSE excluded.unread
-                        END,
-           updated_at = excluded.updated_at,
-           archived   = CASE
-                          WHEN notifications.local_write_epoch >= excluded.synced_at THEN notifications.archived
-                          WHEN excluded.reason = 'your_activity' THEN notifications.archived
-                          WHEN excluded.unread = 1               THEN 0
-                          ELSE notifications.archived
-                        END,
-           locally_unarchived = CASE
-                          WHEN notifications.local_write_epoch >= excluded.synced_at THEN notifications.locally_unarchived
-                          ELSE 0
-                        END,
-           local_write_epoch = CASE
-                          WHEN notifications.local_write_epoch >= excluded.synced_at THEN notifications.local_write_epoch
-                          ELSE NULL
-                        END,
-           synced_at  = excluded.synced_at
-         WHERE notifications.updated_at != excluded.updated_at
-            OR notifications.unread     != excluded.unread
-            OR (notifications.archived = 1 AND excluded.unread = 1)",
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+
+    let local: Option<LocalFlags> = sqlx::query_as(
+        "SELECT unread, archived, locally_unarchived, local_write_epoch, updated_at
+         FROM notifications WHERE id = ?",
     )
     .bind(&notif.id)
-    .bind(notif.pr_id)
-    .bind(&notif.title)
-    .bind(&notif.repository)
-    .bind(&notif.reason)
-    .bind(notif.unread)
-    .bind(notif.archived)
-    .bind(&notif.updated_at)
-    .bind(synced_at)
-    .execute(pool)
+    .fetch_optional(&mut *tx)
     .await?;
 
-    // When the upsert was a no-op (nothing changed), synced_at wasn't touched
-    // by the ON CONFLICT clause. Stamp it now so reconciliation can tell this
-    // notification was returned by GitHub during this sync cycle. GitHub
-    // returning the thread also means unarchive protection is no longer needed —
-    // unless a local write postdates this sync's snapshot.
-    if result.rows_affected() == 0 {
-        sqlx::query(
-            "UPDATE notifications SET
-               synced_at = ?1,
-               locally_unarchived = CASE WHEN local_write_epoch >= ?1 THEN locally_unarchived ELSE 0 END,
-               local_write_epoch  = CASE WHEN local_write_epoch >= ?1 THEN local_write_epoch ELSE NULL END
-             WHERE id = ?2",
-        )
-        .bind(synced_at)
-        .bind(&notif.id)
-        .execute(pool)
-        .await?;
+    let resolution = reconcile(local.as_ref(), notif, synced_at);
+
+    match (local.is_some(), resolution.changed) {
+        // First contact — insert.
+        (false, _) => {
+            sqlx::query(
+                "INSERT INTO notifications (id, pr_id, title, repository, reason, unread, archived, locally_unarchived, local_write_epoch, updated_at, synced_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            )
+            .bind(&notif.id)
+            .bind(notif.pr_id)
+            .bind(&notif.title)
+            .bind(&notif.repository)
+            .bind(&notif.reason)
+            .bind(resolution.unread)
+            .bind(resolution.archived)
+            .bind(resolution.locally_unarchived)
+            .bind(resolution.local_write_epoch)
+            .bind(&notif.updated_at)
+            .bind(synced_at)
+            .execute(&mut *tx)
+            .await?;
+        }
+        // Real news — refresh metadata and flags.
+        (true, true) => {
+            sqlx::query(
+                "UPDATE notifications SET
+                   pr_id = ?, title = ?, repository = ?, reason = ?, updated_at = ?,
+                   unread = ?, archived = ?, locally_unarchived = ?, local_write_epoch = ?,
+                   synced_at = ?
+                 WHERE id = ?",
+            )
+            .bind(notif.pr_id)
+            .bind(&notif.title)
+            .bind(&notif.repository)
+            .bind(&notif.reason)
+            .bind(&notif.updated_at)
+            .bind(resolution.unread)
+            .bind(resolution.archived)
+            .bind(resolution.locally_unarchived)
+            .bind(resolution.local_write_epoch)
+            .bind(synced_at)
+            .bind(&notif.id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        // No-op — stamp sync bookkeeping only.
+        (true, false) => {
+            sqlx::query(
+                "UPDATE notifications SET locally_unarchived = ?, local_write_epoch = ?, synced_at = ?
+                 WHERE id = ?",
+            )
+            .bind(resolution.locally_unarchived)
+            .bind(resolution.local_write_epoch)
+            .bind(synced_at)
+            .bind(&notif.id)
+            .execute(&mut *tx)
+            .await?;
+        }
     }
 
-    Ok(result.rows_affected())
+    tx.commit().await?;
+    Ok(u64::from(resolution.changed))
 }
 
 /// Query all non-archived (inbox) notifications.
@@ -175,6 +262,128 @@ pub async fn archive_stale(pool: &SqlitePool, sync_started_at: i64) -> sqlx::Res
     .execute(pool)
     .await?;
     Ok(result.rows_affected())
+}
+
+#[cfg(test)]
+mod reconcile_tests {
+    use super::*;
+
+    fn incoming(unread: bool) -> NotificationRow {
+        NotificationRow {
+            id: "n1".to_string(),
+            pr_id: Some(42),
+            title: "T".to_string(),
+            repository: "owner/repo".to_string(),
+            reason: "review_requested".to_string(),
+            unread,
+            archived: false,
+            updated_at: "2025-01-02T00:00:00Z".to_string(),
+        }
+    }
+
+    fn local(unread: bool, archived: bool) -> LocalFlags {
+        LocalFlags {
+            unread,
+            archived,
+            locally_unarchived: false,
+            local_write_epoch: None,
+            updated_at: "2025-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn first_contact_stores_snapshot_as_shaped_by_caller() {
+        let mut row = incoming(false);
+        row.archived = true; // cold-start policy decided upstream
+        let r = reconcile(None, &row, 10);
+        assert!(r.changed);
+        assert!(!r.unread);
+        assert!(r.archived);
+        assert!(!r.locally_unarchived);
+        assert_eq!(r.local_write_epoch, None);
+    }
+
+    #[test]
+    fn snapshot_applies_when_no_local_write_pending() {
+        let r = reconcile(Some(&local(false, false)), &incoming(true), 10);
+        assert!(r.changed);
+        assert!(r.unread);
+        assert!(!r.archived);
+    }
+
+    #[test]
+    fn stale_snapshot_keeps_local_read_and_archive() {
+        // Local write at t=12 postdates a sync that started at t=11.
+        let mut l = local(false, true);
+        l.local_write_epoch = Some(12);
+        let r = reconcile(Some(&l), &incoming(true), 11);
+        assert!(!r.unread, "stale snapshot must not revert the read");
+        assert!(r.archived, "stale snapshot must not resurrect the archive");
+        assert_eq!(r.local_write_epoch, Some(12), "stamp survives stale syncs");
+    }
+
+    #[test]
+    fn newer_sync_applies_and_clears_stamp() {
+        let mut l = local(false, false);
+        l.local_write_epoch = Some(12);
+        let r = reconcile(Some(&l), &incoming(true), 15);
+        assert!(r.unread, "a sync started after the local write is truth");
+        assert_eq!(r.local_write_epoch, None);
+    }
+
+    #[test]
+    fn own_activity_never_flips_flags() {
+        let mut row = incoming(true);
+        row.reason = "your_activity".to_string();
+        let r = reconcile(Some(&local(false, true)), &row, 10);
+        assert!(r.changed, "metadata still refreshes");
+        assert!(!r.unread);
+        assert!(r.archived);
+    }
+
+    #[test]
+    fn new_activity_revives_archived_row() {
+        // Even with identical updated_at/unread, archived + unread = revival.
+        let mut l = local(true, true);
+        l.updated_at = incoming(true).updated_at;
+        let r = reconcile(Some(&l), &incoming(true), 10);
+        assert!(r.changed);
+        assert!(!r.archived);
+    }
+
+    #[test]
+    fn read_snapshot_keeps_archived_row_archived() {
+        let r = reconcile(Some(&local(false, true)), &incoming(false), 10);
+        assert!(r.changed, "updated_at differs");
+        assert!(r.archived, "read is not done — no resurrection");
+    }
+
+    #[test]
+    fn unchanged_snapshot_only_stamps_bookkeeping() {
+        let mut l = local(true, false);
+        l.updated_at = incoming(true).updated_at;
+        let r = reconcile(Some(&l), &incoming(true), 10);
+        assert!(!r.changed);
+    }
+
+    #[test]
+    fn github_returning_thread_lifts_unarchive_protection() {
+        let mut l = local(true, false);
+        l.updated_at = incoming(true).updated_at;
+        l.locally_unarchived = true;
+        let r = reconcile(Some(&l), &incoming(true), 10);
+        assert!(!r.locally_unarchived);
+    }
+
+    #[test]
+    fn stale_snapshot_keeps_unarchive_protection() {
+        let mut l = local(true, false);
+        l.updated_at = incoming(true).updated_at;
+        l.locally_unarchived = true;
+        l.local_write_epoch = Some(12);
+        let r = reconcile(Some(&l), &incoming(true), 11);
+        assert!(r.locally_unarchived);
+    }
 }
 
 #[cfg(test)]
