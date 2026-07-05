@@ -395,16 +395,7 @@ mod tests {
     }
 
     fn sample(id: &str) -> NotificationRow {
-        NotificationRow {
-            id: id.to_string(),
-            pr_id: Some(42),
-            title: "Fix bug in parser".to_string(),
-            repository: "owner/repo".to_string(),
-            reason: "review_requested".to_string(),
-            unread: true,
-            archived: false,
-            updated_at: "2025-01-01T00:00:00Z".to_string(),
-        }
+        crate::db::queries::test_fixtures::sample_notification(id)
     }
 
     #[tokio::test]

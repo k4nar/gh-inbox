@@ -3,6 +3,8 @@ mod notifications;
 pub mod pr_cache;
 pub mod sync;
 mod teams;
+#[cfg(test)]
+pub(crate) mod test_support;
 
 use std::sync::Arc;
 

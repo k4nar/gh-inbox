@@ -247,6 +247,31 @@ pub async fn cache_pr_data(
     Ok(())
 }
 
+pub fn derive_ci_status(check_runs: &[GithubCheckRun]) -> Option<String> {
+    if check_runs.is_empty() {
+        return None;
+    }
+    let mut has_failure = false;
+    let mut has_pending = false;
+    for cr in check_runs {
+        if cr.status != "completed" {
+            has_pending = true;
+        } else if cr.conclusion.as_deref() != Some("success")
+            && cr.conclusion.as_deref() != Some("skipped")
+            && cr.conclusion.as_deref() != Some("neutral")
+        {
+            has_failure = true;
+        }
+    }
+    Some(if has_failure {
+        "failure".to_string()
+    } else if has_pending {
+        "pending".to_string()
+    } else {
+        "success".to_string()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use axum::Router;
@@ -476,29 +501,4 @@ mod tests {
             .unwrap();
         assert!(reviews.is_empty());
     }
-}
-
-pub fn derive_ci_status(check_runs: &[GithubCheckRun]) -> Option<String> {
-    if check_runs.is_empty() {
-        return None;
-    }
-    let mut has_failure = false;
-    let mut has_pending = false;
-    for cr in check_runs {
-        if cr.status != "completed" {
-            has_pending = true;
-        } else if cr.conclusion.as_deref() != Some("success")
-            && cr.conclusion.as_deref() != Some("skipped")
-            && cr.conclusion.as_deref() != Some("neutral")
-        {
-            has_failure = true;
-        }
-    }
-    Some(if has_failure {
-        "failure".to_string()
-    } else if has_pending {
-        "pending".to_string()
-    } else {
-        "success".to_string()
-    })
 }

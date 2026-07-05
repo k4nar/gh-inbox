@@ -7,6 +7,8 @@ mod options;
 mod preferences;
 mod pull_requests;
 mod reviews;
+#[cfg(test)]
+pub(crate) mod test_fixtures;
 mod user_teams;
 
 pub use check_runs::{CheckRunRow, query_check_runs_for_pr, upsert_check_run};

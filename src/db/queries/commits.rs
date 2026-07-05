@@ -61,26 +61,7 @@ mod tests {
     }
 
     fn sample_pr() -> PullRequestRow {
-        PullRequestRow {
-            id: 42,
-            title: "Fix bug".to_string(),
-            repo: "owner/repo".to_string(),
-            author: "alice".to_string(),
-            author_avatar_url: None,
-            url: "https://github.com/owner/repo/pull/42".to_string(),
-            ci_status: None,
-            last_viewed_at: None,
-            body: String::new(),
-            state: "open".to_string(),
-            head_sha: "abc123".to_string(),
-            additions: 0,
-            deletions: 0,
-            changed_files: 0,
-            draft: false,
-            merged_at: None,
-            teams: None,
-            labels: String::from("[]"),
-        }
+        crate::db::queries::test_fixtures::sample_pull_request(42)
     }
 
     fn sample(sha: &str, pr_id: i64) -> CommitRow {
