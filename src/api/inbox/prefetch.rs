@@ -1,6 +1,7 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
+use futures::StreamExt;
 use serde::Deserialize;
 use sqlx::SqlitePool;
 use tokio::sync::broadcast::Sender;
@@ -57,6 +58,12 @@ pub async fn post_prefetch(
     Ok(StatusCode::ACCEPTED)
 }
 
+/// How many PRs to fetch from GitHub at once during a viewport prefetch.
+/// A full viewport is ~20 rows: strictly sequential fetches made first-paint
+/// enrichment take 20 round-trips, while unbounded parallelism would burst
+/// the GitHub API. A small window cuts the latency several-fold.
+const PREFETCH_CONCURRENCY: usize = 3;
+
 async fn do_prefetch(
     pool: &SqlitePool,
     github: &github::GithubClient,
@@ -70,17 +77,19 @@ async fn do_prefetch(
         // Non-fatal — continue; team badges may be stale but PR info still fetches.
     }
 
-    for item in items {
-        if let Err(e) = fetch_one(pool, github, tx, &item).await {
-            tracing::warn!(
-                repository = %item.repository,
-                pr_number = item.pr_number,
-                error = %e,
-                "prefetch error"
-            );
-            // Continue to next item — one failure must not abort the batch.
-        }
-    }
+    futures::stream::iter(items)
+        .for_each_concurrent(PREFETCH_CONCURRENCY, |item| async move {
+            if let Err(e) = fetch_one(pool, github, tx, &item).await {
+                tracing::warn!(
+                    repository = %item.repository,
+                    pr_number = item.pr_number,
+                    error = %e,
+                    "prefetch error"
+                );
+                // One failure must not abort the batch.
+            }
+        })
+        .await;
 }
 
 async fn fetch_one(
