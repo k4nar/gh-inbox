@@ -5,9 +5,18 @@ import { SvelteSet } from "svelte/reactivity";
 import { apiFetch } from "./api.ts";
 import CiWheel from "./CiWheel.svelte";
 import CommentThread from "./CommentThread.svelte";
+import CommitItem from "./CommitItem.svelte";
 import "./markdown.css";
+import ReviewItem from "./ReviewItem.svelte";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
-import { timeAgo } from "./timeago.ts";
+import {
+    countNewCommentsPerThread,
+    ciSummary as deriveCiSummary,
+    isPassing,
+    partitionCommits,
+    partitionReviews,
+    partitionThreads,
+} from "./timeline.ts";
 import type {
     CheckRun,
     Label,
@@ -117,19 +126,6 @@ function avatarUrl(login: string, apiUrl: string | null): string {
     return apiUrl ?? `https://github.com/${login}.png?size=40`;
 }
 
-function commitUrl(repo: string, sha: string): string {
-    return `https://github.com/${repo}/commit/${sha}`;
-}
-
-function isPassing(cr: CheckRun): boolean {
-    return (
-        cr.status === "completed" &&
-        (cr.conclusion === "success" ||
-            cr.conclusion === "skipped" ||
-            cr.conclusion === "neutral")
-    );
-}
-
 function ciDotClass(cr: CheckRun): string {
     if (cr.status !== "completed") return "ci-pending";
     if (
@@ -146,62 +142,43 @@ function ciLabel(cr: CheckRun): string {
     return cr.conclusion ?? "unknown";
 }
 
-let ciSummary = $derived.by((): { text: string; cls: string } => {
-    if (!detail || detail.check_runs.length === 0) return { text: "", cls: "" };
-    // A completed run with an unknown (null) conclusion counts as failing,
-    // never as passing — matching the backend's derive_ci_status.
-    const failing = detail.check_runs.filter(
-        (cr) => !isPassing(cr) && cr.status === "completed",
-    );
-    const pending = detail.check_runs.filter((cr) => cr.status !== "completed");
-    if (failing.length > 0)
-        return { text: `${failing.length} failing`, cls: "ci-failing" };
-    if (pending.length > 0)
-        return { text: `${pending.length} running`, cls: "ci-pending" };
-    return { text: "CI passing", cls: "ci-passing" };
-});
+let ciSummary = $derived(
+    detail ? deriveCiSummary(detail.check_runs) : { text: "", cls: "" },
+);
 
-// --- Timeline derived values ---
+// --- Timeline derived values (pure derivations live in timeline.ts) ---
 
 let previousViewedAt = $derived(detail?.previous_viewed_at ?? null);
 
-function isNew(timestamp: string): boolean {
-    if (!previousViewedAt) return true;
-    return timestamp > previousViewedAt;
-}
-
-let newCommits = $derived(
-    detail?.commits.filter((c) => isNew(c.committed_at)) ?? [],
+let commitParts = $derived(
+    partitionCommits(detail?.commits ?? [], previousViewedAt),
 );
-let oldCommits = $derived(
-    detail?.commits.filter((c) => !isNew(c.committed_at)) ?? [],
-);
+let newCommits = $derived(commitParts.newCommits);
+let oldCommits = $derived(commitParts.oldCommits);
 
 let threadNewCounts = $derived(
-    new Map(
-        threads.map((t) => [
-            t.thread_id,
-            t.comments.filter((c) => isNew(c.created_at)).length,
-        ]),
-    ),
+    countNewCommentsPerThread(threads, previousViewedAt),
 );
 
-let newThreads = $derived(
-    threads.filter((t) => (threadNewCounts.get(t.thread_id) ?? 0) > 0),
-);
-let oldThreads = $derived(
-    threads.filter((t) => (threadNewCounts.get(t.thread_id) ?? 0) === 0),
-);
+let threadParts = $derived(partitionThreads(threads, threadNewCounts));
+let newThreads = $derived(threadParts.newThreads);
+let oldThreads = $derived(threadParts.oldThreads);
 
-let sortedReviews = $derived(
-    [...reviews].sort((a, b) => a.submitted_at.localeCompare(b.submitted_at)),
-);
-let newReviews = $derived(sortedReviews.filter((r) => isNew(r.submitted_at)));
-let oldReviews = $derived(sortedReviews.filter((r) => !isNew(r.submitted_at)));
+let reviewParts = $derived(partitionReviews(reviews, previousViewedAt));
+let newReviews = $derived(reviewParts.newReviews);
+let oldReviews = $derived(reviewParts.oldReviews);
 
 // SvelteSet: plain Set mutations are invisible to Svelte's reactivity, so
 // .add()/.delete() in onOpenChange would never re-render the review body.
+// Kept here (not as local ReviewItem state) so an expanded review survives
+// moving between the new/old zones when a background reload advances
+// previous_viewed_at.
 let expandedReviews = new SvelteSet<number>();
+
+function setReviewExpanded(id: number, expanded: boolean): void {
+    if (expanded) expandedReviews.add(id);
+    else expandedReviews.delete(id);
+}
 
 // Description toggling logic: expand by default if PR hasn't been viewed.
 // Set in loadDetail on each PR's initial load, so manual collapse/expand state
@@ -440,127 +417,6 @@ let diffSinceUrl = $derived(
 
         <!-- Timeline -->
 
-        {#snippet reviewItem(review: import("./types.ts").Review, showBadge: boolean)}
-            <div class="timeline-item review-item">
-                {#if review.body}
-                    <Collapsible.Root
-                        open={expandedReviews.has(review.id)}
-                        onOpenChange={(v) => {
-                            if (v) expandedReviews.add(review.id);
-                            else expandedReviews.delete(review.id);
-                        }}
-                    >
-                        <Collapsible.Trigger
-                            class="review-thread-header"
-                            type="button"
-                        >
-                            <img
-                                class="avatar avatar-sm"
-                                src={avatarUrl(review.reviewer, review.reviewer_avatar_url)}
-                                alt={review.reviewer}
-                                width="18"
-                                height="18"
-                            >
-                            <span class="reviewer-name">{review.reviewer}</span>
-                            <span
-                                class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : review.state === 'CHANGES_REQUESTED' ? 'pill-changes' : 'pill-dismissed'}"
-                            >
-                                {review.state === 'APPROVED' ? 'Approved' : review.state === 'CHANGES_REQUESTED' ? 'Changes requested' : 'Dismissed'}
-                            </span>
-                            <span class="timestamp"
-                                >{timeAgo(review.submitted_at)}</span
-                            >
-                            {#if showBadge}
-                                <span class="new-count-badge">New</span>
-                            {/if}
-                            <span
-                                class="thread-chevron"
-                                class:open={expandedReviews.has(review.id)}
-                            >
-                                <svg
-                                    aria-hidden="true"
-                                    width="12"
-                                    height="12"
-                                    viewBox="0 0 16 16"
-                                    fill="currentColor"
-                                >
-                                    <path
-                                        d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z"
-                                    />
-                                </svg>
-                            </span>
-                        </Collapsible.Trigger>
-                        <Collapsible.Content>
-                            {#if review.body && expandedReviews.has(review.id)}
-                                <a
-                                    class="review-comment"
-                                    class:review-comment--new={showBadge}
-                                    href={review.html_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                >
-                                    <div class="comment-header">
-                                        <img
-                                            class="comment-avatar"
-                                            src={avatarUrl(review.reviewer, review.reviewer_avatar_url)}
-                                            alt={review.reviewer}
-                                            width="18"
-                                            height="18"
-                                        >
-                                        <span class="comment-author"
-                                            >{review.reviewer}</span
-                                        >
-                                        <span class="comment-date"
-                                            >·
-                                            {timeAgo(review.submitted_at)}</span
-                                        >
-                                        <span
-                                            class="comment-link-icon"
-                                            aria-hidden="true"
-                                            >↗</span
-                                        >
-                                    </div>
-                                    <div class="comment-body">
-                                        <p>{review.body}</p>
-                                    </div>
-                                </a>
-                            {/if}
-                        </Collapsible.Content>
-                    </Collapsible.Root>
-                {:else}
-                    <a
-                        class="review-thread-header review-thread-header--link"
-                        href={review.html_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                    >
-                        <img
-                            class="avatar avatar-sm"
-                            src={avatarUrl(review.reviewer, review.reviewer_avatar_url)}
-                            alt={review.reviewer}
-                            width="18"
-                            height="18"
-                        >
-                        <span class="reviewer-name">{review.reviewer}</span>
-                        <span
-                            class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : review.state === 'CHANGES_REQUESTED' ? 'pill-changes' : 'pill-dismissed'}"
-                        >
-                            {review.state === 'APPROVED' ? 'Approved' : review.state === 'CHANGES_REQUESTED' ? 'Changes requested' : 'Dismissed'}
-                        </span>
-                        <span class="timestamp"
-                            >{timeAgo(review.submitted_at)}</span
-                        >
-                        {#if showBadge}
-                            <span class="new-count-badge">New</span>
-                        {/if}
-                        <span class="review-link-icon" aria-hidden="true"
-                            >↗</span
-                        >
-                    </a>
-                {/if}
-            </div>
-        {/snippet}
-
         <div class="timeline">
             <div class="timeline-item description-item">
                 <Collapsible.Root
@@ -628,25 +484,20 @@ let diffSinceUrl = $derived(
 
                 <div class="zone zone-new">
                     {#each newCommits as commit (commit.sha)}
-                        <a
-                            class="commit-row commit-row-new"
-                            href={commitUrl(detail.pull_request.repo, commit.sha)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                        >
-                            <span class="commit-icon">⬆</span>
-                            <span class="commit-sha"
-                                >{commit.sha.slice(0, 7)}</span
-                            >
-                            <span class="commit-message">{commit.message}</span>
-                            <span class="commit-date"
-                                >{timeAgo(commit.committed_at)}</span
-                            >
-                        </a>
+                        <CommitItem
+                            {commit}
+                            repo={detail.pull_request.repo}
+                            isNew={true}
+                        />
                     {/each}
 
                     {#each newReviews as review (review.id)}
-                        {@render reviewItem(review, true)}
+                        <ReviewItem
+                            {review}
+                            showBadge={true}
+                            expanded={expandedReviews.has(review.id)}
+                            onExpandedChange={(v) => setReviewExpanded(review.id, v)}
+                        />
                     {/each}
 
                     {#each newThreads as thread (thread.thread_id)}
@@ -670,29 +521,20 @@ let diffSinceUrl = $derived(
 
                     <div class="zone zone-old">
                         {#each oldCommits as commit (commit.sha)}
-                            <a
-                                class="commit-row commit-row-old"
-                                href={commitUrl(detail.pull_request.repo, commit.sha)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                            >
-                                <span class="commit-icon commit-icon-old"
-                                    >⬆</span
-                                >
-                                <span class="commit-sha commit-sha-old"
-                                    >{commit.sha.slice(0, 7)}</span
-                                >
-                                <span class="commit-message commit-message-old"
-                                    >{commit.message}</span
-                                >
-                                <span class="commit-date"
-                                    >{timeAgo(commit.committed_at)}</span
-                                >
-                            </a>
+                            <CommitItem
+                                {commit}
+                                repo={detail.pull_request.repo}
+                                isNew={false}
+                            />
                         {/each}
 
                         {#each oldReviews as review (review.id)}
-                            {@render reviewItem(review, false)}
+                            <ReviewItem
+                                {review}
+                                showBadge={false}
+                                expanded={expandedReviews.has(review.id)}
+                                onExpandedChange={(v) => setReviewExpanded(review.id, v)}
+                            />
                         {/each}
 
                         {#each oldThreads as thread (thread.thread_id)}
@@ -704,26 +546,19 @@ let diffSinceUrl = $derived(
                 <!-- No dividers: first visit or nothing new -->
                 <div class="zone">
                     {#each detail.commits as commit (commit.sha)}
-                        <a
-                            class="commit-row commit-row-old"
-                            href={commitUrl(detail.pull_request.repo, commit.sha)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                        >
-                            <span class="commit-icon commit-icon-old">⬆</span>
-                            <span class="commit-sha commit-sha-old"
-                                >{commit.sha.slice(0, 7)}</span
-                            >
-                            <span class="commit-message commit-message-old"
-                                >{commit.message}</span
-                            >
-                            <span class="commit-date"
-                                >{timeAgo(commit.committed_at)}</span
-                            >
-                        </a>
+                        <CommitItem
+                            {commit}
+                            repo={detail.pull_request.repo}
+                            isNew={false}
+                        />
                     {/each}
                     {#each reviews as review (review.id)}
-                        {@render reviewItem(review, false)}
+                        <ReviewItem
+                            {review}
+                            showBadge={false}
+                            expanded={expandedReviews.has(review.id)}
+                            onExpandedChange={(v) => setReviewExpanded(review.id, v)}
+                        />
                     {/each}
                     {#each threads as thread (thread.thread_id)}
                         <CommentThread {thread} {previousViewedAt} />
@@ -1033,70 +868,6 @@ let diffSinceUrl = $derived(
     padding: 0 14px 10px;
 }
 
-/* Commit rows */
-.commit-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 10px;
-    border-radius: 6px;
-    font-size: 12px;
-    border: 1px solid var(--border-default);
-    text-decoration: none;
-    color: inherit;
-}
-
-.commit-row:hover {
-    background: var(--canvas-subtle);
-    border-color: var(--border-muted);
-}
-
-.commit-row-new {
-    background: rgba(47, 129, 247, 0.06);
-    border-color: rgba(47, 129, 247, 0.2);
-}
-
-.commit-icon {
-    color: var(--accent-fg);
-    flex-shrink: 0;
-    font-size: 13px;
-}
-
-.commit-icon-old {
-    color: var(--fg-muted);
-}
-
-.commit-sha {
-    font-family:
-        ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 11px;
-    color: var(--accent-fg);
-    flex-shrink: 0;
-}
-
-.commit-sha-old {
-    color: var(--fg-muted);
-}
-
-.commit-message {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--fg-default);
-}
-
-.commit-message-old {
-    color: var(--fg-muted);
-}
-
-.commit-date {
-    font-size: 11px;
-    color: var(--fg-subtle);
-    flex-shrink: 0;
-}
-
 /* Labels pill */
 :global(.labels-wrapper) {
     position: relative;
@@ -1135,96 +906,10 @@ let diffSinceUrl = $derived(
     white-space: nowrap;
 }
 
-/* Review items */
+/* Description section */
 .timeline-item {
     border-radius: 6px;
     border: 1px solid var(--border-default);
-}
-
-.review-item {
-    font-size: 12px;
-}
-
-:global(.review-thread-header) {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 7px 10px;
-    background: var(--canvas-subtle);
-    font-size: 12px;
-    color: var(--fg-muted);
-    width: 100%;
-    text-align: left;
-    cursor: pointer;
-    font-family: inherit;
-    border: none;
-    border-radius: 0;
-    text-decoration: none;
-}
-
-:global(.review-thread-header:hover) {
-    background: var(--canvas-inset, var(--canvas-subtle));
-    color: var(--fg-default);
-}
-
-.review-thread-header--link {
-    cursor: default;
-}
-
-.avatar-sm {
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-
-.reviewer-name {
-    font-weight: 600;
-    color: var(--fg-default);
-}
-
-.review-state-pill {
-    border-radius: 2em;
-    padding: 1px 7px;
-    font-size: 11px;
-    font-weight: 600;
-    flex-shrink: 0;
-}
-
-.pill-approved {
-    background: rgba(46, 160, 67, 0.15);
-    color: var(--success-fg, #1a7f37);
-    border: 1px solid rgba(46, 160, 67, 0.3);
-}
-
-.pill-changes {
-    background: rgba(248, 81, 73, 0.1);
-    color: var(--danger-fg);
-    border: 1px solid rgba(248, 81, 73, 0.25);
-}
-
-.pill-dismissed {
-    background: var(--canvas-subtle);
-    color: var(--fg-muted);
-    border: 1px solid var(--border-muted);
-    text-decoration: line-through;
-}
-
-.timestamp {
-    font-size: 11px;
-    color: var(--fg-subtle);
-    flex-shrink: 0;
-}
-
-.new-count-badge {
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--accent-fg);
-    background: rgba(47, 129, 247, 0.15);
-    border: 1px solid rgba(47, 129, 247, 0.4);
-    border-radius: 2em;
-    padding: 0 6px;
-    line-height: 18px;
-    flex-shrink: 0;
-    margin-left: auto;
 }
 
 .thread-chevron {
@@ -1238,92 +923,6 @@ let diffSinceUrl = $derived(
     transform: rotate(180deg);
 }
 
-.new-count-badge + .thread-chevron {
-    margin-left: 0;
-}
-
-.review-link-icon {
-    margin-left: auto;
-    font-size: 11px;
-    color: var(--fg-muted);
-    opacity: 0;
-    transition: opacity 0.1s;
-}
-
-:global(.review-thread-header:hover) .review-link-icon {
-    opacity: 1;
-}
-
-.review-comment {
-    display: block;
-    padding: 9px 10px;
-    border-top: 1px solid var(--border-muted);
-    text-decoration: none;
-    color: inherit;
-    cursor: pointer;
-}
-
-.review-comment:hover {
-    background: var(--canvas-subtle);
-}
-
-.review-comment--new {
-    background: rgba(47, 129, 247, 0.04);
-    border-left: 3px solid var(--accent-fg);
-}
-
-.review-comment--new:hover {
-    background: rgba(47, 129, 247, 0.09);
-}
-
-.comment-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 5px;
-}
-
-.comment-avatar {
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-
-.comment-author {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--fg-default);
-}
-
-.comment-date {
-    font-size: 11px;
-    color: var(--fg-subtle);
-}
-
-.comment-link-icon {
-    margin-left: auto;
-    font-size: 11px;
-    color: var(--fg-muted);
-    opacity: 0;
-    transition: opacity 0.1s;
-}
-
-.review-comment:hover .comment-link-icon {
-    opacity: 1;
-}
-
-.comment-body {
-    padding-left: 24px;
-    font-size: 13px;
-}
-
-.comment-body p {
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-    color: var(--fg-default);
-}
-
-/* Description section */
 .description-item {
     margin-bottom: 10px;
 }
