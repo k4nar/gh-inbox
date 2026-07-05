@@ -22,10 +22,7 @@ pub async fn replace_user_teams(pool: &SqlitePool, slugs: &[String]) -> sqlx::Re
             .await?;
     }
     // Update last_fetched_at inside same transaction
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock before UNIX epoch")
-        .as_secs() as i64;
+    let now = crate::clock::now_epoch();
     sqlx::query(
         "INSERT INTO last_fetched_at (resource, fetched_at) VALUES ('user_teams', ?)
          ON CONFLICT(resource) DO UPDATE SET fetched_at = excluded.fetched_at",

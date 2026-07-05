@@ -12,8 +12,7 @@ pub async fn post_archive(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    let rows =
-        queries::archive_notification(&state.pool, &id, crate::github::sync::now_epoch()).await?;
+    let rows = queries::archive_notification(&state.pool, &id, crate::clock::now_epoch()).await?;
     if rows == 0 {
         return Err(AppError::NotFound(format!("notification {id} not found")));
     }

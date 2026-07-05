@@ -49,13 +49,7 @@ pub async fn fetch_and_cache_pr(
     let resource_key = format!("pr:{full_repo}#{number}");
 
     let should_fetch = match queries::get_last_fetched_epoch(pool, &resource_key).await? {
-        Some(last) => {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("system clock before UNIX epoch")
-                .as_secs() as i64;
-            now - last >= FETCH_THROTTLE_SECS
-        }
+        Some(last) => crate::clock::now_epoch() - last >= FETCH_THROTTLE_SECS,
         None => true,
     };
 

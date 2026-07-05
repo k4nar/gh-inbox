@@ -1,3 +1,5 @@
+pub(crate) mod clock;
+
 pub mod api;
 pub mod db;
 pub mod github;

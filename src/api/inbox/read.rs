@@ -12,7 +12,7 @@ pub async fn post_mark_read(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    let rows = queries::mark_read(&state.pool, &id, crate::github::sync::now_epoch()).await?;
+    let rows = queries::mark_read(&state.pool, &id, crate::clock::now_epoch()).await?;
     if rows == 0 {
         return Err(AppError::NotFound(format!("notification {id} not found")));
     }

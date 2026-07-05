@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use tokio::sync::broadcast;
 
+use crate::clock::now_epoch;
 use crate::db::queries;
 use crate::github::pr_cache::{derive_pr_status_from_row, fetch_and_cache_pr};
 use crate::models::{PrInfoUpdatedData, PrNewComment, SyncEvent, SyncStatusKind};
@@ -40,10 +41,6 @@ const FULL_SYNC_THRESHOLD_SECS: i64 = 2 * 60 * 60; // 2 hours
 
 /// Clock-skew tolerance subtracted from the incremental `since` cursor.
 const SINCE_OVERLAP_SECS: i64 = 60;
-
-pub(crate) fn now_epoch() -> i64 {
-    chrono::Utc::now().timestamp()
-}
 
 fn epoch_to_iso(epoch: i64) -> Result<String, SyncError> {
     chrono::DateTime::from_timestamp(epoch, 0)

@@ -24,7 +24,7 @@ pub async fn clear_last_fetched(pool: &SqlitePool, resource: &str) -> sqlx::Resu
 
 /// Set the last fetched timestamp for a resource to now (epoch seconds).
 pub async fn set_last_fetched_now(pool: &SqlitePool, resource: &str) -> sqlx::Result<()> {
-    set_last_fetched_epoch(pool, resource, chrono::Utc::now().timestamp()).await
+    set_last_fetched_epoch(pool, resource, crate::clock::now_epoch()).await
 }
 
 /// Set the last fetched timestamp for a resource to a specific epoch.
