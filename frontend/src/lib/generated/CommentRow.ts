@@ -3,4 +3,8 @@
 /**
  * A comment row from the database.
  */
-export type CommentRow = { id: number, repo: string, pr_id: number, thread_id: string | null, author: string, author_avatar_url: string | null, body: string, created_at: string, comment_type: string, path: string | null, position: number | null, in_reply_to_id: number | null, html_url: string | null, diff_hunk: string | null, resolved: boolean, };
+export type CommentRow = { id: number, repo: string, pr_id: number, thread_id: string | null, author: string, author_avatar_url: string | null, body: string, 
+/**
+ * Markdown of `body` rendered (and sanitized) at cache time.
+ */
+body_html: string, created_at: string, comment_type: string, path: string | null, position: number | null, in_reply_to_id: number | null, html_url: string | null, diff_hunk: string | null, resolved: boolean, };

@@ -8,13 +8,13 @@ import type { PaginatedInbox as ApiPaginatedInbox } from "./generated/PaginatedI
 import type { PrInfoUpdatedData } from "./generated/PrInfoUpdatedData";
 
 export type { CheckRunResponse as CheckRun } from "./generated/CheckRunResponse";
-export type { CommentResponse as Comment } from "./generated/CommentResponse";
+export type { CommentRow as Comment } from "./generated/CommentRow";
 export type { CommitRow as Commit } from "./generated/CommitRow";
 export type { InboxOptions as FilterOptions } from "./generated/InboxOptions";
 export type { LabelResponse as Label } from "./generated/LabelResponse";
 export type { PrDetailResponse } from "./generated/PrDetailResponse";
 export type { PrStatus } from "./generated/PrStatus";
-export type { PullRequestResponse as PullRequest } from "./generated/PullRequestResponse";
+export type { PullRequestRow as PullRequest } from "./generated/PullRequestRow";
 export type { ReviewResponse as Review } from "./generated/ReviewResponse";
 export type { ThreadResponse as Thread } from "./generated/ThreadResponse";
 export type { PrInfoUpdatedData };

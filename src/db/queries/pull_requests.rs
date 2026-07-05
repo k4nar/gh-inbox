@@ -57,6 +57,8 @@ pub struct PullRequestRow {
     pub ci_status: Option<String>,
     pub last_viewed_at: Option<String>,
     pub body: String,
+    /// Markdown of `body` rendered (and sanitized) at cache time.
+    pub body_html: String,
     pub state: String,
     pub head_sha: String,
     pub additions: i64,
@@ -143,8 +145,8 @@ pub async fn upsert_pull_request<'e>(
     pr: &PullRequestRow,
 ) -> sqlx::Result<()> {
     sqlx::query(
-		"INSERT INTO pull_requests (id, title, repo, author, author_avatar_url, url, ci_status, last_viewed_at, body, state, head_sha, additions, deletions, changed_files, draft, merged_at, labels)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		"INSERT INTO pull_requests (id, title, repo, author, author_avatar_url, url, ci_status, last_viewed_at, body, body_html, state, head_sha, additions, deletions, changed_files, draft, merged_at, labels)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(repo, id) DO UPDATE SET
            title             = excluded.title,
            author            = excluded.author,
@@ -152,6 +154,7 @@ pub async fn upsert_pull_request<'e>(
            url               = excluded.url,
            ci_status         = excluded.ci_status,
            body              = excluded.body,
+           body_html         = excluded.body_html,
            state             = excluded.state,
            head_sha          = excluded.head_sha,
            additions         = excluded.additions,
@@ -170,6 +173,7 @@ pub async fn upsert_pull_request<'e>(
 	.bind(&pr.ci_status)
 	.bind(&pr.last_viewed_at)
 	.bind(&pr.body)
+	.bind(&pr.body_html)
 	.bind(&pr.state)
 	.bind(&pr.head_sha)
 	.bind(pr.additions)
@@ -222,7 +226,7 @@ pub async fn get_pull_request(
     number: i64,
 ) -> sqlx::Result<Option<PullRequestRow>> {
     sqlx::query_as::<_, PullRequestRow>(
-		"SELECT id, title, repo, author, author_avatar_url, url, ci_status, last_viewed_at, body, state, head_sha, additions, deletions, changed_files, draft, merged_at, teams, labels
+		"SELECT id, title, repo, author, author_avatar_url, url, ci_status, last_viewed_at, body, body_html, state, head_sha, additions, deletions, changed_files, draft, merged_at, teams, labels
          FROM pull_requests
          WHERE repo = ? AND id = ?",
 	)

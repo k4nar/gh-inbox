@@ -6,29 +6,10 @@ use serde::Serialize;
 
 use crate::api::AppError;
 use crate::db::queries::{self, CommentRow, CommitRow, PullRequestRow};
-use crate::markdown::render_markdown;
 use crate::models::{PrInfoUpdatedData, SyncEvent};
 use crate::server::AppState;
 
 use crate::github::pr_cache::{derive_pr_status_from_row, fetch_and_cache_pr};
-
-/// PR data returned in the API response (DB row + rendered body).
-#[derive(Debug, Serialize, ts_rs::TS)]
-#[ts(export)]
-pub struct PullRequestResponse {
-    #[serde(flatten)]
-    pub inner: PullRequestRow,
-    pub body_html: String,
-}
-
-/// Comment data returned in the API response (DB row + rendered body).
-#[derive(Debug, Serialize, ts_rs::TS)]
-#[ts(export)]
-pub struct CommentResponse {
-    #[serde(flatten)]
-    pub inner: CommentRow,
-    pub body_html: String,
-}
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, ts_rs::TS)]
 #[ts(export)]
@@ -56,14 +37,14 @@ pub struct ThreadResponse {
     pub thread_id: String,
     pub path: Option<String>,
     pub resolved: bool,
-    pub comments: Vec<CommentResponse>,
+    pub comments: Vec<CommentRow>,
 }
 
 /// Response payload for GET /api/pull-requests/:owner/:repo/:number
 #[derive(Debug, Serialize, ts_rs::TS)]
 #[ts(export)]
 pub struct PrDetailResponse {
-    pub pull_request: PullRequestResponse,
+    pub pull_request: PullRequestRow,
     pub threads: Vec<ThreadResponse>,
     pub commits: Vec<CommitRow>,
     pub check_runs: Vec<CheckRunResponse>,
@@ -93,16 +74,6 @@ fn build_threads(comments: Vec<CommentRow>) -> Vec<ThreadResponse> {
         .map(|(thread_id, comments)| {
             let path = comments.iter().find_map(|c| c.path.clone());
             let resolved = comments.first().map(|c| c.resolved).unwrap_or(false);
-            let comments = comments
-                .into_iter()
-                .map(|c| {
-                    let body_html = render_markdown(&c.body);
-                    CommentResponse {
-                        inner: c,
-                        body_html,
-                    }
-                })
-                .collect();
             ThreadResponse {
                 thread_id,
                 path,
@@ -162,12 +133,6 @@ pub async fn get_pr(
     let labels: Vec<LabelResponse> =
         serde_json::from_str(&pr.labels).map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let body_html = render_markdown(&pr.body);
-    let pull_request = PullRequestResponse {
-        inner: pr,
-        body_html,
-    };
-
     let threads =
         build_threads(queries::query_comments_for_pr(&state.pool, &full_repo, number).await?);
     let commits = queries::query_commits_for_pr(&state.pool, &full_repo, number).await?;
@@ -199,7 +164,7 @@ pub async fn get_pr(
             .collect();
 
     Ok(Json(PrDetailResponse {
-        pull_request,
+        pull_request: pr,
         threads,
         commits,
         check_runs,

@@ -11,6 +11,8 @@ pub struct CommentRow {
     pub author: String,
     pub author_avatar_url: Option<String>,
     pub body: String,
+    /// Markdown of `body` rendered (and sanitized) at cache time.
+    pub body_html: String,
     pub created_at: String,
     pub comment_type: String,
     pub path: Option<String>,
@@ -27,10 +29,11 @@ pub async fn upsert_comment<'e>(
     comment: &CommentRow,
 ) -> sqlx::Result<()> {
     sqlx::query(
-        "INSERT INTO comments (id, repo, pr_id, thread_id, author, author_avatar_url, body, created_at, comment_type, path, position, in_reply_to_id, html_url, diff_hunk, resolved)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO comments (id, repo, pr_id, thread_id, author, author_avatar_url, body, body_html, created_at, comment_type, path, position, in_reply_to_id, html_url, diff_hunk, resolved)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            body              = excluded.body,
+           body_html         = excluded.body_html,
            author_avatar_url = excluded.author_avatar_url,
            thread_id         = excluded.thread_id,
            html_url          = excluded.html_url,
@@ -44,6 +47,7 @@ pub async fn upsert_comment<'e>(
     .bind(&comment.author)
     .bind(&comment.author_avatar_url)
     .bind(&comment.body)
+    .bind(&comment.body_html)
     .bind(&comment.created_at)
     .bind(&comment.comment_type)
     .bind(&comment.path)
@@ -64,7 +68,7 @@ pub async fn query_comments_for_pr(
     pr_id: i64,
 ) -> sqlx::Result<Vec<CommentRow>> {
     sqlx::query_as::<_, CommentRow>(
-        "SELECT id, repo, pr_id, thread_id, author, author_avatar_url, body, created_at, comment_type, path, position, in_reply_to_id, html_url, diff_hunk, resolved
+        "SELECT id, repo, pr_id, thread_id, author, author_avatar_url, body, body_html, created_at, comment_type, path, position, in_reply_to_id, html_url, diff_hunk, resolved
          FROM comments
          WHERE repo = ? AND pr_id = ?
          ORDER BY created_at ASC",
@@ -97,6 +101,7 @@ mod tests {
             author: "bob".to_string(),
             author_avatar_url: None,
             body: "Looks good!".to_string(),
+            body_html: "<p>Looks good!</p>".to_string(),
             created_at: "2025-01-01T00:00:00Z".to_string(),
             comment_type: "issue_comment".to_string(),
             path: None,

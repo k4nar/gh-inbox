@@ -4,6 +4,7 @@ use crate::api::AppError;
 use crate::db::queries::{self, CheckRunRow, CommentRow, CommitRow, PullRequestRow, ReviewRow};
 use crate::github;
 use crate::github::fetch_pr_graphql::GraphqlPrData;
+use crate::markdown::render_markdown;
 use crate::models::{GithubCheckRun, PrStatus};
 
 /// Minimum seconds between full PR fetches. Applies to every caller (detail
@@ -107,6 +108,7 @@ pub async fn cache_pr_data(
         ci_status: None,
         last_viewed_at: None,
         body: gh_pr.body.clone().unwrap_or_default(),
+        body_html: render_markdown(gh_pr.body.as_deref().unwrap_or_default()),
         state: gh_pr.state.clone(),
         head_sha: gh_pr.head.sha.clone(),
         additions: gh_pr.additions.unwrap_or(0),
@@ -132,6 +134,7 @@ pub async fn cache_pr_data(
             author: c.user.login.clone(),
             author_avatar_url: c.user.avatar_url.clone(),
             body: c.body.clone(),
+            body_html: render_markdown(&c.body),
             created_at: c.created_at.clone(),
             comment_type: "issue_comment".to_string(),
             path: None,
@@ -162,6 +165,7 @@ pub async fn cache_pr_data(
             author: c.user.login.clone(),
             author_avatar_url: c.user.avatar_url.clone(),
             body: c.body.clone(),
+            body_html: render_markdown(&c.body),
             created_at: c.created_at.clone(),
             comment_type: "review_comment".to_string(),
             path: Some(c.path.clone()),

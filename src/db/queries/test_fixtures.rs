@@ -14,6 +14,7 @@ pub(crate) fn sample_pull_request(id: i64) -> PullRequestRow {
         ci_status: None,
         last_viewed_at: None,
         body: String::new(),
+        body_html: String::new(),
         state: "open".to_string(),
         head_sha: "abc123".to_string(),
         additions: 0,

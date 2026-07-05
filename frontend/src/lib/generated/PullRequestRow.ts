@@ -3,7 +3,11 @@
 /**
  * A pull request row from the database.
  */
-export type PullRequestRow = { id: number, title: string, repo: string, author: string, author_avatar_url: string | null, url: string, ci_status: string | null, last_viewed_at: string | null, body: string, state: string, head_sha: string, additions: number, deletions: number, changed_files: number, draft: boolean, merged_at: string | null, 
+export type PullRequestRow = { id: number, title: string, repo: string, author: string, author_avatar_url: string | null, url: string, ci_status: string | null, last_viewed_at: string | null, body: string, 
+/**
+ * Markdown of `body` rendered (and sanitized) at cache time.
+ */
+body_html: string, state: string, head_sha: string, additions: number, deletions: number, changed_files: number, draft: boolean, merged_at: string | null, 
 /**
  * Raw JSON string, deserialized at the API layer.
  * NULL = team fetch not yet attempted; '[]' = fetched, no matching teams;
