@@ -36,7 +36,7 @@ Template:
 *so that I can* review it.
 
 *When* a dev opens a PR for which I’m notified,
-*I want to* know why I am notified (assigned to the review, ping, codewoner, etc…),
+*I want to* know why I am notified (assigned to the review, ping, codeowner, etc…),
 *so that I can* review it.
 
 2. Keeping track of PR
@@ -50,7 +50,7 @@ Template:
 *so that I can* focus on the PRs important for my current project.
  
 *When* I am in my Inbox
-*I want to* be able to filter the PR for which I’m notified due to being part of a specific codewoner team,
+*I want to* be able to filter the PR for which I’m notified due to being part of a specific codeowner team,
 *so that I can* focus on the PRs to review in the context of a specific team.
 
 3. Overview of each PR
