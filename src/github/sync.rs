@@ -191,7 +191,7 @@ async fn sync_tick(state: &AppState, tx: &broadcast::Sender<SyncEvent>) {
             tracing::warn!(error = %e, "notification sync failed");
             let _ = tx.send(SyncEvent::SyncStatus {
                 status: SyncStatusKind::Errored {
-                    message: format!("{e:?}"),
+                    message: format!("{e}"),
                 },
             });
         }

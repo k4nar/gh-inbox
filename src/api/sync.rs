@@ -57,7 +57,7 @@ pub async fn post_sync(State(state): State<AppState>) -> Result<StatusCode, AppE
                 tracing::warn!(error = %e, "manual sync failed");
                 let _ = state_clone.tx.send(SyncEvent::SyncStatus {
                     status: SyncStatusKind::Errored {
-                        message: format!("{e:?}"),
+                        message: format!("{e}"),
                     },
                 });
             }
