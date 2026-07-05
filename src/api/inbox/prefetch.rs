@@ -7,9 +7,9 @@ use tokio::sync::broadcast::Sender;
 
 use crate::api::AppError;
 use crate::api::inbox::teams::ensure_user_teams_fresh;
-use crate::api::pull_requests::fetch::{derive_pr_status_from_row, fetch_and_cache_pr};
 use crate::db::queries;
 use crate::github;
+use crate::github::pr_cache::{derive_pr_status_from_row, fetch_and_cache_pr};
 use crate::models::{PrInfoUpdatedData, PrNewComment, SyncEvent};
 use crate::server::AppState;
 

@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use tokio::sync::broadcast;
 
-use crate::api::pull_requests::fetch::{derive_pr_status_from_row, fetch_and_cache_pr};
 use crate::db::queries;
+use crate::github::pr_cache::{derive_pr_status_from_row, fetch_and_cache_pr};
 use crate::models::{PrInfoUpdatedData, PrNewComment, SyncEvent, SyncStatusKind};
 use crate::server::AppState;
 

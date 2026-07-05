@@ -1,4 +1,3 @@
-pub(crate) mod fetch;
 mod get;
 
 use axum::Router;

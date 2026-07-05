@@ -10,7 +10,7 @@ use crate::markdown::render_markdown;
 use crate::models::{PrInfoUpdatedData, SyncEvent};
 use crate::server::AppState;
 
-use super::fetch::{derive_pr_status_from_row, fetch_and_cache_pr};
+use crate::github::pr_cache::{derive_pr_status_from_row, fetch_and_cache_pr};
 
 /// PR data returned in the API response (DB row + rendered body).
 #[derive(Debug, Serialize, ts_rs::TS)]
