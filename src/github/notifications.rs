@@ -89,13 +89,34 @@ pub async fn mark_thread_read(
         .patch(&format!("/notifications/threads/{thread_id}"))
         .await?;
     // 404: the thread is gone on GitHub — nothing to mark, not an error.
-    // 403 (e.g. token missing the `notifications` scope) must surface, or
-    // read state silently never reaches GitHub and every full sync reverts it.
-    if response.status() == 404 {
+    // 403 from a missing `notifications` scope must surface, or read state
+    // silently never reaches GitHub and every full sync reverts it — but a
+    // rate-limit 403 is transient and would otherwise toast an error per
+    // action for the whole limit window.
+    if response.status() == 404 || is_rate_limited(&response) {
         return Ok(());
     }
     response.error_for_status()?;
     Ok(())
+}
+
+/// GitHub signals primary and secondary rate limits with HTTP 403/429 plus a
+/// `retry-after` header or an exhausted `x-ratelimit-remaining`. Those are
+/// transient: log and move on instead of surfacing an error per action.
+fn is_rate_limited(response: &reqwest::Response) -> bool {
+    if response.status() != 403 && response.status() != 429 {
+        return false;
+    }
+    let headers = response.headers();
+    let limited = headers.contains_key("retry-after")
+        || headers
+            .get("x-ratelimit-remaining")
+            .and_then(|v| v.to_str().ok())
+            == Some("0");
+    if limited {
+        tracing::warn!(url = %response.url(), "GitHub rate limited; write-back skipped");
+    }
+    limited
 }
 
 pub async fn mark_thread_done(
@@ -105,8 +126,9 @@ pub async fn mark_thread_done(
     let response = github
         .delete(&format!("/notifications/threads/{thread_id}"))
         .await?;
-    // 404 is fine (thread already gone); 403 must surface — see mark_thread_read.
-    if response.status() == 404 {
+    // 404 is fine (thread already gone); scope 403 must surface but a
+    // rate-limit 403/429 is transient — see mark_thread_read.
+    if response.status() == 404 || is_rate_limited(&response) {
         return Ok(());
     }
     response.error_for_status()?;
@@ -322,6 +344,29 @@ mod action_tests {
         let github = GithubClient::new(std::sync::Arc::from("tok"), base);
         let result = mark_thread_read(&github, "42").await;
         assert!(result.is_err(), "missing-scope 403 must surface");
+    }
+
+    #[tokio::test]
+    async fn mark_thread_read_tolerates_rate_limit_403() {
+        // A secondary-rate-limit 403 carries a retry-after header — transient,
+        // must not surface as an error toast per action.
+        let app = Router::new().route(
+            "/notifications/threads/42",
+            patch(|| async {
+                axum::http::Response::builder()
+                    .status(403)
+                    .header("retry-after", "60")
+                    .body(axum::body::Body::empty())
+                    .unwrap()
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let github = GithubClient::new(std::sync::Arc::from("tok"), format!("http://{addr}"));
+        let result = mark_thread_read(&github, "42").await;
+        assert!(result.is_ok(), "rate-limit 403 is transient, not an error");
     }
 
     #[tokio::test]
