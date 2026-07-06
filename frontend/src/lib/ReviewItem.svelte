@@ -29,7 +29,7 @@ let {
             open={expanded}
             onOpenChange={(v) => onExpandedChange(v)}
         >
-            <Collapsible.Trigger class="review-thread-header" type="button">
+            <Collapsible.Trigger class="review-thread-header">
                 <img
                     class="avatar avatar-sm"
                     src={avatarUrl(review.reviewer, review.reviewer_avatar_url)}
