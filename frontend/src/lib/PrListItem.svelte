@@ -1,4 +1,5 @@
 <script lang="ts">
+import { avatarUrl } from "./avatar.ts";
 import { Tooltip } from "bits-ui";
 import { activitySentence } from "./activity.ts";
 import { timeAgo } from "./timeago.ts";
@@ -28,9 +29,6 @@ const STATUS_ICONS: Record<string, string> = {
     closed: "M3.25 1A2.25 2.25 0 0 1 4 5.372v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 3.25 1Zm9.96 5.016a.75.75 0 1 0-1.06-1.06L10.5 6.61 8.84 4.94a.75.75 0 0 0-1.061 1.06l1.661 1.661-1.661 1.661a.75.75 0 1 0 1.06 1.06L10.5 8.72l1.661 1.661a.75.75 0 1 0 1.06-1.06L11.56 7.66l1.65-1.644ZM3.25 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z",
 };
 
-function avatarUrl(login: string, apiUrl: string | null): string {
-    return apiUrl ?? `https://github.com/${login}.png?size=64`;
-}
 
 function initials(login: string | null): string {
     return login ? login.charAt(0).toUpperCase() : "?";
@@ -95,7 +93,7 @@ let sentence = $derived(activitySentence(notif));
                     {:else}
                         <img
                             class="author-avatar"
-                            src={avatarUrl(notif.author, notif.author_avatar_url)}
+                            src={avatarUrl(notif.author, notif.author_avatar_url, 64)}
                             alt={notif.author}
                             onerror={() => {
                                 avatarFailed = true;

@@ -1,26 +1,17 @@
 <script lang="ts">
+import { ciSummary, isPassing } from "./timeline.ts";
 import type { CheckRun } from "./types.ts";
 
 let { checkRuns, size = 16 }: { checkRuns: CheckRun[]; size?: number } =
     $props();
 
-// A completed run with an unknown (null) conclusion counts as failing — never
-// as passing — matching the backend's derive_ci_status.
+// The pass/fail rule and the summary text live in timeline.ts so the wheel,
+// the detail header and the dot colors can never disagree.
 function isFailing(cr: CheckRun): boolean {
-    return (
-        cr.status === "completed" &&
-        !["success", "skipped", "neutral"].includes(cr.conclusion ?? "")
-    );
+    return cr.status === "completed" && !isPassing(cr);
 }
 
-let label = $derived.by(() => {
-    if (checkRuns.length === 0) return "";
-    const failing = checkRuns.filter(isFailing).length;
-    const pending = checkRuns.filter((cr) => cr.status !== "completed").length;
-    if (failing > 0) return `${failing} failing`;
-    if (pending > 0) return `${pending} running`;
-    return "CI passing";
-});
+let label = $derived(ciSummary(checkRuns).text);
 
 let segments = $derived.by(() => {
     if (checkRuns.length === 0) return [];

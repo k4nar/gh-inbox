@@ -1,4 +1,5 @@
 <script lang="ts">
+import { avatarUrl } from "./avatar.ts";
 import { Collapsible } from "bits-ui";
 import { timeAgo } from "./timeago.ts";
 import type { Review } from "./types.ts";
@@ -20,9 +21,6 @@ let {
     onExpandedChange: (expanded: boolean) => void;
 } = $props();
 
-function avatarUrl(login: string, apiUrl: string | null): string {
-    return apiUrl ?? `https://github.com/${login}.png?size=40`;
-}
 </script>
 
 <div class="timeline-item review-item">

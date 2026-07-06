@@ -1,4 +1,5 @@
 <script lang="ts">
+import { avatarUrl } from "./avatar.ts";
 import "./markdown.css";
 import { Collapsible } from "bits-ui";
 import { timeAgo } from "./timeago.ts";
@@ -49,9 +50,6 @@ function parseDiffLines(
 
 let diffLines = $derived(diffHunk ? parseDiffLines(diffHunk) : []);
 
-function avatarUrl(login: string, apiUrl: string | null): string {
-    return apiUrl ?? `https://github.com/${login}.png?size=40`;
-}
 
 function firstLine(text: string): string {
     const line = text.split("\n")[0];

@@ -1,4 +1,5 @@
 <script lang="ts">
+import { avatarUrl } from "./avatar.ts";
 import { Collapsible, Tooltip } from "bits-ui";
 import { untrack } from "svelte";
 import { SvelteSet } from "svelte/reactivity";
@@ -122,19 +123,10 @@ function deriveStatePill(pr: PrDetailResponse["pull_request"]): {
     return { label: "Open", cls: "pill-open" };
 }
 
-function avatarUrl(login: string, apiUrl: string | null): string {
-    return apiUrl ?? `https://github.com/${login}.png?size=40`;
-}
 
 function ciDotClass(cr: CheckRun): string {
     if (cr.status !== "completed") return "ci-pending";
-    if (
-        cr.conclusion === "success" ||
-        cr.conclusion === "skipped" ||
-        cr.conclusion === "neutral"
-    )
-        return "ci-success";
-    return "ci-failure";
+    return isPassing(cr) ? "ci-success" : "ci-failure";
 }
 
 function ciLabel(cr: CheckRun): string {
