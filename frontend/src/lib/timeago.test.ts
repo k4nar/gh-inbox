@@ -37,6 +37,16 @@ describe("timeAgo", () => {
         expect(timeAgo("2025-04-25T12:00:00Z")).toBe("1 month ago");
     });
 
+    it("never renders zero years in the 360-364 day window", () => {
+        vi.useFakeTimers({ now: new Date("2026-01-01T12:00:00Z") });
+        // 360 days ago
+        expect(timeAgo("2025-01-06T12:00:00Z")).toBe("12 months ago");
+        // 364 days ago
+        expect(timeAgo("2025-01-02T12:00:00Z")).toBe("12 months ago");
+        // 365 days ago
+        expect(timeAgo("2025-01-01T12:00:00Z")).toBe("1 year ago");
+    });
+
     it("returns years ago beyond twelve months", () => {
         vi.useFakeTimers({ now: new Date("2025-06-01T12:00:00Z") });
         expect(timeAgo("2023-05-01T12:00:00Z")).toBe("2 years ago");

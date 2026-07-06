@@ -15,8 +15,11 @@ export function timeAgo(iso: string): string {
     if (days === 1) return "Yesterday";
     if (days < 30) return `${days} days ago`;
 
+    // Gate the year unit on days, not months: floor(days/30) reaches 12 at
+    // day 360 while floor(days/365) is still 0 — the mismatched bases would
+    // render "0 years ago" for ages 360–364 days.
     const months = Math.floor(days / 30);
-    if (months < 12) return `${months} month${months === 1 ? "" : "s"} ago`;
+    if (days < 365) return `${months} month${months === 1 ? "" : "s"} ago`;
 
     const years = Math.floor(days / 365);
     return `${years} year${years === 1 ? "" : "s"} ago`;
