@@ -331,10 +331,11 @@ async fn full_sync_keeps_read_notification_still_in_github_feed() {
 }
 
 #[tokio::test]
-async fn first_seen_read_notification_starts_archived() {
-    // A thread the DB has never tracked, already read on GitHub: the user
-    // handled it elsewhere (possibly marked done — the API can't tell), so
-    // it must not flood the inbox on a cold start.
+async fn first_seen_read_notification_starts_archived_on_full_sync() {
+    // A thread the DB has never tracked, already read on GitHub, arriving via
+    // a FULL sync (no cursor → cold start): the user handled it elsewhere
+    // (possibly marked done — the API can't tell), so it must not flood the
+    // inbox.
     let state = make_state(start_mock(READ_NOTIFICATION).await).await;
 
     sync_notifications(&state).await.unwrap();
@@ -343,6 +344,25 @@ async fn first_seen_read_notification_starts_archived() {
     let archived = queries::query_archived(&state.pool).await.unwrap();
     assert_eq!(archived.len(), 1);
     assert_eq!(archived[0].id, "1");
+}
+
+#[tokio::test]
+async fn first_seen_read_notification_stays_in_inbox_on_incremental_sync() {
+    // Mid-session, a brand-new notification the user happens to read on
+    // github.com within one 30s tick must still land in the inbox — the
+    // cold-start policy only applies to full syncs.
+    let state = make_state(start_mock(READ_NOTIFICATION).await).await;
+    queries::set_last_fetched_epoch(&state.pool, "notifications", now_epoch())
+        .await
+        .unwrap();
+
+    sync_notifications(&state).await.unwrap();
+
+    assert!(queries::query_archived(&state.pool).await.unwrap().is_empty());
+    let inbox = queries::query_inbox(&state.pool).await.unwrap();
+    assert_eq!(inbox.len(), 1);
+    assert_eq!(inbox[0].id, "1");
+    assert!(!inbox[0].unread, "arrives read, but stays in the inbox");
 }
 
 #[tokio::test]
