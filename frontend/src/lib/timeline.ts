@@ -81,20 +81,16 @@ export function isPassing(cr: CheckRun): boolean {
     );
 }
 
-export function ciSummary(checkRuns: CheckRun[]): {
-    text: string;
-    cls: string;
-} {
-    if (checkRuns.length === 0) return { text: "", cls: "" };
+/** One-line CI summary, e.g. "2 failing" / "1 running" / "CI passing". */
+export function ciSummary(checkRuns: CheckRun[]): string {
+    if (checkRuns.length === 0) return "";
     // A completed run with an unknown (null) conclusion counts as failing,
     // never as passing — matching the backend's derive_ci_status.
     const failing = checkRuns.filter(
         (cr) => !isPassing(cr) && cr.status === "completed",
     );
     const pending = checkRuns.filter((cr) => cr.status !== "completed");
-    if (failing.length > 0)
-        return { text: `${failing.length} failing`, cls: "ci-failing" };
-    if (pending.length > 0)
-        return { text: `${pending.length} running`, cls: "ci-pending" };
-    return { text: "CI passing", cls: "ci-passing" };
+    if (failing.length > 0) return `${failing.length} failing`;
+    if (pending.length > 0) return `${pending.length} running`;
+    return "CI passing";
 }

@@ -1,9 +1,9 @@
 <script lang="ts">
-import { avatarUrl } from "./avatar.ts";
 import { Collapsible, Tooltip } from "bits-ui";
 import { untrack } from "svelte";
 import { SvelteSet } from "svelte/reactivity";
 import { apiFetch } from "./api.ts";
+import { avatarUrl } from "./avatar.ts";
 import CiWheel from "./CiWheel.svelte";
 import CommentThread from "./CommentThread.svelte";
 import CommitItem from "./CommitItem.svelte";
@@ -12,7 +12,6 @@ import ReviewItem from "./ReviewItem.svelte";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
 import {
     countNewCommentsPerThread,
-    ciSummary as deriveCiSummary,
     isPassing,
     partitionCommits,
     partitionReviews,
@@ -123,7 +122,6 @@ function deriveStatePill(pr: PrDetailResponse["pull_request"]): {
     return { label: "Open", cls: "pill-open" };
 }
 
-
 function ciDotClass(cr: CheckRun): string {
     if (cr.status !== "completed") return "ci-pending";
     return isPassing(cr) ? "ci-success" : "ci-failure";
@@ -133,10 +131,6 @@ function ciLabel(cr: CheckRun): string {
     if (cr.status !== "completed") return "running";
     return cr.conclusion ?? "unknown";
 }
-
-let ciSummary = $derived(
-    detail ? deriveCiSummary(detail.check_runs) : { text: "", cls: "" },
-);
 
 // --- Timeline derived values (pure derivations live in timeline.ts) ---
 
@@ -776,6 +770,9 @@ let diffSinceUrl = $derived(
 }
 .ci-failure {
     background: var(--danger-fg);
+}
+.ci-pending {
+    background: var(--attention-fg, #9a6700);
 }
 
 .ci-tooltip-name {

@@ -194,14 +194,11 @@ describe("ciSummary", () => {
     });
 
     it("returns empty text and class when there are no check runs", () => {
-        expect(ciSummary([])).toEqual({ text: "", cls: "" });
+        expect(ciSummary([])).toBe("");
     });
 
     it("reports passing when all runs succeed", () => {
-        expect(ciSummary([run("completed", "success")])).toEqual({
-            text: "CI passing",
-            cls: "ci-passing",
-        });
+        expect(ciSummary([run("completed", "success")])).toBe("CI passing");
     });
 
     it("counts skipped and neutral conclusions as passing", () => {
@@ -210,19 +207,19 @@ describe("ciSummary", () => {
                 run("completed", "skipped"),
                 run("completed", "neutral"),
             ]),
-        ).toEqual({ text: "CI passing", cls: "ci-passing" });
+        ).toBe("CI passing");
     });
 
     it("reports running when some runs are not completed", () => {
         expect(
             ciSummary([run("completed", "success"), run("in_progress", null)]),
-        ).toEqual({ text: "1 running", cls: "ci-pending" });
+        ).toBe("1 running");
     });
 
     it("reports failing when a run fails, even if others are pending", () => {
         expect(
             ciSummary([run("completed", "failure"), run("in_progress", null)]),
-        ).toEqual({ text: "1 failing", cls: "ci-failing" });
+        ).toBe("1 failing");
     });
 
     // Regression: matches the backend's derive_ci_status — an unknown (null)
@@ -230,6 +227,6 @@ describe("ciSummary", () => {
     it("counts a completed run with null conclusion as failing", () => {
         expect(
             ciSummary([run("completed", null), run("completed", "success")]),
-        ).toEqual({ text: "1 failing", cls: "ci-failing" });
+        ).toBe("1 failing");
     });
 });

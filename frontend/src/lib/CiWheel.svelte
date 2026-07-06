@@ -11,7 +11,7 @@ function isFailing(cr: CheckRun): boolean {
     return cr.status === "completed" && !isPassing(cr);
 }
 
-let label = $derived(ciSummary(checkRuns).text);
+let label = $derived(ciSummary(checkRuns));
 
 let segments = $derived.by(() => {
     if (checkRuns.length === 0) return [];
