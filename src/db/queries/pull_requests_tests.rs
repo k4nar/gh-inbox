@@ -148,7 +148,7 @@ async fn query_inbox_enriched_returns_inbox_items() {
         archived: false,
         updated_at: "2025-01-01T00:00:00Z".to_string(),
     };
-    crate::db::queries::upsert_notification(&pool, &notif, 1)
+    crate::db::queries::upsert_notification(&pool, &notif, 1, false)
         .await
         .unwrap();
     upsert_pull_request(
@@ -200,7 +200,7 @@ async fn pr_status_draft() {
         archived: false,
         updated_at: "2025-01-02T00:00:00Z".to_string(),
     };
-    crate::db::queries::upsert_notification(&pool, &notif, 1)
+    crate::db::queries::upsert_notification(&pool, &notif, 1, false)
         .await
         .unwrap();
     upsert_pull_request(
@@ -249,7 +249,7 @@ async fn pr_status_merged() {
         archived: false,
         updated_at: "2025-01-03T00:00:00Z".to_string(),
     };
-    crate::db::queries::upsert_notification(&pool, &notif, 1)
+    crate::db::queries::upsert_notification(&pool, &notif, 1, false)
         .await
         .unwrap();
     upsert_pull_request(
@@ -332,7 +332,7 @@ async fn query_inbox_enriched_paginates() {
             archived: false,
             updated_at: format!("2025-01-0{i}T00:00:00Z"),
         };
-        crate::db::queries::upsert_notification(&pool, &notif, 1)
+        crate::db::queries::upsert_notification(&pool, &notif, 1, false)
             .await
             .unwrap();
     }
@@ -367,7 +367,8 @@ async fn query_archived_enriched_paginates() {
             archived: true,
             updated_at: format!("2025-02-0{i}T00:00:00Z"),
         };
-        crate::db::queries::upsert_notification(&pool, &notif, 1)
+        // Seed as archived: read first-contact under the cold-start policy.
+        crate::db::queries::upsert_notification(&pool, &notif, 1, true)
             .await
             .unwrap();
     }

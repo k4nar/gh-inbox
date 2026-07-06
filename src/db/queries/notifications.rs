@@ -39,8 +39,13 @@ struct Resolution {
 /// The notification state machine: how one row of a GitHub snapshot combines
 /// with local state. Pure so every transition can be unit-tested. Rules:
 ///
-/// - First contact (`local` is None): store the snapshot as the caller shaped
-///   it — the cold-start read→archived policy lives in the sync layer.
+/// - First contact (`local` is None): the row enters the inbox unless
+///   `archive_read_on_first_contact` is set and GitHub already reports it
+///   read — the cold-start policy: during a full sync, a read thread the DB
+///   never tracked was handled outside gh-inbox (read on github.com, possibly
+///   marked done — the REST API cannot tell the two apart). The incoming
+///   row's `archived` field is ignored entirely; this function owns the
+///   decision.
 /// - A local mutation stamped at or after `synced_at` (the sync's *start*
 ///   time) postdates the snapshot: the snapshot's unread/archived flags are
 ///   stale and must not overwrite local state. A later sync clears the stamp.
@@ -49,12 +54,17 @@ struct Resolution {
 /// - Metadata only refreshes when the snapshot brought real news; either way
 ///   GitHub returning the thread lifts unarchive protection (unless the
 ///   snapshot is stale per the rule above).
-fn reconcile(local: Option<&LocalFlags>, incoming: &NotificationRow, synced_at: i64) -> Resolution {
+fn reconcile(
+    local: Option<&LocalFlags>,
+    incoming: &NotificationRow,
+    synced_at: i64,
+    archive_read_on_first_contact: bool,
+) -> Resolution {
     let Some(local) = local else {
         return Resolution {
             changed: true,
             unread: incoming.unread,
-            archived: incoming.archived,
+            archived: archive_read_on_first_contact && !incoming.unread,
             locally_unarchived: false,
             local_write_epoch: None,
         };
@@ -108,6 +118,7 @@ pub async fn upsert_notification(
     pool: &SqlitePool,
     notif: &NotificationRow,
     synced_at: i64,
+    archive_read_on_first_contact: bool,
 ) -> sqlx::Result<u64> {
     let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
 
@@ -119,7 +130,12 @@ pub async fn upsert_notification(
     .fetch_optional(&mut *tx)
     .await?;
 
-    let resolution = reconcile(local.as_ref(), notif, synced_at);
+    let resolution = reconcile(
+        local.as_ref(),
+        notif,
+        synced_at,
+        archive_read_on_first_contact,
+    );
 
     match (local.is_some(), resolution.changed) {
         // First contact — insert.
@@ -292,20 +308,42 @@ mod reconcile_tests {
     }
 
     #[test]
-    fn first_contact_stores_snapshot_as_shaped_by_caller() {
+    fn first_contact_read_archives_only_under_cold_start_policy() {
+        // The incoming row's archived field is ignored; the decision is the
+        // state machine's, driven by the policy flag (set on full syncs).
         let mut row = incoming(false);
-        row.archived = true; // cold-start policy decided upstream
-        let r = reconcile(None, &row, 10);
+        row.archived = true; // must have no effect either way
+
+        let r = reconcile(None, &row, 10, true);
         assert!(r.changed);
         assert!(!r.unread);
-        assert!(r.archived);
+        assert!(
+            r.archived,
+            "cold start: read-on-arrival means handled elsewhere"
+        );
         assert!(!r.locally_unarchived);
         assert_eq!(r.local_write_epoch, None);
+
+        let r = reconcile(None, &row, 10, false);
+        assert!(
+            !r.archived,
+            "incremental tick: read first-contact stays in the inbox"
+        );
+    }
+
+    #[test]
+    fn first_contact_unread_always_enters_the_inbox() {
+        let r = reconcile(None, &incoming(true), 10, true);
+        assert!(r.unread);
+        assert!(
+            !r.archived,
+            "unread first-contact is never archived, even on full syncs"
+        );
     }
 
     #[test]
     fn snapshot_applies_when_no_local_write_pending() {
-        let r = reconcile(Some(&local(false, false)), &incoming(true), 10);
+        let r = reconcile(Some(&local(false, false)), &incoming(true), 10, false);
         assert!(r.changed);
         assert!(r.unread);
         assert!(!r.archived);
@@ -316,7 +354,7 @@ mod reconcile_tests {
         // Local write at t=12 postdates a sync that started at t=11.
         let mut l = local(false, true);
         l.local_write_epoch = Some(12);
-        let r = reconcile(Some(&l), &incoming(true), 11);
+        let r = reconcile(Some(&l), &incoming(true), 11, false);
         assert!(!r.unread, "stale snapshot must not revert the read");
         assert!(r.archived, "stale snapshot must not resurrect the archive");
         assert_eq!(r.local_write_epoch, Some(12), "stamp survives stale syncs");
@@ -326,7 +364,7 @@ mod reconcile_tests {
     fn newer_sync_applies_and_clears_stamp() {
         let mut l = local(false, false);
         l.local_write_epoch = Some(12);
-        let r = reconcile(Some(&l), &incoming(true), 15);
+        let r = reconcile(Some(&l), &incoming(true), 15, false);
         assert!(r.unread, "a sync started after the local write is truth");
         assert_eq!(r.local_write_epoch, None);
     }
@@ -335,7 +373,7 @@ mod reconcile_tests {
     fn own_activity_never_flips_flags() {
         let mut row = incoming(true);
         row.reason = "your_activity".to_string();
-        let r = reconcile(Some(&local(false, true)), &row, 10);
+        let r = reconcile(Some(&local(false, true)), &row, 10, false);
         assert!(r.changed, "metadata still refreshes");
         assert!(!r.unread);
         assert!(r.archived);
@@ -346,14 +384,14 @@ mod reconcile_tests {
         // Even with identical updated_at/unread, archived + unread = revival.
         let mut l = local(true, true);
         l.updated_at = incoming(true).updated_at;
-        let r = reconcile(Some(&l), &incoming(true), 10);
+        let r = reconcile(Some(&l), &incoming(true), 10, false);
         assert!(r.changed);
         assert!(!r.archived);
     }
 
     #[test]
     fn read_snapshot_keeps_archived_row_archived() {
-        let r = reconcile(Some(&local(false, true)), &incoming(false), 10);
+        let r = reconcile(Some(&local(false, true)), &incoming(false), 10, false);
         assert!(r.changed, "updated_at differs");
         assert!(r.archived, "read is not done — no resurrection");
     }
@@ -362,7 +400,7 @@ mod reconcile_tests {
     fn unchanged_snapshot_only_stamps_bookkeeping() {
         let mut l = local(true, false);
         l.updated_at = incoming(true).updated_at;
-        let r = reconcile(Some(&l), &incoming(true), 10);
+        let r = reconcile(Some(&l), &incoming(true), 10, false);
         assert!(!r.changed);
     }
 
@@ -371,7 +409,7 @@ mod reconcile_tests {
         let mut l = local(true, false);
         l.updated_at = incoming(true).updated_at;
         l.locally_unarchived = true;
-        let r = reconcile(Some(&l), &incoming(true), 10);
+        let r = reconcile(Some(&l), &incoming(true), 10, false);
         assert!(!r.locally_unarchived);
     }
 
@@ -381,7 +419,7 @@ mod reconcile_tests {
         l.updated_at = incoming(true).updated_at;
         l.locally_unarchived = true;
         l.local_write_epoch = Some(12);
-        let r = reconcile(Some(&l), &incoming(true), 11);
+        let r = reconcile(Some(&l), &incoming(true), 11, false);
         assert!(r.locally_unarchived);
     }
 }
@@ -401,7 +439,9 @@ mod tests {
     #[tokio::test]
     async fn insert_and_query_inbox() {
         let pool = test_pool().await;
-        upsert_notification(&pool, &sample("n1"), 1).await.unwrap();
+        upsert_notification(&pool, &sample("n1"), 1, false)
+            .await
+            .unwrap();
         let inbox = query_inbox(&pool).await.unwrap();
         assert_eq!(inbox.len(), 1);
         assert_eq!(inbox[0].id, "n1");
@@ -412,7 +452,9 @@ mod tests {
     #[tokio::test]
     async fn archive_and_unarchive() {
         let pool = test_pool().await;
-        upsert_notification(&pool, &sample("n2"), 1).await.unwrap();
+        upsert_notification(&pool, &sample("n2"), 1, false)
+            .await
+            .unwrap();
 
         archive_notification(&pool, "n2", 1).await.unwrap();
         assert_eq!(query_inbox(&pool).await.unwrap().len(), 0);
@@ -427,10 +469,10 @@ mod tests {
     async fn upsert_is_idempotent() {
         let pool = test_pool().await;
         let mut notif = sample("n3");
-        upsert_notification(&pool, &notif, 1).await.unwrap();
+        upsert_notification(&pool, &notif, 1, false).await.unwrap();
         notif.reason = "mention".to_string();
         notif.updated_at = "2025-01-02T00:00:00Z".to_string();
-        upsert_notification(&pool, &notif, 1).await.unwrap();
+        upsert_notification(&pool, &notif, 1, false).await.unwrap();
         let inbox = query_inbox(&pool).await.unwrap();
         assert_eq!(inbox.len(), 1);
         assert_eq!(inbox[0].reason, "mention");
@@ -440,11 +482,11 @@ mod tests {
     async fn upsert_unread_moves_archived_back_to_inbox() {
         let pool = test_pool().await;
         let notif = sample("n4");
-        upsert_notification(&pool, &notif, 1).await.unwrap();
+        upsert_notification(&pool, &notif, 1, false).await.unwrap();
         archive_notification(&pool, "n4", 1).await.unwrap();
         // Re-upserting with unread=true should unarchive (new activity).
         // The sync started after the local archive, so the guard does not apply.
-        upsert_notification(&pool, &notif, 2).await.unwrap();
+        upsert_notification(&pool, &notif, 2, false).await.unwrap();
         assert_eq!(query_inbox(&pool).await.unwrap().len(), 1);
         assert_eq!(query_archived(&pool).await.unwrap().len(), 0);
     }
@@ -453,11 +495,11 @@ mod tests {
     async fn upsert_read_keeps_archived_status() {
         let pool = test_pool().await;
         let mut notif = sample("n6");
-        upsert_notification(&pool, &notif, 1).await.unwrap();
+        upsert_notification(&pool, &notif, 1, false).await.unwrap();
         archive_notification(&pool, "n6", 1).await.unwrap();
         // Re-upserting with unread=false should preserve archived status
         notif.unread = false;
-        upsert_notification(&pool, &notif, 2).await.unwrap();
+        upsert_notification(&pool, &notif, 2, false).await.unwrap();
         assert_eq!(query_inbox(&pool).await.unwrap().len(), 0);
         assert_eq!(query_archived(&pool).await.unwrap().len(), 1);
     }
@@ -465,7 +507,9 @@ mod tests {
     #[tokio::test]
     async fn mark_read_works() {
         let pool = test_pool().await;
-        upsert_notification(&pool, &sample("n5"), 1).await.unwrap();
+        upsert_notification(&pool, &sample("n5"), 1, false)
+            .await
+            .unwrap();
         mark_read(&pool, "n5", 1).await.unwrap();
         let inbox = query_inbox(&pool).await.unwrap();
         assert!(!inbox[0].unread);
@@ -475,9 +519,15 @@ mod tests {
     async fn archive_stale_archives_old_synced_at() {
         let pool = test_pool().await;
         // n1 and n2 synced at t=10, n3 synced at t=5 (stale)
-        upsert_notification(&pool, &sample("n1"), 10).await.unwrap();
-        upsert_notification(&pool, &sample("n2"), 10).await.unwrap();
-        upsert_notification(&pool, &sample("n3"), 5).await.unwrap();
+        upsert_notification(&pool, &sample("n1"), 10, false)
+            .await
+            .unwrap();
+        upsert_notification(&pool, &sample("n2"), 10, false)
+            .await
+            .unwrap();
+        upsert_notification(&pool, &sample("n3"), 5, false)
+            .await
+            .unwrap();
 
         let count = archive_stale(&pool, 10).await.unwrap();
         assert_eq!(count, 1);
@@ -490,8 +540,12 @@ mod tests {
     #[tokio::test]
     async fn archive_stale_leaves_current_unchanged() {
         let pool = test_pool().await;
-        upsert_notification(&pool, &sample("n1"), 10).await.unwrap();
-        upsert_notification(&pool, &sample("n2"), 10).await.unwrap();
+        upsert_notification(&pool, &sample("n1"), 10, false)
+            .await
+            .unwrap();
+        upsert_notification(&pool, &sample("n2"), 10, false)
+            .await
+            .unwrap();
 
         let count = archive_stale(&pool, 10).await.unwrap();
         assert_eq!(count, 0);
@@ -502,7 +556,9 @@ mod tests {
     #[tokio::test]
     async fn archive_stale_spares_locally_unarchived() {
         let pool = test_pool().await;
-        upsert_notification(&pool, &sample("n1"), 5).await.unwrap();
+        upsert_notification(&pool, &sample("n1"), 5, false)
+            .await
+            .unwrap();
         archive_notification(&pool, "n1", 6).await.unwrap();
         unarchive_notification(&pool, "n1", 6).await.unwrap();
 
@@ -517,14 +573,14 @@ mod tests {
     async fn new_activity_clears_unarchive_protection() {
         let pool = test_pool().await;
         let mut notif = sample("n1");
-        upsert_notification(&pool, &notif, 5).await.unwrap();
+        upsert_notification(&pool, &notif, 5, false).await.unwrap();
         archive_notification(&pool, "n1", 6).await.unwrap();
         unarchive_notification(&pool, "n1", 6).await.unwrap();
 
         // GitHub returns the thread again (new activity) — protection lifts,
         // so a later full sync that no longer sees the thread re-archives it.
         notif.updated_at = "2025-01-02T00:00:00Z".to_string();
-        upsert_notification(&pool, &notif, 8).await.unwrap();
+        upsert_notification(&pool, &notif, 8, false).await.unwrap();
         let count = archive_stale(&pool, 10).await.unwrap();
         assert_eq!(count, 1);
         assert_eq!(query_archived(&pool).await.unwrap().len(), 1);
@@ -534,11 +590,15 @@ mod tests {
     async fn stale_sync_does_not_revert_fresh_local_read() {
         let pool = test_pool().await;
         // Sync starts at t=10 and snapshots the notification as unread.
-        upsert_notification(&pool, &sample("n1"), 10).await.unwrap();
+        upsert_notification(&pool, &sample("n1"), 10, false)
+            .await
+            .unwrap();
         // User marks it read at t=12, while the next sync (started t=11,
         // snapshot predates the click) is still in flight.
         mark_read(&pool, "n1", 12).await.unwrap();
-        upsert_notification(&pool, &sample("n1"), 11).await.unwrap();
+        upsert_notification(&pool, &sample("n1"), 11, false)
+            .await
+            .unwrap();
 
         let inbox = query_inbox(&pool).await.unwrap();
         assert!(!inbox[0].unread, "stale snapshot must not revert the read");
@@ -547,11 +607,15 @@ mod tests {
     #[tokio::test]
     async fn stale_sync_does_not_resurrect_fresh_local_archive() {
         let pool = test_pool().await;
-        upsert_notification(&pool, &sample("n1"), 10).await.unwrap();
+        upsert_notification(&pool, &sample("n1"), 10, false)
+            .await
+            .unwrap();
         // User archives at t=12; in-flight sync started at t=11 still has the
         // thread as unread in its snapshot.
         archive_notification(&pool, "n1", 12).await.unwrap();
-        upsert_notification(&pool, &sample("n1"), 11).await.unwrap();
+        upsert_notification(&pool, &sample("n1"), 11, false)
+            .await
+            .unwrap();
 
         assert_eq!(query_inbox(&pool).await.unwrap().len(), 0);
         assert_eq!(query_archived(&pool).await.unwrap().len(), 1);
@@ -561,20 +625,20 @@ mod tests {
     async fn newer_sync_overrides_local_state_and_clears_stamp() {
         let pool = test_pool().await;
         let mut notif = sample("n1");
-        upsert_notification(&pool, &notif, 10).await.unwrap();
+        upsert_notification(&pool, &notif, 10, false).await.unwrap();
         mark_read(&pool, "n1", 12).await.unwrap();
 
         // A sync that started after the local write reflects real GitHub
         // state (new activity arrived): it may flip the flags again.
         notif.updated_at = "2025-01-02T00:00:00Z".to_string();
-        upsert_notification(&pool, &notif, 15).await.unwrap();
+        upsert_notification(&pool, &notif, 15, false).await.unwrap();
         let inbox = query_inbox(&pool).await.unwrap();
         assert!(inbox[0].unread, "newer sync state must apply");
 
         // The stamp was cleared, so an even later stale-looking snapshot
         // isn't blocked by the old local write.
         mark_read(&pool, "n1", 20).await.unwrap();
-        upsert_notification(&pool, &notif, 21).await.unwrap();
+        upsert_notification(&pool, &notif, 21, false).await.unwrap();
         let inbox = query_inbox(&pool).await.unwrap();
         assert!(inbox[0].unread);
     }
@@ -582,7 +646,9 @@ mod tests {
     #[tokio::test]
     async fn archive_stale_skips_already_archived() {
         let pool = test_pool().await;
-        upsert_notification(&pool, &sample("n1"), 5).await.unwrap();
+        upsert_notification(&pool, &sample("n1"), 5, false)
+            .await
+            .unwrap();
         archive_notification(&pool, "n1", 6).await.unwrap();
 
         // n1 is stale but already archived — rows_affected should be 0
@@ -615,7 +681,7 @@ mod own_activity_tests {
     #[tokio::test]
     async fn own_activity_insert_starts_as_read() {
         let pool = pool().await;
-        upsert_notification(&pool, &row("your_activity", false, false), 1)
+        upsert_notification(&pool, &row("your_activity", false, false), 1, false)
             .await
             .unwrap();
         let rows = query_inbox(&pool).await.unwrap();
@@ -626,12 +692,12 @@ mod own_activity_tests {
     #[tokio::test]
     async fn own_activity_does_not_make_read_notification_unread() {
         let pool = pool().await;
-        upsert_notification(&pool, &row("review_requested", false, false), 1)
+        upsert_notification(&pool, &row("review_requested", false, false), 1, false)
             .await
             .unwrap();
         let mut r = row("your_activity", false, false);
         r.updated_at = "2025-01-02T00:00:00Z".to_string();
-        upsert_notification(&pool, &r, 1).await.unwrap();
+        upsert_notification(&pool, &r, 1, false).await.unwrap();
         let rows = query_inbox(&pool).await.unwrap();
         assert!(!rows[0].unread);
     }
@@ -639,12 +705,12 @@ mod own_activity_tests {
     #[tokio::test]
     async fn own_activity_preserves_unread_when_already_unread() {
         let pool = pool().await;
-        upsert_notification(&pool, &row("review_requested", true, false), 1)
+        upsert_notification(&pool, &row("review_requested", true, false), 1, false)
             .await
             .unwrap();
         let mut r = row("your_activity", false, false);
         r.updated_at = "2025-01-02T00:00:00Z".to_string();
-        upsert_notification(&pool, &r, 1).await.unwrap();
+        upsert_notification(&pool, &r, 1, false).await.unwrap();
         let rows = query_inbox(&pool).await.unwrap();
         assert!(rows[0].unread);
     }
@@ -652,12 +718,12 @@ mod own_activity_tests {
     #[tokio::test]
     async fn own_activity_preserves_archived_state() {
         let pool = pool().await;
-        upsert_notification(&pool, &row("review_requested", false, true), 1)
+        upsert_notification(&pool, &row("review_requested", false, true), 1, true)
             .await
             .unwrap();
         let mut r = row("your_activity", false, false);
         r.updated_at = "2025-01-02T00:00:00Z".to_string();
-        upsert_notification(&pool, &r, 1).await.unwrap();
+        upsert_notification(&pool, &r, 1, false).await.unwrap();
         let archived = query_archived(&pool).await.unwrap();
         assert_eq!(archived.len(), 1, "notification should remain archived");
     }

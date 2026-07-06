@@ -311,6 +311,7 @@ async fn full_sync_keeps_read_notification_still_in_github_feed() {
             updated_at: "2025-01-01T00:00:00Z".to_string(),
         },
         0,
+        false,
     )
     .await
     .unwrap();
@@ -358,7 +359,12 @@ async fn first_seen_read_notification_stays_in_inbox_on_incremental_sync() {
 
     sync_notifications(&state).await.unwrap();
 
-    assert!(queries::query_archived(&state.pool).await.unwrap().is_empty());
+    assert!(
+        queries::query_archived(&state.pool)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     let inbox = queries::query_inbox(&state.pool).await.unwrap();
     assert_eq!(inbox.len(), 1);
     assert_eq!(inbox[0].id, "1");
@@ -384,7 +390,7 @@ async fn first_seen_read_notification_revives_on_new_activity() {
         updated_at: "2025-01-02T00:00:00Z".to_string(),
     };
     revived.unread = true;
-    queries::upsert_notification(&state.pool, &revived, now_epoch())
+    queries::upsert_notification(&state.pool, &revived, now_epoch(), false)
         .await
         .unwrap();
 
@@ -413,6 +419,7 @@ async fn full_sync_archives_notifications_missing_from_github() {
             updated_at: "2025-01-01T00:00:00Z".to_string(),
         },
         0,
+        false,
     )
     .await
     .unwrap();
@@ -429,6 +436,7 @@ async fn full_sync_archives_notifications_missing_from_github() {
             updated_at: "2025-01-01T00:00:00Z".to_string(),
         },
         0,
+        false,
     )
     .await
     .unwrap();

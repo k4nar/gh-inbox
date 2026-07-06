@@ -106,22 +106,20 @@ pub async fn sync_notifications(state: &AppState) -> Result<SyncResult, SyncErro
             repository: notif.repository.full_name.clone(),
             reason: notif.reason.clone(),
             unread: notif.unread && notif.reason != "your_activity",
-            // Cold-start policy, applied only during FULL syncs: a thread the
-            // DB has never tracked that a full sync returns already read was
-            // handled outside gh-inbox (read on github.com, possibly marked
-            // done — the REST API cannot tell the two apart within its ~7-week
-            // feed window), so it starts archived instead of flooding the
-            // inbox. Incremental ticks are exempt: a brand-new notification
-            // the user happens to read on the web within one 30s tick must
-            // still land in the inbox ("mark read but keep the PR in the
-            // list"). Already-tracked threads are unaffected either way —
-            // reconcile() ignores incoming.archived for existing rows — and
-            // new activity revives an archived row through the normal path.
-            archived: is_full_sync && !notif.unread,
+            // Ignored for sync rows: reconcile() owns the archived decision
+            // (see archive_read_on_first_contact below).
+            archived: false,
             updated_at: notif.updated_at.clone(),
         };
 
-        let rows_affected = queries::upsert_notification(&state.pool, &row, now).await?;
+        // Cold-start policy, applied only during FULL syncs: first-contact
+        // threads GitHub already reports read were handled outside gh-inbox
+        // and start archived instead of flooding the inbox. Incremental ticks
+        // are exempt so a brand-new notification read on the web within one
+        // 30s tick still lands in the inbox ("mark read but keep the PR in
+        // the list"). New activity revives an archived row via reconcile().
+        let rows_affected =
+            queries::upsert_notification(&state.pool, &row, now, is_full_sync).await?;
         if rows_affected > 0 {
             changed.push(ChangedNotification {
                 repository: notif.repository.full_name.clone(),
