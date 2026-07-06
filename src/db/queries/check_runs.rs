@@ -19,7 +19,7 @@ pub async fn upsert_check_run<'e>(
     sqlx::query(
         "INSERT INTO check_runs (id, repo, pr_id, name, status, conclusion)
          VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
+         ON CONFLICT(repo, pr_id, id) DO UPDATE SET
            status = excluded.status,
            conclusion = excluded.conclusion",
     )
@@ -117,6 +117,37 @@ mod tests {
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].status, "completed");
         assert_eq!(runs[0].conclusion, Some("success".to_string()));
+    }
+
+    #[tokio::test]
+    async fn same_check_id_on_two_prs_does_not_collide() {
+        // Check runs belong to a commit: two PRs sharing a head commit report
+        // the SAME real check-run id, and synthesized StatusContext ids repeat
+        // for every PR carrying the same context name. Each PR must keep its
+        // own row — the second insert must not steal or overwrite the first's.
+        let pool = test_pool().await;
+        upsert_pull_request(&pool, &sample_pr(1)).await.unwrap();
+        upsert_pull_request(&pool, &sample_pr(2)).await.unwrap();
+
+        let mut run_a = sample(-77, 1);
+        run_a.conclusion = Some("failure".to_string());
+        upsert_check_run(&pool, &run_a).await.unwrap();
+
+        let mut run_b = sample(-77, 2);
+        run_b.conclusion = Some("success".to_string());
+        upsert_check_run(&pool, &run_b).await.unwrap();
+
+        let runs_a = query_check_runs_for_pr(&pool, "owner/repo", 1)
+            .await
+            .unwrap();
+        assert_eq!(runs_a.len(), 1);
+        assert_eq!(runs_a[0].conclusion.as_deref(), Some("failure"));
+
+        let runs_b = query_check_runs_for_pr(&pool, "owner/repo", 2)
+            .await
+            .unwrap();
+        assert_eq!(runs_b.len(), 1);
+        assert_eq!(runs_b[0].conclusion.as_deref(), Some("success"));
     }
 
     #[tokio::test]

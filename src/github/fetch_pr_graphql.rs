@@ -514,9 +514,9 @@ fn convert(gql_pr: GqlPullRequest) -> GraphqlPrData {
                 let (status, conclusion) = convert_status_state(&state);
                 check_runs_vec.push(GithubCheckRun {
                     // StatusContext has no databaseId; synthesize a negative id
-                    // (real check-run ids are positive). Rows are wiped and
-                    // re-inserted on every fetch, so it only needs to be unique
-                    // within one snapshot.
+                    // (real check-run ids are positive). check_runs row identity
+                    // is (repo, pr_id, id), so the id only needs to be unique
+                    // among the contexts of one PR's head commit.
                     id: status_context_id(&name),
                     name,
                     status: status.to_string(),
