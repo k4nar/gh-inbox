@@ -5,7 +5,8 @@ use crate::db::queries::{self, CheckRunRow, CommentRow, CommitRow, PullRequestRo
 use crate::github;
 use crate::github::fetch_pr_graphql::GraphqlPrData;
 use crate::markdown::render_markdown;
-use crate::models::{GithubCheckRun, PrStatus};
+use crate::models::{GithubCheckRun, PrInfoUpdatedData, PrNewComment, PrStatus, SyncEvent};
+use tokio::sync::broadcast::Sender;
 
 /// Minimum seconds between full PR fetches. Applies to every caller (detail
 /// view, inbox prefetch, viewport auto-fetch) — they all go through
@@ -73,6 +74,72 @@ pub async fn fetch_and_cache_pr(
     queries::set_last_fetched_now(pool, &resource_key).await?;
 
     Ok(Some(PrFetchResult { author, pr_status }))
+}
+
+/// Fetch a PR (throttled), read the cached row back, assemble the freshest
+/// activity data and broadcast a `pr:info_updated` SSE event. The single
+/// pipeline behind both the viewport prefetch and the sync loop's auto-fetch —
+/// keep it that way, or the two paths drift and the same PR broadcasts
+/// different payloads depending on which one fired.
+pub async fn refresh_pr_and_broadcast(
+    pool: &SqlitePool,
+    github: &github::GithubClient,
+    tx: &Sender<SyncEvent>,
+    repository: &str,
+    number: i64,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let Some((owner, repo_name)) = repository.split_once('/') else {
+        return Ok(());
+    };
+
+    // Throttled: no-ops if fetched within the last 60s. Does NOT update
+    // last_viewed_at; that only happens when the user opens the PR.
+    let fetch_result = fetch_and_cache_pr(pool, github, owner, repo_name, number)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+
+    // Read the full PR row for ci_status, teams, and (if throttled) author/status.
+    let Some(pr_row) = queries::get_pull_request(pool, repository, number).await? else {
+        return Ok(()); // Not yet in DB — nothing to broadcast.
+    };
+
+    // fetch_result carries fresher author/status when we just fetched.
+    let (author, pr_status) = match fetch_result {
+        Some(r) => (r.author, r.pr_status),
+        None => (pr_row.author.clone(), derive_pr_status_from_row(&pr_row)),
+    };
+
+    let ci_status = pr_row.ci_status.clone();
+    let teams: Option<Vec<String>> = pr_row
+        .teams
+        .as_deref()
+        .and_then(|json| serde_json::from_str(json).ok());
+
+    // Activity counts respect last_viewed_at (None = first visit).
+    let (new_commits, new_comments_json) = queries::get_pr_activity(pool, number, repository)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+    let new_comments: Option<Vec<PrNewComment>> = match new_comments_json.as_deref() {
+        None => None,
+        Some(json) => Some(serde_json::from_str(json)?),
+    };
+    let new_reviews = queries::get_pr_review_activity(pool, repository, number)
+        .await
+        .map_err(|e| format!("{e:?}"))?;
+
+    let _ = tx.send(SyncEvent::PrInfoUpdated(PrInfoUpdatedData {
+        pr_id: number,
+        repository: repository.to_string(),
+        author,
+        pr_status,
+        ci_status,
+        new_commits,
+        new_comments,
+        new_reviews,
+        teams,
+    }));
+
+    Ok(())
 }
 
 /// Cache all PR data from a GraphQL response into SQLite.

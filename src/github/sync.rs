@@ -5,8 +5,7 @@ use tokio::sync::broadcast;
 
 use crate::clock::now_epoch;
 use crate::db::queries;
-use crate::github::pr_cache::{derive_pr_status_from_row, fetch_and_cache_pr};
-use crate::models::{PrInfoUpdatedData, PrNewComment, SyncEvent, SyncStatusKind};
+use crate::models::{SyncEvent, SyncStatusKind};
 use crate::server::AppState;
 
 /// Error type for sync operations — avoids a dependency on `api::AppError`.
@@ -260,59 +259,21 @@ pub(crate) async fn auto_fetch_viewport_prs(
             continue;
         }
 
-        let parts: Vec<&str> = notif.repository.splitn(2, '/').collect();
-        if parts.len() != 2 {
-            continue;
-        }
-        let (owner, repo_name) = (parts[0], parts[1]);
-
-        match fetch_and_cache_pr(&state.pool, &state.github, owner, repo_name, pr_id).await {
-            Ok(_) => {
-                // Read the updated PR row and broadcast SSE.
-                if let Ok(Some(pr_row)) =
-                    queries::get_pull_request(&state.pool, &notif.repository, pr_id).await
-                {
-                    let pr_status = derive_pr_status_from_row(&pr_row);
-                    let ci_status = pr_row.ci_status.clone();
-                    let teams: Option<Vec<String>> = pr_row
-                        .teams
-                        .as_deref()
-                        .and_then(|json| serde_json::from_str(json).ok());
-
-                    let (new_commits, new_comments_json) =
-                        queries::get_pr_activity(&state.pool, pr_id, &notif.repository)
-                            .await
-                            .unwrap_or((None, None));
-                    let new_comments: Option<Vec<PrNewComment>> = new_comments_json
-                        .as_deref()
-                        .and_then(|json| serde_json::from_str(json).ok());
-
-                    let new_reviews =
-                        queries::get_pr_review_activity(&state.pool, &notif.repository, pr_id)
-                            .await
-                            .unwrap_or(None);
-
-                    let _ = tx.send(SyncEvent::PrInfoUpdated(PrInfoUpdatedData {
-                        pr_id,
-                        repository: notif.repository.clone(),
-                        author: pr_row.author.clone(),
-                        pr_status,
-                        ci_status,
-                        new_commits,
-                        new_comments,
-                        new_reviews,
-                        teams,
-                    }));
-                }
-            }
-            Err(e) => {
-                tracing::warn!(
-                    repository = %notif.repository,
-                    pr_id,
-                    error = ?e,
-                    "auto-fetch viewport PR failed"
-                );
-            }
+        if let Err(e) = crate::github::pr_cache::refresh_pr_and_broadcast(
+            &state.pool,
+            &state.github,
+            tx,
+            &notif.repository,
+            pr_id,
+        )
+        .await
+        {
+            tracing::warn!(
+                repository = %notif.repository,
+                pr_id,
+                error = %e,
+                "auto-fetch viewport PR failed"
+            );
         }
     }
 }
