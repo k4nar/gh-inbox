@@ -50,7 +50,11 @@ struct Resolution {
 ///   time) postdates the snapshot: the snapshot's unread/archived flags are
 ///   stale and must not overwrite local state. A later sync clears the stamp.
 /// - The user's own activity (`your_activity`) never flips read/archived.
-/// - New activity (snapshot says unread) revives an archived row.
+/// - New activity (a newer `updated_at`, snapshot unread) revives an archived
+///   row. An unread snapshot with an unchanged `updated_at` is not news — it
+///   is GitHub echoing state a local read/archive write-back has not reached
+///   yet — and never flips local flags. Clearing unread (read elsewhere)
+///   always applies.
 /// - Metadata only refreshes when the snapshot brought real news; either way
 ///   GitHub returning the thread lifts unarchive protection (unless the
 ///   snapshot is stale per the rule above).
@@ -73,9 +77,15 @@ fn reconcile(
     let stale_snapshot = local.local_write_epoch.is_some_and(|e| e >= synced_at);
     let own_activity = incoming.reason == "your_activity";
 
-    let changed = local.updated_at != incoming.updated_at
-        || local.unread != incoming.unread
-        || (local.archived && incoming.unread);
+    // New activity always bumps updated_at, so an unread=true snapshot with an
+    // unchanged updated_at is GitHub echoing state our own read/archive
+    // write-back has not replaced (dropped by a rate limit, or still in
+    // flight) — applying it would resurrect what the user just cleared.
+    // Clearing unread has no such failure mode (gh-inbox has no mark-unread
+    // write), so a thread read elsewhere still propagates.
+    let new_activity = local.updated_at != incoming.updated_at;
+    let read_elsewhere = local.unread && !incoming.unread;
+    let changed = new_activity || read_elsewhere;
 
     let (unread, archived) = if !changed || stale_snapshot || own_activity {
         (local.unread, local.archived)
@@ -381,12 +391,45 @@ mod reconcile_tests {
 
     #[test]
     fn new_activity_revives_archived_row() {
-        // Even with identical updated_at/unread, archived + unread = revival.
+        // local() has an older updated_at than incoming() — real new activity.
+        let r = reconcile(Some(&local(true, true)), &incoming(true), 10, false);
+        assert!(r.changed);
+        assert!(!r.archived);
+    }
+
+    #[test]
+    fn unread_echo_without_new_activity_keeps_archived() {
+        // User archived an unread thread; the done write to GitHub was lost
+        // (rate limit) or is still in flight. The next tick echoes the thread
+        // unread with the same updated_at — that echo must not resurrect it.
         let mut l = local(true, true);
         l.updated_at = incoming(true).updated_at;
         let r = reconcile(Some(&l), &incoming(true), 10, false);
+        assert!(!r.changed);
+        assert!(r.archived, "an unread echo is not new activity");
+    }
+
+    #[test]
+    fn unread_echo_without_new_activity_keeps_read() {
+        // Same lost-write signature for mark-read: the sync started after the
+        // local write (stamp guard does not apply), but the snapshot brought
+        // no new updated_at, so the unread flag is a stale echo.
+        let mut l = local(false, false);
+        l.updated_at = incoming(true).updated_at;
+        let r = reconcile(Some(&l), &incoming(true), 10, false);
+        assert!(!r.changed);
+        assert!(!r.unread, "an unread echo must not revert the read");
+    }
+
+    #[test]
+    fn read_elsewhere_applies_without_new_activity() {
+        // Reading a thread on github.com clears unread without bumping
+        // updated_at; that must still propagate.
+        let mut l = local(true, false);
+        l.updated_at = incoming(false).updated_at;
+        let r = reconcile(Some(&l), &incoming(false), 10, false);
         assert!(r.changed);
-        assert!(!r.archived);
+        assert!(!r.unread);
     }
 
     #[test]
@@ -481,14 +524,28 @@ mod tests {
     #[tokio::test]
     async fn upsert_unread_moves_archived_back_to_inbox() {
         let pool = test_pool().await;
-        let notif = sample("n4");
+        let mut notif = sample("n4");
         upsert_notification(&pool, &notif, 1, false).await.unwrap();
         archive_notification(&pool, "n4", 1).await.unwrap();
-        // Re-upserting with unread=true should unarchive (new activity).
+        // New activity (bumped updated_at + unread) should unarchive.
         // The sync started after the local archive, so the guard does not apply.
+        notif.updated_at = "2025-01-02T00:00:00Z".to_string();
         upsert_notification(&pool, &notif, 2, false).await.unwrap();
         assert_eq!(query_inbox(&pool).await.unwrap().len(), 1);
         assert_eq!(query_archived(&pool).await.unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn upsert_unread_echo_does_not_resurrect_archived_row() {
+        let pool = test_pool().await;
+        let notif = sample("n4");
+        upsert_notification(&pool, &notif, 1, false).await.unwrap();
+        archive_notification(&pool, "n4", 1).await.unwrap();
+        // Same snapshot returned again (identical updated_at): GitHub has not
+        // seen the done write yet. The archive must stick.
+        upsert_notification(&pool, &notif, 2, false).await.unwrap();
+        assert_eq!(query_inbox(&pool).await.unwrap().len(), 0);
+        assert_eq!(query_archived(&pool).await.unwrap().len(), 1);
     }
 
     #[tokio::test]
@@ -635,9 +692,10 @@ mod tests {
         let inbox = query_inbox(&pool).await.unwrap();
         assert!(inbox[0].unread, "newer sync state must apply");
 
-        // The stamp was cleared, so an even later stale-looking snapshot
+        // The stamp was cleared, so an even later snapshot with new activity
         // isn't blocked by the old local write.
         mark_read(&pool, "n1", 20).await.unwrap();
+        notif.updated_at = "2025-01-03T00:00:00Z".to_string();
         upsert_notification(&pool, &notif, 21, false).await.unwrap();
         let inbox = query_inbox(&pool).await.unwrap();
         assert!(inbox[0].unread);
