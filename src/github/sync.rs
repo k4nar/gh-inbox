@@ -1,4 +1,3 @@
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use tokio::sync::broadcast;
@@ -148,20 +147,9 @@ pub async fn sync_notifications(state: &AppState) -> Result<SyncResult, SyncErro
     })
 }
 
-/// Clears `sync_in_progress` on drop, so the flag is released even when the
-/// sync task panics. A stuck flag would silently disable both the background
-/// loop and POST /api/sync for the rest of the session.
-pub struct SyncInProgressGuard(pub std::sync::Arc<std::sync::atomic::AtomicBool>);
-
-impl Drop for SyncInProgressGuard {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::SeqCst);
-    }
-}
-
 /// One tick of the sync loop: broadcast Started, sync, broadcast the outcome.
-/// Flag handling lives with the callers.
-async fn sync_tick(state: &AppState, tx: &broadcast::Sender<SyncEvent>) {
+/// Lock handling lives with the callers.
+pub(crate) async fn sync_tick(state: &AppState, tx: &broadcast::Sender<SyncEvent>) {
     // Ignore send errors — they just mean no clients are listening
     let _ = tx.send(SyncEvent::SyncStatus {
         status: SyncStatusKind::Started,
@@ -206,19 +194,16 @@ pub async fn run_sync_loop(state: AppState, tx: broadcast::Sender<SyncEvent>, in
     let _ = queries::clear_last_fetched(&state.pool, "notifications").await;
 
     loop {
-        // Take the same guard POST /api/sync uses, so a manual sync can never
+        // Take the same lock POST /api/sync uses, so a manual sync can never
         // start while a loop tick is mid-flight (and vice versa): two
         // interleaved syncs run reconciliation against each other's snapshots
-        // and can spuriously archive rows. Skip the tick if the flag is held.
-        if state
-            .sync_in_progress
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
-        {
+        // and can spuriously archive rows. Skip the tick if the lock is taken
+        // (the Mutex is fair, so try_lock also fails while a manual sync is
+        // queued — the tick yields to it).
+        if let Ok(guard) = state.sync_lock.clone().try_lock_owned() {
             // Run the tick in its own task: a panic surfaces here as a
             // JoinError instead of unwinding through — and killing — the loop.
-            // The guard travels into the task so the flag is released either way.
-            let guard = SyncInProgressGuard(state.sync_in_progress.clone());
+            // The guard travels into the task so the lock is released either way.
             let tick = tokio::spawn({
                 let state = state.clone();
                 let tx = tx.clone();

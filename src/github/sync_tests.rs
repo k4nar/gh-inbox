@@ -20,7 +20,8 @@ async fn make_state(base_url: String) -> AppState {
         tx,
         viewport_prs: Arc::new(tokio::sync::RwLock::new(std::collections::HashSet::new())),
         session_token: Arc::from("test-session-token"),
-        sync_in_progress: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        sync_lock: Arc::new(tokio::sync::Mutex::new(())),
+        manual_sync_queued: Arc::new(std::sync::atomic::AtomicBool::new(false)),
     }
 }
 

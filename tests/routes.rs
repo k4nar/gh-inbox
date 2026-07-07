@@ -1530,7 +1530,7 @@ async fn post_sync_broadcasts_sync_started_event() {
 }
 
 #[tokio::test]
-async fn post_sync_while_in_progress_does_not_broadcast_started() {
+async fn post_sync_while_tick_in_flight_waits_then_runs() {
     let pool = gh_inbox::db::init_with_path(":memory:").await;
     let (app, state) = gh_inbox::app_with_base_url(
         pool,
@@ -1538,29 +1538,60 @@ async fn post_sync_while_in_progress_does_not_broadcast_started() {
         "http://localhost:1".to_string(),
     );
 
-    // Simulate a sync already running
-    state
-        .sync_in_progress
-        .store(true, std::sync::atomic::Ordering::SeqCst);
+    // Simulate a background tick mid-flight.
+    let in_flight = state.sync_lock.clone().try_lock_owned().unwrap();
 
     let mut rx = state.tx.subscribe();
 
-    let response = app
-        .oneshot(
-            axum::http::Request::builder()
-                .method(axum::http::Method::POST)
-                .uri("/api/sync")
-                .body(axum::body::Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    // Two requests while busy: both accepted, the second coalesces.
+    for _ in 0..2 {
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .method(axum::http::Method::POST)
+                    .uri("/api/sync")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+    }
 
-    // No started event should be sent within 100ms
+    // Nothing runs while the tick holds the lock.
     let result = tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await;
     assert!(
         result.is_err(),
         "expected timeout (no event), but got an event"
+    );
+
+    // The tick finishes: the queued manual sync runs — exactly one
+    // (Started then Errored, the GitHub host is unreachable).
+    drop(in_flight);
+    let event = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+        .await
+        .expect("queued manual sync should start after the lock frees")
+        .unwrap();
+    assert!(matches!(
+        event,
+        gh_inbox::models::SyncEvent::SyncStatus {
+            status: gh_inbox::models::SyncStatusKind::Started
+        }
+    ));
+    let event = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+        .await
+        .expect("queued manual sync should finish")
+        .unwrap();
+    assert!(matches!(
+        event,
+        gh_inbox::models::SyncEvent::SyncStatus {
+            status: gh_inbox::models::SyncStatusKind::Errored { .. }
+        }
+    ));
+    let result = tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await;
+    assert!(
+        result.is_err(),
+        "coalesced requests must not run a second sync"
     );
 }

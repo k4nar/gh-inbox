@@ -27,9 +27,14 @@ pub struct AppState {
     /// Per-session random secret injected into index.html and required on all
     /// /api/* requests (except /api/events) as the X-Session-Token header.
     pub session_token: Arc<str>,
-    /// Set to true while a manually-triggered sync is running, so the background
-    /// loop skips its tick and avoids a concurrent sync.
-    pub sync_in_progress: Arc<AtomicBool>,
+    /// Serializes syncs: the background loop skips its tick when the lock is
+    /// taken, while POST /api/sync waits for it so a manual full sync queues
+    /// behind an in-flight tick instead of being dropped. Two interleaved
+    /// syncs would run reconciliation against each other's snapshots.
+    pub sync_lock: Arc<tokio::sync::Mutex<()>>,
+    /// Set while a manual full sync is queued but not yet started, so repeat
+    /// POST /api/sync requests coalesce into the one already waiting.
+    pub manual_sync_queued: Arc<AtomicBool>,
 }
 
 /// In release mode, the compiled frontend is embedded in the binary.
@@ -240,7 +245,8 @@ pub fn app_with_base_url(
         tx,
         viewport_prs: Arc::new(RwLock::new(HashSet::new())),
         session_token,
-        sync_in_progress: Arc::new(AtomicBool::new(false)),
+        sync_lock: Arc::new(tokio::sync::Mutex::new(())),
+        manual_sync_queued: Arc::new(AtomicBool::new(false)),
     };
 
     let router = api::router();

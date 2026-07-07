@@ -5,63 +5,32 @@ use axum::http::StatusCode;
 
 use crate::api::AppError;
 use crate::db::queries;
-use crate::github::sync::{
-    SyncInProgressGuard, SyncResult, auto_fetch_viewport_prs, sync_notifications,
-};
-use crate::models::{SyncEvent, SyncStatusKind};
+use crate::github::sync::sync_tick;
 use crate::server::AppState;
 
 /// POST /api/sync — trigger an immediate full sync.
 ///
-/// Clears `last_fetched_at` for notifications (forcing a full sync) and spawns
-/// `sync_notifications` in a fire-and-forget task. Returns 202 immediately.
-/// If a sync is already in progress, returns 202 without spawning a second one.
+/// Clears `last_fetched_at` for notifications (forcing a full sync) and runs
+/// one sync tick in a fire-and-forget task. Returns 202 immediately. If a
+/// background tick is mid-flight, the manual sync waits for it (syncs are
+/// serialized by `sync_lock`) rather than being dropped; repeat requests
+/// coalesce into the sync already queued.
 pub async fn post_sync(State(state): State<AppState>) -> Result<StatusCode, AppError> {
-    // Guard: only one sync at a time — shared with the background loop's ticks.
-    if state
-        .sync_in_progress
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
+    if state.manual_sync_queued.swap(true, Ordering::SeqCst) {
         return Ok(StatusCode::ACCEPTED);
     }
 
-    let state_clone = state.clone();
     tokio::spawn(async move {
-        // Release the flag on every exit path, including a panic — otherwise
-        // all future syncs (manual and background) are silently skipped.
-        let _guard = SyncInProgressGuard(state_clone.sync_in_progress.clone());
+        let _lock = state.sync_lock.clone().lock_owned().await;
+        // From here on this run serves every request coalesced so far; a new
+        // request may queue its own run again.
+        state.manual_sync_queued.store(false, Ordering::SeqCst);
 
-        // Force full sync by clearing last_fetched_at.
-        let _ = queries::clear_last_fetched(&state_clone.pool, "notifications").await;
+        // Force a full sync by clearing the cursor — under the lock, so the
+        // cursor stamped by a just-finished tick cannot erase it.
+        let _ = queries::clear_last_fetched(&state.pool, "notifications").await;
 
-        let _ = state_clone.tx.send(SyncEvent::SyncStatus {
-            status: SyncStatusKind::Started,
-        });
-
-        match sync_notifications(&state_clone).await {
-            Ok(SyncResult {
-                changed,
-                reconciled,
-            }) => {
-                let count = changed.len() + reconciled;
-                if count > 0 {
-                    let _ = state_clone.tx.send(SyncEvent::NewNotifications { count });
-                    auto_fetch_viewport_prs(&state_clone, &state_clone.tx, &changed).await;
-                }
-                let _ = state_clone.tx.send(SyncEvent::SyncStatus {
-                    status: SyncStatusKind::Completed,
-                });
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "manual sync failed");
-                let _ = state_clone.tx.send(SyncEvent::SyncStatus {
-                    status: SyncStatusKind::Errored {
-                        message: format!("{e}"),
-                    },
-                });
-            }
-        }
+        sync_tick(&state, &state.tx).await;
     });
 
     Ok(StatusCode::ACCEPTED)
