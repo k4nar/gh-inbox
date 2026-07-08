@@ -1,7 +1,7 @@
 <script lang="ts">
-import { avatarUrl } from "./avatar.ts";
 import { Tooltip } from "bits-ui";
 import { activitySentence } from "./activity.ts";
+import { avatarUrl } from "./avatar.ts";
 import { timeAgo } from "./timeago.ts";
 import type { InboxItem } from "./types.ts";
 
@@ -28,7 +28,6 @@ const STATUS_ICONS: Record<string, string> = {
     merged: "M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372A2.25 2.25 0 1 1 5.45 5.154ZM4.25 13.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm8.5-4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM5 3.25a.75.75 0 1 0 0 .005V3.25Z",
     closed: "M3.25 1A2.25 2.25 0 0 1 4 5.372v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 3.25 1Zm9.96 5.016a.75.75 0 1 0-1.06-1.06L10.5 6.61 8.84 4.94a.75.75 0 0 0-1.061 1.06l1.661 1.661-1.661 1.661a.75.75 0 1 0 1.06 1.06L10.5 8.72l1.661 1.661a.75.75 0 1 0 1.06-1.06L11.56 7.66l1.65-1.644ZM3.25 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z",
 };
-
 
 function initials(login: string | null): string {
     return login ? login.charAt(0).toUpperCase() : "?";
@@ -119,20 +118,22 @@ let sentence = $derived(activitySentence(notif));
             {notif.title}
         </div>
 
-        <!-- Activity line -->
-        {#if notif.author}
-            <div class="pr-activity">
-                {#if notif.new_commits === null}
-                    <span class="activity-new-pr">✦ New pull request</span>
-                {:else if sentence === ""}
-                    <span class="activity-quiet"
-                        >No new activity since your last visit</span
-                    >
-                {:else if sentence}
-                    <span class="activity-text">{sentence}</span>
+        <!-- Activity line (always rendered so the row height is fixed) -->
+        <div class="pr-activity">
+            {#if !notif.author}
+                {#if notif.pr_id && notif.pr_status === null}
+                    <div class="activity-shimmer"></div>
                 {/if}
-            </div>
-        {/if}
+            {:else if notif.new_commits === null}
+                <span class="activity-new-pr">✦ New pull request</span>
+            {:else if sentence === ""}
+                <span class="activity-quiet"
+                    >No new activity since your last visit</span
+                >
+            {:else if sentence}
+                <span class="activity-text">{sentence}</span>
+            {/if}
+        </div>
     </div>
 
     <!-- Right column -->
@@ -315,6 +316,9 @@ let sentence = $derived(activitySentence(notif));
     display: flex;
     align-items: center;
     gap: 6px;
+    /* Avatar (16px + 1px borders) is the tallest child; reserve its height
+       up front so the line does not grow when PR info loads */
+    height: 18px;
 }
 .pr-repo {
     font-size: 12px;
@@ -367,6 +371,26 @@ let sentence = $derived(activitySentence(notif));
 .pr-activity {
     font-size: 11px;
     color: var(--fg-muted);
+    height: 16px;
+    line-height: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.activity-shimmer {
+    width: 180px;
+    max-width: 100%;
+    height: 8px;
+    margin-top: 4px;
+    border-radius: 4px;
+    background: linear-gradient(
+        90deg,
+        var(--border-default) 25%,
+        var(--border-muted) 50%,
+        var(--border-default) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
 }
 .activity-new-pr {
     color: var(--fg-default);

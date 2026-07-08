@@ -1,6 +1,6 @@
 <script lang="ts">
-import { avatarUrl } from "./avatar.ts";
 import { Collapsible } from "bits-ui";
+import { avatarUrl } from "./avatar.ts";
 import { timeAgo } from "./timeago.ts";
 import type { Review } from "./types.ts";
 
@@ -20,7 +20,6 @@ let {
     expanded: boolean;
     onExpandedChange: (expanded: boolean) => void;
 } = $props();
-
 </script>
 
 <div class="timeline-item review-item">

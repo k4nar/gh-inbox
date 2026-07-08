@@ -50,7 +50,6 @@ function parseDiffLines(
 
 let diffLines = $derived(diffHunk ? parseDiffLines(diffHunk) : []);
 
-
 function firstLine(text: string): string {
     const line = text.split("\n")[0];
     return line.length > 120 ? `${line.slice(0, 120)}…` : line;
