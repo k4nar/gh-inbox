@@ -17,7 +17,7 @@ pub enum SyncError {
 impl std::fmt::Display for SyncError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SyncError::GitHub(e) => write!(f, "GitHub error: {e}"),
+            SyncError::GitHub(e) => write!(f, "GitHub error: {}", super::error_chain(e)),
             SyncError::Database(e) => write!(f, "Database error: {e}"),
         }
     }
@@ -115,7 +115,7 @@ pub async fn sync_notifications(state: &AppState) -> Result<SyncResult, SyncErro
         // threads GitHub already reports read were handled outside gh-inbox
         // and start archived instead of flooding the inbox. Incremental ticks
         // are exempt so a brand-new notification read on the web within one
-        // 30s tick still lands in the inbox ("mark read but keep the PR in
+        // sync tick still lands in the inbox ("mark read but keep the PR in
         // the list"). New activity revives an archived row via reconcile().
         let rows_affected =
             queries::upsert_notification(&state.pool, &row, now, is_full_sync).await?;
