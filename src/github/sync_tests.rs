@@ -23,6 +23,7 @@ async fn make_state(base_url: String) -> AppState {
         session_token: Arc::from("test-session-token"),
         sync_lock: Arc::new(tokio::sync::Mutex::new(())),
         manual_sync_queued: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        notifications_last_modified: Arc::new(tokio::sync::RwLock::new(None)),
     }
 }
 
@@ -496,4 +497,118 @@ async fn sync_reports_the_advertised_poll_interval() {
     let result = sync_notifications(&state).await.unwrap();
 
     assert_eq!(result.poll_interval, Some(Duration::from_secs(120)));
+}
+
+// ── conditional requests ──────────────────────────────────────────────
+
+/// Serve 200 with a `last-modified` on the first call, then 304 on every
+/// later call, capturing the `If-Modified-Since` each request carried.
+async fn start_mock_conditional(
+    body: &'static str,
+    last_modified: &'static str,
+) -> (String, Arc<Mutex<Vec<Option<String>>>>) {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let seen_clone = seen.clone();
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+    let app = Router::new().route(
+        "/notifications",
+        get(move |req: Request| {
+            let seen = seen_clone.clone();
+            let calls = calls.clone();
+            async move {
+                let ims = req
+                    .headers()
+                    .get("if-modified-since")
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_owned);
+                seen.lock().unwrap().push(ims.clone());
+
+                let n = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if n == 0 {
+                    axum::http::Response::builder()
+                        .header("content-type", "application/json")
+                        .header("last-modified", last_modified)
+                        .body(axum::body::Body::from(body))
+                        .unwrap()
+                } else {
+                    axum::http::Response::builder()
+                        .status(304)
+                        .body(axum::body::Body::empty())
+                        .unwrap()
+                }
+            }
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (format!("http://{addr}"), seen)
+}
+
+const LAST_MODIFIED: &str = "Thu, 10 Sep 2026 16:35:40 GMT";
+
+#[tokio::test]
+async fn full_sync_never_sends_if_modified_since() {
+    let (base, seen) = start_mock_conditional(ONE_NOTIFICATION, LAST_MODIFIED).await;
+    let state = make_state(base).await;
+
+    // No last_fetched_at yet, so this is a full sync.
+    sync_notifications(&state).await.unwrap();
+
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1);
+    assert_eq!(
+        seen[0], None,
+        "a full sync must be unconditional or reconciliation is skipped"
+    );
+}
+
+#[tokio::test]
+async fn incremental_sync_replays_last_modified_and_handles_304() {
+    let (base, seen) = start_mock_conditional(ONE_NOTIFICATION, LAST_MODIFIED).await;
+    let state = make_state(base).await;
+
+    // Full sync first: stores the validator, and stamps the cursor so the
+    // next sync is incremental.
+    sync_notifications(&state).await.unwrap();
+    assert_eq!(
+        *state.notifications_last_modified.read().await,
+        Some(LAST_MODIFIED.to_string())
+    );
+
+    // Second sync is incremental and must carry the validator.
+    let result = sync_notifications(&state).await.unwrap();
+
+    let requests = seen.lock().unwrap().clone();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[1], Some(LAST_MODIFIED.to_string()));
+
+    // The mock answered 304: no changes, and nothing broke on the empty body.
+    assert!(result.changed.is_empty());
+    assert_eq!(result.reconciled, 0);
+
+    // A 304 carries no last-modified; the stored one must survive.
+    assert_eq!(
+        *state.notifications_last_modified.read().await,
+        Some(LAST_MODIFIED.to_string()),
+        "a 304 must not clear the stored validator"
+    );
+}
+
+#[tokio::test]
+async fn a_304_leaves_the_inbox_untouched() {
+    let (base, _) = start_mock_conditional(ONE_NOTIFICATION, LAST_MODIFIED).await;
+    let state = make_state(base).await;
+
+    sync_notifications(&state).await.unwrap();
+    let before = queries::query_inbox(&state.pool).await.unwrap();
+    assert_eq!(before.len(), 1);
+
+    // 304 from here on.
+    sync_notifications(&state).await.unwrap();
+
+    let after = queries::query_inbox(&state.pool).await.unwrap();
+    assert_eq!(after.len(), 1, "a 304 must not archive or drop rows");
+    assert_eq!(after[0].id, before[0].id);
 }

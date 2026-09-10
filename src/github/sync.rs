@@ -80,14 +80,37 @@ pub async fn sync_notifications(state: &AppState) -> Result<SyncResult, SyncErro
         .unwrap_or(true);
 
     let feed = if is_full_sync {
+        // Unconditional by design: a 304 would skip reconciliation, which
+        // works by absence. See fetch_all_notifications.
         super::fetch_all_notifications(&state.github).await?
     } else {
         // GitHub filters `since` by *its* clock while the cursor comes from
         // ours; overlap the window by a margin so moderate clock skew cannot
         // silently drop notifications. Re-fetched ones are no-op upserts.
         let since_iso = epoch_to_iso(last_fetched.unwrap() - SINCE_OVERLAP_SECS)?;
-        super::fetch_notifications_since(&state.github, &since_iso).await?
+        let validator = state.notifications_last_modified.read().await.clone();
+        super::fetch_notifications_since(&state.github, &since_iso, validator.as_deref()).await?
     };
+
+    // Keep the validator for the next incremental poll. A 304 carries none,
+    // and the one already stored is still the right thing to send.
+    if feed.last_modified.is_some() {
+        *state.notifications_last_modified.write().await = feed.last_modified.clone();
+    }
+
+    if feed.not_modified {
+        // Nothing changed since the last poll. Still advance the cursor: this
+        // snapshot is authoritative for "no changes", so the next incremental
+        // window can start from here.
+        tracing::debug!("notification feed unchanged (304)");
+        queries::set_last_fetched_epoch(&state.pool, "notifications", now).await?;
+        return Ok(SyncResult {
+            changed: Vec::new(),
+            reconciled: 0,
+            poll_interval: feed.poll_interval,
+        });
+    }
+
     let notifications = feed.notifications;
 
     let mut changed = Vec::new();

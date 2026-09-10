@@ -98,6 +98,17 @@ GitHub distinguishes **read** from **done**, but the public API only exposes hal
   - **Reconciliation is by absence**: a full sync archives local inbox rows the feed no longer returns (`archive_stale`, keyed on `synced_at`). This catches threads marked done elsewhere — but only once they leave the ~7-week window, or immediately for threads done *before* the app first saw them… which leads to:
   - **Cold-start policy** (full syncs only): a thread the DB has never tracked that a full sync returns already *read* is inserted as **archived** (it was handled outside gh-inbox; the API can't say whether it was also marked done). Threads already tracked are never auto-archived by being read — read ≠ done.
   - **Revival**: new activity flips a thread unread on GitHub, and the sync upsert moves an archived row back to the inbox. New activity always bumps `updated_at`, so an unread snapshot with an unchanged `updated_at` is treated as GitHub echoing state a local read/archive write-back hasn't reached yet (dropped by a rate limit, or still in flight) and never flips local flags; clearing unread (thread read elsewhere) always applies, since gh-inbox has no mark-unread write.
+- **Polling cadence and conditional requests**: `GET /notifications` returns
+  `x-poll-interval` (60 by default, higher when GitHub is loaded), documented as
+  the fastest a client may poll. The sync loop waits for whichever is longer,
+  that header or the configured interval, so the header acts as a floor. The
+  feed's `last-modified` is replayed as `If-Modified-Since` on **incremental**
+  syncs only, where a `304 Not Modified` costs no rate limit and no body. Full
+  syncs stay unconditional: reconciliation works by absence, and a thread aging
+  out of the ~7-week window does not bump `last-modified`, so a 304 there would
+  return an empty feed and skip reconciliation. The validator is held in memory
+  and sent on the first page of a paginated fetch only, since the pages share
+  one validator and replaying it would truncate the feed.
 - Local state is protected from sync races by two columns on `notifications`:
   - `locally_unarchived` — set on unarchive; exempts the row from reconciliation (GitHub never returns a done thread again, so it would otherwise look stale forever). Cleared when GitHub returns the thread (new activity) or the user re-archives.
   - `local_write_epoch` — set on read/archive/unarchive; the sync upsert ignores its snapshot's unread/archived flags when the local write postdates the sync's start time.

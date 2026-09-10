@@ -31,13 +31,24 @@ pub(crate) struct NotificationPage {
     pub next: Option<String>,
     /// Value of `x-poll-interval`, when GitHub sent one.
     pub poll_interval: Option<Duration>,
+    /// Value of `last-modified`, to replay as `If-Modified-Since`.
+    pub last_modified: Option<String>,
+    /// GitHub answered `304 Not Modified`: no body, nothing changed.
+    pub not_modified: bool,
 }
 
 /// The whole notification feed, after following every pagination link.
 pub struct NotificationFeed {
+    /// Empty when GitHub answered `304 Not Modified`.
     pub notifications: Vec<crate::models::Notification>,
     /// The poll cadence GitHub advertised while serving this feed.
     pub poll_interval: Option<Duration>,
+    /// `last-modified` from the first page, to send as `If-Modified-Since` on
+    /// the next poll. `None` on a 304, where the caller's stored value stands.
+    pub last_modified: Option<String>,
+    /// GitHub answered `304 Not Modified`: nothing changed since the value
+    /// passed as `If-Modified-Since`.
+    pub not_modified: bool,
 }
 
 /// Parse `x-poll-interval` (in seconds) from a notifications response.
@@ -55,39 +66,93 @@ fn parse_poll_interval(response: &reqwest::Response) -> Option<Duration> {
 }
 
 /// Fetch a single page of notifications from a fully-qualified URL.
+///
+/// Passing `if_modified_since` lets GitHub reply `304 Not Modified`, which per
+/// its docs "leav[es] your current rate limit untouched" — the cheap way to
+/// poll. A 304 has no body, so it is detected before deserializing.
 pub(crate) async fn fetch_notifications_page(
     github: &super::GithubClient,
     url: &str,
+    if_modified_since: Option<&str>,
 ) -> Result<NotificationPage, reqwest::Error> {
-    let response = github.get_url(url).await?.error_for_status()?;
+    let response = github
+        .get_url_conditional(url, if_modified_since)
+        .await?
+        .error_for_status()?;
+
+    let poll_interval = parse_poll_interval(&response);
+
+    // 304 is not an error status, so error_for_status() passed it through.
+    // Return early: the body is empty and deserializing it would fail.
+    if response.status() == reqwest::StatusCode::NOT_MODIFIED {
+        return Ok(NotificationPage {
+            notifications: Vec::new(),
+            next: None,
+            poll_interval,
+            last_modified: None,
+            not_modified: true,
+        });
+    }
+
     let next = response
         .headers()
         .get("link")
         .and_then(|v| v.to_str().ok())
         .and_then(parse_next_link);
-    let poll_interval = parse_poll_interval(&response);
+    let last_modified = response
+        .headers()
+        .get("last-modified")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
     let notifications: Vec<crate::models::Notification> = response.json().await?;
     Ok(NotificationPage {
         notifications,
         next,
         poll_interval,
+        last_modified,
+        not_modified: false,
     })
 }
 
 /// Follow `Link: rel="next"` from `url` until the feed is exhausted.
+///
+/// `if_modified_since` is sent on the first request only. Each page is a
+/// distinct URL but shares one `last-modified` validator, so replaying it on
+/// page 2 could 304 a page that does have content and silently truncate the
+/// feed.
 async fn collect_pages(
     github: &super::GithubClient,
     mut url: String,
+    if_modified_since: Option<&str>,
 ) -> Result<NotificationFeed, reqwest::Error> {
     let mut notifications = Vec::new();
     let mut poll_interval = None;
+    let mut last_modified = None;
+    let mut validator = if_modified_since;
+    let mut first_page = true;
     loop {
-        let page = fetch_notifications_page(github, &url).await?;
-        notifications.extend(page.notifications);
+        let page = fetch_notifications_page(github, &url, validator).await?;
+        validator = None;
+
         // Every page carries the header; the last one seen is the freshest.
         if page.poll_interval.is_some() {
             poll_interval = page.poll_interval;
         }
+        if page.not_modified {
+            return Ok(NotificationFeed {
+                notifications,
+                poll_interval,
+                last_modified: None,
+                not_modified: true,
+            });
+        }
+        // The validator for the whole feed is the one on its first page.
+        if first_page {
+            last_modified = page.last_modified;
+            first_page = false;
+        }
+
+        notifications.extend(page.notifications);
         match page.next {
             Some(next_url) => url = next_url,
             None => break,
@@ -96,11 +161,17 @@ async fn collect_pages(
     Ok(NotificationFeed {
         notifications,
         poll_interval,
+        last_modified,
+        not_modified: false,
     })
 }
 
 /// Fetch ALL notifications from GitHub, following pagination links until exhausted.
 /// Used for full syncs (first run or after a >2h gap).
+///
+/// Never sends `If-Modified-Since`: reconciliation is by absence, and a thread
+/// aging out of GitHub's ~7-week feed window does not bump `last-modified`, so
+/// a 304 would hand back an empty feed and skip reconciliation entirely.
 pub async fn fetch_all_notifications(
     github: &super::GithubClient,
 ) -> Result<NotificationFeed, reqwest::Error> {
@@ -108,20 +179,26 @@ pub async fn fetch_all_notifications(
     // GitHub returns only unread notifications, which makes reconciliation conflate
     // "read" with "done" and silently archive PRs the user only marked as read.
     let url = format!("{}/notifications?all=true&per_page=50", github.base_url());
-    collect_pages(github, url).await
+    // Deliberately unconditional — see the doc comment above.
+    collect_pages(github, url, None).await
 }
 
 /// Fetch notifications updated after `since_iso` (ISO 8601 UTC string), following pagination.
 /// Used for incremental syncs.
+///
+/// `if_modified_since` should be the `last-modified` value from the previous
+/// poll: GitHub then answers 304 when nothing changed, which costs no rate
+/// limit and no body.
 pub async fn fetch_notifications_since(
     github: &super::GithubClient,
     since_iso: &str,
+    if_modified_since: Option<&str>,
 ) -> Result<NotificationFeed, reqwest::Error> {
     let url = format!(
         "{}/notifications?all=true&since={since_iso}&per_page=50",
         github.base_url()
     );
-    collect_pages(github, url).await
+    collect_pages(github, url, if_modified_since).await
 }
 
 pub async fn mark_thread_read(
@@ -548,7 +625,7 @@ mod page_tests {
 
         let github = GithubClient::new(Arc::from("fake-token"), base.clone());
         let url = format!("{base}/notifications?per_page=50");
-        let page = fetch_notifications_page(&github, &url).await.unwrap();
+        let page = fetch_notifications_page(&github, &url, None).await.unwrap();
         let (notifs, got_next) = (page.notifications, page.next);
 
         assert_eq!(notifs.len(), 1);
@@ -574,7 +651,7 @@ mod page_tests {
 
         let github = GithubClient::new(Arc::from("fake-token"), base.clone());
         let url = format!("{base}/notifications?per_page=50");
-        let page = fetch_notifications_page(&github, &url).await.unwrap();
+        let page = fetch_notifications_page(&github, &url, None).await.unwrap();
         let (notifs, next) = (page.notifications, page.next);
 
         assert_eq!(notifs.len(), 1);
@@ -600,7 +677,7 @@ mod page_tests {
 
         let github = GithubClient::new(Arc::from("fake-token"), base.clone());
         let url = format!("{base}/notifications?per_page=50");
-        let page = fetch_notifications_page(&github, &url).await.unwrap();
+        let page = fetch_notifications_page(&github, &url, None).await.unwrap();
 
         assert_eq!(page.poll_interval, Some(Duration::from_secs(90)));
     }
@@ -623,9 +700,71 @@ mod page_tests {
 
         let github = GithubClient::new(Arc::from("fake-token"), base.clone());
         let url = format!("{base}/notifications?per_page=50");
-        let page = fetch_notifications_page(&github, &url).await.unwrap();
+        let page = fetch_notifications_page(&github, &url, None).await.unwrap();
 
         assert!(page.poll_interval.is_none());
+    }
+
+    #[tokio::test]
+    async fn conditional_header_is_sent_only_on_the_first_page() {
+        // Page 2 shares the feed's one last-modified validator, so replaying
+        // If-Modified-Since would 304 a page that does have content.
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base = format!("http://{addr}");
+        let base_clone = base.clone();
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let call_count_clone = call_count.clone();
+        let seen = Arc::new(Mutex::new(Vec::<Option<String>>::new()));
+        let seen_clone = seen.clone();
+
+        let app = Router::new().route(
+            "/notifications",
+            get(move |req: Request| {
+                let count = call_count_clone.fetch_add(1, Ordering::SeqCst);
+                let base = base_clone.clone();
+                let seen = seen_clone.clone();
+                async move {
+                    seen.lock().unwrap().push(
+                        req.headers()
+                            .get("if-modified-since")
+                            .and_then(|v| v.to_str().ok())
+                            .map(str::to_owned),
+                    );
+                    if count == 0 {
+                        let next = format!("{base}/notifications?page=2&per_page=50");
+                        axum::http::Response::builder()
+                            .header("content-type", "application/json")
+                            .header("link", format!(r#"<{next}>; rel="next""#))
+                            .body(axum::body::Body::from(PAGE_1))
+                            .unwrap()
+                    } else {
+                        axum::http::Response::builder()
+                            .header("content-type", "application/json")
+                            .body(axum::body::Body::from(PAGE_2))
+                            .unwrap()
+                    }
+                }
+            }),
+        );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let github = GithubClient::new(Arc::from("fake-token"), base);
+        let feed = super::fetch_notifications_since(
+            &github,
+            "2025-06-01T00:00:00Z",
+            Some("Thu, 10 Sep 2026 16:35:40 GMT"),
+        )
+        .await
+        .unwrap();
+
+        // Both pages still arrived.
+        assert_eq!(feed.notifications.len(), 2);
+
+        let requests = seen.lock().unwrap().clone();
+        assert_eq!(requests.len(), 2);
+        assert!(requests[0].is_some(), "page 1 carries the validator");
+        assert_eq!(requests[1], None, "page 2 must be unconditional");
     }
 
     #[tokio::test]
@@ -696,7 +835,7 @@ mod page_tests {
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
         let github = GithubClient::new(Arc::from("fake-token"), base);
-        super::fetch_notifications_since(&github, "2025-06-01T00:00:00Z")
+        super::fetch_notifications_since(&github, "2025-06-01T00:00:00Z", None)
             .await
             .unwrap();
 

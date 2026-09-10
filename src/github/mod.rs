@@ -110,14 +110,26 @@ impl GithubClient {
 
     /// Fetch a fully-qualified URL with the standard GitHub auth headers.
     /// Used for following pagination `Link: rel="next"` URLs.
-    pub(crate) async fn get_url(&self, url: &str) -> Result<Response, reqwest::Error> {
-        let builder = self
+    ///
+    /// With `if_modified_since` set, sends `If-Modified-Since` so GitHub can
+    /// answer `304 Not Modified` instead of resending the body. The caller
+    /// must handle 304 itself: it carries no body, and it is not an error
+    /// status, so `error_for_status()` lets it through.
+    pub(crate) async fn get_url_conditional(
+        &self,
+        url: &str,
+        if_modified_since: Option<&str>,
+    ) -> Result<Response, reqwest::Error> {
+        let mut builder = self
             .client
             .request(Method::GET, url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "gh-inbox")
             .header("X-GitHub-Api-Version", "2026-03-10");
+        if let Some(value) = if_modified_since {
+            builder = builder.header("If-Modified-Since", value);
+        }
         self.execute(builder, "GET", url).await
     }
 
