@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use super::GithubClient;
 
 /// Parse the URL with `rel="next"` from an HTTP `Link` header value.
@@ -21,42 +23,92 @@ fn parse_next_link(link: &str) -> Option<String> {
     None
 }
 
+/// One page of the notification feed, with the metadata GitHub returns
+/// alongside it.
+pub(crate) struct NotificationPage {
+    pub notifications: Vec<crate::models::Notification>,
+    /// Next page URL, from the `Link: rel="next"` header.
+    pub next: Option<String>,
+    /// Value of `x-poll-interval`, when GitHub sent one.
+    pub poll_interval: Option<Duration>,
+}
+
+/// The whole notification feed, after following every pagination link.
+pub struct NotificationFeed {
+    pub notifications: Vec<crate::models::Notification>,
+    /// The poll cadence GitHub advertised while serving this feed.
+    pub poll_interval: Option<Duration>,
+}
+
+/// Parse `x-poll-interval` (in seconds) from a notifications response.
+///
+/// GitHub documents this header as how often a client is *allowed* to poll
+/// `GET /notifications` ("Please obey the header"), and raises the value when
+/// its servers are under load, so it cannot be treated as the constant 60.
+fn parse_poll_interval(response: &reqwest::Response) -> Option<Duration> {
+    response
+        .headers()
+        .get("x-poll-interval")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map(Duration::from_secs)
+}
+
 /// Fetch a single page of notifications from a fully-qualified URL.
-/// Returns the deserialized notifications and the next-page URL (from the
-/// `Link: rel="next"` response header), if any.
 pub(crate) async fn fetch_notifications_page(
     github: &super::GithubClient,
     url: &str,
-) -> Result<(Vec<crate::models::Notification>, Option<String>), reqwest::Error> {
+) -> Result<NotificationPage, reqwest::Error> {
     let response = github.get_url(url).await?.error_for_status()?;
     let next = response
         .headers()
         .get("link")
         .and_then(|v| v.to_str().ok())
         .and_then(parse_next_link);
+    let poll_interval = parse_poll_interval(&response);
     let notifications: Vec<crate::models::Notification> = response.json().await?;
-    Ok((notifications, next))
+    Ok(NotificationPage {
+        notifications,
+        next,
+        poll_interval,
+    })
+}
+
+/// Follow `Link: rel="next"` from `url` until the feed is exhausted.
+async fn collect_pages(
+    github: &super::GithubClient,
+    mut url: String,
+) -> Result<NotificationFeed, reqwest::Error> {
+    let mut notifications = Vec::new();
+    let mut poll_interval = None;
+    loop {
+        let page = fetch_notifications_page(github, &url).await?;
+        notifications.extend(page.notifications);
+        // Every page carries the header; the last one seen is the freshest.
+        if page.poll_interval.is_some() {
+            poll_interval = page.poll_interval;
+        }
+        match page.next {
+            Some(next_url) => url = next_url,
+            None => break,
+        }
+    }
+    Ok(NotificationFeed {
+        notifications,
+        poll_interval,
+    })
 }
 
 /// Fetch ALL notifications from GitHub, following pagination links until exhausted.
 /// Used for full syncs (first run or after a >2h gap).
 pub async fn fetch_all_notifications(
     github: &super::GithubClient,
-) -> Result<Vec<crate::models::Notification>, reqwest::Error> {
+) -> Result<NotificationFeed, reqwest::Error> {
     // `all=true` so read-but-not-done notifications stay in the feed. Without it
     // GitHub returns only unread notifications, which makes reconciliation conflate
     // "read" with "done" and silently archive PRs the user only marked as read.
-    let mut url = format!("{}/notifications?all=true&per_page=50", github.base_url());
-    let mut all = Vec::new();
-    loop {
-        let (page, next) = fetch_notifications_page(github, &url).await?;
-        all.extend(page);
-        match next {
-            Some(next_url) => url = next_url,
-            None => break,
-        }
-    }
-    Ok(all)
+    let url = format!("{}/notifications?all=true&per_page=50", github.base_url());
+    collect_pages(github, url).await
 }
 
 /// Fetch notifications updated after `since_iso` (ISO 8601 UTC string), following pagination.
@@ -64,21 +116,12 @@ pub async fn fetch_all_notifications(
 pub async fn fetch_notifications_since(
     github: &super::GithubClient,
     since_iso: &str,
-) -> Result<Vec<crate::models::Notification>, reqwest::Error> {
-    let mut url = format!(
+) -> Result<NotificationFeed, reqwest::Error> {
+    let url = format!(
         "{}/notifications?all=true&since={since_iso}&per_page=50",
         github.base_url()
     );
-    let mut all = Vec::new();
-    loop {
-        let (page, next) = fetch_notifications_page(github, &url).await?;
-        all.extend(page);
-        match next {
-            Some(next_url) => url = next_url,
-            None => break,
-        }
-    }
-    Ok(all)
+    collect_pages(github, url).await
 }
 
 pub async fn mark_thread_read(
@@ -415,6 +458,7 @@ mod page_tests {
     use std::sync::Arc;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
 
     use axum::Router;
     use axum::extract::Request;
@@ -504,7 +548,8 @@ mod page_tests {
 
         let github = GithubClient::new(Arc::from("fake-token"), base.clone());
         let url = format!("{base}/notifications?per_page=50");
-        let (notifs, got_next) = fetch_notifications_page(&github, &url).await.unwrap();
+        let page = fetch_notifications_page(&github, &url).await.unwrap();
+        let (notifs, got_next) = (page.notifications, page.next);
 
         assert_eq!(notifs.len(), 1);
         assert_eq!(notifs[0].id, "1");
@@ -529,10 +574,58 @@ mod page_tests {
 
         let github = GithubClient::new(Arc::from("fake-token"), base.clone());
         let url = format!("{base}/notifications?per_page=50");
-        let (notifs, next) = fetch_notifications_page(&github, &url).await.unwrap();
+        let page = fetch_notifications_page(&github, &url).await.unwrap();
+        let (notifs, next) = (page.notifications, page.next);
 
         assert_eq!(notifs.len(), 1);
         assert!(next.is_none());
+    }
+
+    #[tokio::test]
+    async fn reads_poll_interval_header() {
+        let app = Router::new().route(
+            "/notifications",
+            get(|| async {
+                axum::http::Response::builder()
+                    .header("content-type", "application/json")
+                    .header("x-poll-interval", "90")
+                    .body(axum::body::Body::from(ONE_NOTIFICATION))
+                    .unwrap()
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base = format!("http://{addr}");
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let github = GithubClient::new(Arc::from("fake-token"), base.clone());
+        let url = format!("{base}/notifications?per_page=50");
+        let page = fetch_notifications_page(&github, &url).await.unwrap();
+
+        assert_eq!(page.poll_interval, Some(Duration::from_secs(90)));
+    }
+
+    #[tokio::test]
+    async fn poll_interval_is_none_without_the_header() {
+        let app = Router::new().route(
+            "/notifications",
+            get(|| async {
+                axum::http::Response::builder()
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(ONE_NOTIFICATION))
+                    .unwrap()
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base = format!("http://{addr}");
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let github = GithubClient::new(Arc::from("fake-token"), base.clone());
+        let url = format!("{base}/notifications?per_page=50");
+        let page = fetch_notifications_page(&github, &url).await.unwrap();
+
+        assert!(page.poll_interval.is_none());
     }
 
     #[tokio::test]
@@ -569,7 +662,10 @@ mod page_tests {
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
         let github = GithubClient::new(Arc::from("fake-token"), base);
-        let notifs = super::fetch_all_notifications(&github).await.unwrap();
+        let notifs = super::fetch_all_notifications(&github)
+            .await
+            .unwrap()
+            .notifications;
 
         assert_eq!(notifs.len(), 2);
         assert_eq!(notifs[0].id, "1");

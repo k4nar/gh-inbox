@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use axum::Router;
 use axum::extract::Request;
@@ -452,4 +453,47 @@ async fn full_sync_archives_notifications_missing_from_github() {
     let inbox = queries::query_inbox(&state.pool).await.unwrap();
     assert_eq!(inbox.len(), 1);
     assert_eq!(inbox[0].id, "1");
+}
+
+// ── poll cadence ──────────────────────────────────────────────────────
+
+#[test]
+fn next_delay_falls_back_to_the_configured_interval() {
+    assert_eq!(
+        next_delay(Duration::from_secs(60), None),
+        Duration::from_secs(60)
+    );
+}
+
+#[test]
+fn next_delay_obeys_github_when_it_asks_for_a_slower_poll() {
+    // GitHub raises x-poll-interval under load; that has to win.
+    assert_eq!(
+        next_delay(Duration::from_secs(60), Some(Duration::from_secs(180))),
+        Duration::from_secs(180)
+    );
+}
+
+#[test]
+fn next_delay_keeps_the_configured_interval_when_it_is_the_slower_one() {
+    // A user who asked to sync every 10 minutes is not sped up to 60s.
+    assert_eq!(
+        next_delay(Duration::from_secs(600), Some(Duration::from_secs(60))),
+        Duration::from_secs(600)
+    );
+}
+
+#[tokio::test]
+async fn sync_reports_the_advertised_poll_interval() {
+    let base = crate::github::test_support::serve_json_with_headers(
+        "/notifications",
+        ONE_NOTIFICATION,
+        &[("x-poll-interval", "120")],
+    )
+    .await;
+    let state = make_state(base).await;
+
+    let result = sync_notifications(&state).await.unwrap();
+
+    assert_eq!(result.poll_interval, Some(Duration::from_secs(120)));
 }

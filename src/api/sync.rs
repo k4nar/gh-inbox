@@ -30,7 +30,9 @@ pub async fn post_sync(State(state): State<AppState>) -> Result<StatusCode, AppE
         // cursor stamped by a just-finished tick cannot erase it.
         let _ = queries::clear_last_fetched(&state.pool, "notifications").await;
 
-        sync_tick(&state, &state.tx).await;
+        // The advertised poll interval is the sync loop's business, not a
+        // one-off manual sync's.
+        let _ = sync_tick(&state, &state.tx).await;
     });
 
     Ok(StatusCode::ACCEPTED)
