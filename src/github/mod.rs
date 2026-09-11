@@ -197,12 +197,14 @@ mod tests {
         let display = err.to_string();
         assert!(display.starts_with("error sending request"));
 
-        // What they show now: the chain down to the OS error.
+        // What they show now: the chain down to the OS error. Assert on the
+        // content, not just the length — a chain that appended anything at
+        // all would satisfy a length check.
         let chain = error_chain(&err);
         assert!(chain.starts_with(&display), "chain extends Display");
         assert!(
-            chain.len() > display.len(),
-            "chain must add the cause Display omits, got {chain:?}"
+            chain.contains("os error"),
+            "chain must reach the OS cause Display omits, got {chain:?}"
         );
     }
 

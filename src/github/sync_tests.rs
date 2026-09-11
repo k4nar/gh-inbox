@@ -553,6 +553,10 @@ async fn full_sync_never_sends_if_modified_since() {
     let (base, seen) = start_mock_conditional(ONE_NOTIFICATION, LAST_MODIFIED).await;
     let state = make_state(base).await;
 
+    // Seed a validator, or this test passes for the wrong reason: with None
+    // stored there is nothing to send and any implementation looks compliant.
+    *state.notifications_last_modified.write().await = Some(LAST_MODIFIED.to_string());
+
     // No last_fetched_at yet, so this is a full sync.
     sync_notifications(&state).await.unwrap();
 
@@ -611,4 +615,80 @@ async fn a_304_leaves_the_inbox_untouched() {
     let after = queries::query_inbox(&state.pool).await.unwrap();
     assert_eq!(after.len(), 1, "a 304 must not archive or drop rows");
     assert_eq!(after[0].id, before[0].id);
+}
+
+#[tokio::test]
+async fn a_failed_sync_does_not_advance_the_validator() {
+    // The invariant: everything up to the stored validator has been applied
+    // locally. If a validator outlives a sync that failed before writing, the
+    // next poll's 304 stamps the cursor past notifications never written and
+    // they are lost for good.
+    let (base, _) = start_mock_conditional(ONE_NOTIFICATION, LAST_MODIFIED).await;
+    let state = make_state(base).await;
+
+    // Break the write of the snapshot while leaving everything before it
+    // working: the cursor read hits `last_fetched_at`, so the sync gets as far
+    // as a successful fetch and fails on the first upsert. Closing the pool
+    // instead would fail the very first read and never reach the fetch,
+    // passing this test no matter where the validator is stored.
+    sqlx::query("DROP TABLE notifications")
+        .execute(&state.pool)
+        .await
+        .unwrap();
+
+    let result = sync_notifications(&state).await;
+    assert!(
+        result.is_err(),
+        "the sync must fail once the snapshot cannot be written"
+    );
+
+    assert_eq!(
+        *state.notifications_last_modified.read().await,
+        None,
+        "a sync that failed to write must not leave a validator behind"
+    );
+}
+
+#[tokio::test]
+async fn an_unconditional_304_keeps_the_pages_already_collected() {
+    // No validator is ever sent for page 2, so a 304 there can only come from
+    // a misbehaving proxy. Treating it as "feed unchanged" would discard page
+    // 1 and advance the cursor past it.
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let base = format!("http://{addr}");
+    let base_clone = base.clone();
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+    let app = Router::new().route(
+        "/notifications",
+        get(move || {
+            let n = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let base = base_clone.clone();
+            async move {
+                if n == 0 {
+                    let next = format!("{base}/notifications?page=2&per_page=50");
+                    axum::http::Response::builder()
+                        .header("content-type", "application/json")
+                        .header("link", format!(r#"<{next}>; rel="next""#))
+                        .body(axum::body::Body::from(ONE_NOTIFICATION))
+                        .unwrap()
+                } else {
+                    axum::http::Response::builder()
+                        .status(304)
+                        .body(axum::body::Body::empty())
+                        .unwrap()
+                }
+            }
+        }),
+    );
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let state = make_state(base).await;
+    let result = sync_notifications(&state).await.unwrap();
+
+    assert_eq!(result.changed.len(), 1, "page 1 must not be discarded");
+    let inbox = queries::query_inbox(&state.pool).await.unwrap();
+    assert_eq!(inbox.len(), 1);
+    assert_eq!(inbox[0].id, "1");
 }

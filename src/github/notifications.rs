@@ -51,6 +51,10 @@ pub struct NotificationFeed {
     pub not_modified: bool,
 }
 
+/// Ceiling on a poll interval read from `x-poll-interval`. GitHub sends 60 and
+/// raises it under load; anything beyond this is treated as nonsense.
+const MAX_POLL_INTERVAL: Duration = Duration::from_secs(15 * 60);
+
 /// Parse `x-poll-interval` (in seconds) from a notifications response.
 ///
 /// GitHub documents this header as how often a client is *allowed* to poll
@@ -63,6 +67,10 @@ fn parse_poll_interval(response: &reqwest::Response) -> Option<Duration> {
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.trim().parse::<u64>().ok())
         .map(Duration::from_secs)
+        // The loop keeps the last value seen for the life of the process, so
+        // one garbage-but-numeric header would otherwise stop syncing
+        // permanently.
+        .map(|interval| interval.min(MAX_POLL_INTERVAL))
 }
 
 /// Fetch a single page of notifications from a fully-qualified URL.
@@ -131,6 +139,7 @@ async fn collect_pages(
     let mut validator = if_modified_since;
     let mut first_page = true;
     loop {
+        let sent_validator = validator.is_some();
         let page = fetch_notifications_page(github, &url, validator).await?;
         validator = None;
 
@@ -139,12 +148,23 @@ async fn collect_pages(
             poll_interval = page.poll_interval;
         }
         if page.not_modified {
-            return Ok(NotificationFeed {
-                notifications,
-                poll_interval,
-                last_modified: None,
-                not_modified: true,
-            });
+            if sent_validator {
+                // A real 304, which only the first page can get: nothing has
+                // been collected, and the feed is unchanged.
+                return Ok(NotificationFeed {
+                    notifications: Vec::new(),
+                    poll_interval,
+                    last_modified: None,
+                    not_modified: true,
+                });
+            }
+            // 304 for a request that carried no validator: a proxy or
+            // intermediary misbehaving, since we sent nothing to revalidate
+            // against. Reporting "unchanged" here would make the caller
+            // discard the pages already collected and advance its cursor past
+            // them, so stop and keep what we have instead.
+            tracing::warn!(url = %url, "unexpected 304 for an unconditional request");
+            break;
         }
         // The validator for the whole feed is the one on its first page.
         if first_page {
@@ -680,6 +700,32 @@ mod page_tests {
         let page = fetch_notifications_page(&github, &url, None).await.unwrap();
 
         assert_eq!(page.poll_interval, Some(Duration::from_secs(90)));
+    }
+
+    #[tokio::test]
+    async fn absurd_poll_interval_is_clamped() {
+        // The loop keeps the last value for the life of the process, so an
+        // unclamped garbage value would stop syncing permanently.
+        let app = Router::new().route(
+            "/notifications",
+            get(|| async {
+                axum::http::Response::builder()
+                    .header("content-type", "application/json")
+                    .header("x-poll-interval", "999999999")
+                    .body(axum::body::Body::from(ONE_NOTIFICATION))
+                    .unwrap()
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let base = format!("http://{addr}");
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let github = GithubClient::new(Arc::from("fake-token"), base.clone());
+        let url = format!("{base}/notifications?per_page=50");
+        let page = fetch_notifications_page(&github, &url, None).await.unwrap();
+
+        assert_eq!(page.poll_interval, Some(Duration::from_secs(15 * 60)));
     }
 
     #[tokio::test]

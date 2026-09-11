@@ -92,12 +92,6 @@ pub async fn sync_notifications(state: &AppState) -> Result<SyncResult, SyncErro
         super::fetch_notifications_since(&state.github, &since_iso, validator.as_deref()).await?
     };
 
-    // Keep the validator for the next incremental poll. A 304 carries none,
-    // and the one already stored is still the right thing to send.
-    if feed.last_modified.is_some() {
-        *state.notifications_last_modified.write().await = feed.last_modified.clone();
-    }
-
     if feed.not_modified {
         // Nothing changed since the last poll. Still advance the cursor: this
         // snapshot is authoritative for "no changes", so the next incremental
@@ -166,6 +160,18 @@ pub async fn sync_notifications(state: &AppState) -> Result<SyncResult, SyncErro
     // the multi-page fetch was in flight are not in this snapshot and must fall
     // inside the next incremental window.
     queries::set_last_fetched_epoch(&state.pool, "notifications", now).await?;
+
+    // Only now, with the snapshot applied and the cursor stamped, is the
+    // validator safe to keep. The whole conditional-poll scheme rests on one
+    // invariant: everything up to the stored validator has been applied
+    // locally. Storing it before these writes breaks it — a failure in
+    // between would leave the validator ahead of the data, and the next
+    // poll's 304 would stamp the cursor past notifications never written,
+    // losing them for good. A 304 carries no validator, so the stored one
+    // survives that path untouched, which is what we want.
+    if feed.last_modified.is_some() {
+        *state.notifications_last_modified.write().await = feed.last_modified.clone();
+    }
 
     Ok(SyncResult {
         changed,
