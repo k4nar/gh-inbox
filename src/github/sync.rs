@@ -12,6 +12,8 @@ use crate::server::AppState;
 pub enum SyncError {
     GitHub(reqwest::Error),
     Database(sqlx::Error),
+    /// The feed came back incomplete; see `FeedError::UnexpectedNotModified`.
+    IncompleteFeed(String),
 }
 
 impl std::fmt::Display for SyncError {
@@ -19,6 +21,7 @@ impl std::fmt::Display for SyncError {
         match self {
             SyncError::GitHub(e) => write!(f, "GitHub error: {}", super::error_chain(e)),
             SyncError::Database(e) => write!(f, "Database error: {e}"),
+            SyncError::IncompleteFeed(msg) => write!(f, "GitHub error: {msg}"),
         }
     }
 }
@@ -26,6 +29,17 @@ impl std::fmt::Display for SyncError {
 impl From<reqwest::Error> for SyncError {
     fn from(err: reqwest::Error) -> Self {
         SyncError::GitHub(err)
+    }
+}
+
+impl From<super::FeedError> for SyncError {
+    fn from(err: super::FeedError) -> Self {
+        match err {
+            super::FeedError::Http(e) => SyncError::GitHub(e),
+            e @ super::FeedError::UnexpectedNotModified { .. } => {
+                SyncError::IncompleteFeed(e.to_string())
+            }
+        }
     }
 }
 

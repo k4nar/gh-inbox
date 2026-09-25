@@ -36,6 +36,7 @@ impl From<github::sync::SyncError> for AppError {
         match err {
             SyncError::GitHub(e) => AppError::GitHub(e),
             SyncError::Database(e) => AppError::Database(e),
+            SyncError::IncompleteFeed(msg) => AppError::Internal(msg),
         }
     }
 }

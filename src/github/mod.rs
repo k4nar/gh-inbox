@@ -16,8 +16,8 @@ pub const GITHUB_API_BASE: &str = "https://api.github.com";
 
 pub use fetch_pr_graphql::fetch_pr_graphql;
 pub use notifications::{
-    NotificationFeed, fetch_all_notifications, fetch_notifications_since, mark_thread_done,
-    mark_thread_read,
+    FeedError, NotificationFeed, fetch_all_notifications, fetch_notifications_since,
+    mark_thread_done, mark_thread_read,
 };
 pub use teams::fetch_user_teams;
 

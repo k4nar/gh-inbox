@@ -650,10 +650,11 @@ async fn a_failed_sync_does_not_advance_the_validator() {
 }
 
 #[tokio::test]
-async fn an_unconditional_304_keeps_the_pages_already_collected() {
+async fn an_unconditional_304_fails_the_sync_without_writing() {
     // No validator is ever sent for page 2, so a 304 there can only come from
-    // a misbehaving proxy. Treating it as "feed unchanged" would discard page
-    // 1 and advance the cursor past it.
+    // a misbehaving proxy, and the feed is incomplete. Syncing page 1 as the
+    // whole feed would make full-sync reconciliation archive every thread on
+    // the pages never fetched.
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let base = format!("http://{addr}");
@@ -670,6 +671,7 @@ async fn an_unconditional_304_keeps_the_pages_already_collected() {
                     let next = format!("{base}/notifications?page=2&per_page=50");
                     axum::http::Response::builder()
                         .header("content-type", "application/json")
+                        .header("last-modified", LAST_MODIFIED)
                         .header("link", format!(r#"<{next}>; rel="next""#))
                         .body(axum::body::Body::from(ONE_NOTIFICATION))
                         .unwrap()
@@ -685,10 +687,52 @@ async fn an_unconditional_304_keeps_the_pages_already_collected() {
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
     let state = make_state(base).await;
-    let result = sync_notifications(&state).await.unwrap();
 
-    assert_eq!(result.changed.len(), 1, "page 1 must not be discarded");
+    // A tracked thread that would have been on page 2.
+    queries::upsert_notification(
+        &state.pool,
+        &queries::NotificationRow {
+            id: "99".to_string(),
+            pr_id: None,
+            title: "On page 2".to_string(),
+            repository: "owner/repo".to_string(),
+            reason: "mention".to_string(),
+            unread: true,
+            archived: false,
+            updated_at: "2025-01-01T00:00:00Z".to_string(),
+        },
+        0,
+        false,
+    )
+    .await
+    .unwrap();
+
+    // No last_fetched_at, so this is a full sync with reconciliation.
+    let result = sync_notifications(&state).await;
+    assert!(
+        matches!(result, Err(SyncError::IncompleteFeed(_))),
+        "an incomplete feed must fail the sync"
+    );
+
     let inbox = queries::query_inbox(&state.pool).await.unwrap();
-    assert_eq!(inbox.len(), 1);
-    assert_eq!(inbox[0].id, "1");
+    assert_eq!(inbox.len(), 1, "nothing is written from a partial feed");
+    assert_eq!(inbox[0].id, "99", "the unseen thread must not be archived");
+    assert!(
+        queries::query_archived(&state.pool)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        queries::get_last_fetched_epoch(&state.pool, "notifications")
+            .await
+            .unwrap(),
+        None,
+        "the cursor must not advance past pages never fetched"
+    );
+    assert_eq!(
+        *state.notifications_last_modified.read().await,
+        None,
+        "the validator must not advance past pages never fetched"
+    );
 }

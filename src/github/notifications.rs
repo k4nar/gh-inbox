@@ -51,6 +51,37 @@ pub struct NotificationFeed {
     pub not_modified: bool,
 }
 
+/// Failure to fetch the whole notification feed.
+#[derive(Debug)]
+pub enum FeedError {
+    Http(reqwest::Error),
+    /// A page requested without `If-Modified-Since` came back `304`. Only an
+    /// intermediary misbehaving can produce this, and the feed is incomplete:
+    /// the pages after it were never fetched.
+    UnexpectedNotModified {
+        url: String,
+    },
+}
+
+impl std::fmt::Display for FeedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FeedError::Http(e) => write!(f, "{}", super::error_chain(e)),
+            FeedError::UnexpectedNotModified { url } => {
+                write!(f, "unexpected 304 for an unconditional request to {url}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for FeedError {}
+
+impl From<reqwest::Error> for FeedError {
+    fn from(err: reqwest::Error) -> Self {
+        FeedError::Http(err)
+    }
+}
+
 /// Ceiling on a poll interval read from `x-poll-interval`. GitHub sends 60 and
 /// raises it under load; anything beyond this is treated as nonsense.
 const MAX_POLL_INTERVAL: Duration = Duration::from_secs(15 * 60);
@@ -132,7 +163,7 @@ async fn collect_pages(
     github: &super::GithubClient,
     mut url: String,
     if_modified_since: Option<&str>,
-) -> Result<NotificationFeed, reqwest::Error> {
+) -> Result<NotificationFeed, FeedError> {
     let mut notifications = Vec::new();
     let mut poll_interval = None;
     let mut last_modified = None;
@@ -160,11 +191,13 @@ async fn collect_pages(
             }
             // 304 for a request that carried no validator: a proxy or
             // intermediary misbehaving, since we sent nothing to revalidate
-            // against. Reporting "unchanged" here would make the caller
-            // discard the pages already collected and advance its cursor past
-            // them, so stop and keep what we have instead.
-            tracing::warn!(url = %url, "unexpected 304 for an unconditional request");
-            break;
+            // against. The feed is incomplete either way. Reporting
+            // "unchanged" would discard the pages collected so far, and
+            // returning them as the whole feed is worse: a full sync would
+            // archive every thread on the missing pages, and an incremental
+            // one would advance its cursor past them. Fail the sync so
+            // nothing is written and the next tick retries.
+            return Err(FeedError::UnexpectedNotModified { url });
         }
         // The validator for the whole feed is the one on its first page.
         if first_page {
@@ -194,7 +227,7 @@ async fn collect_pages(
 /// a 304 would hand back an empty feed and skip reconciliation entirely.
 pub async fn fetch_all_notifications(
     github: &super::GithubClient,
-) -> Result<NotificationFeed, reqwest::Error> {
+) -> Result<NotificationFeed, FeedError> {
     // `all=true` so read-but-not-done notifications stay in the feed. Without it
     // GitHub returns only unread notifications, which makes reconciliation conflate
     // "read" with "done" and silently archive PRs the user only marked as read.
@@ -213,7 +246,7 @@ pub async fn fetch_notifications_since(
     github: &super::GithubClient,
     since_iso: &str,
     if_modified_since: Option<&str>,
-) -> Result<NotificationFeed, reqwest::Error> {
+) -> Result<NotificationFeed, FeedError> {
     let url = format!(
         "{}/notifications?all=true&since={since_iso}&per_page=50",
         github.base_url()
