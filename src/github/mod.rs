@@ -43,34 +43,20 @@ pub fn error_chain(err: &dyn std::error::Error) -> String {
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// Budget for establishing the TCP+TLS connection alone.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-/// How often to PING an idle-but-open HTTP/2 connection.
-const H2_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(20);
-/// How long to wait for a PING reply before declaring the connection dead.
-const H2_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(10);
-
 /// Build the HTTP client shared by every GitHub call.
 ///
-/// api.github.com serves HTTP/2, so reqwest multiplexes all our requests onto
-/// a single pooled connection per host. Two defaults are wrong for a
-/// long-running desktop process:
+/// reqwest's default client has no request timeout at all, so a request
+/// stalled on a connection that died silently (laptop sleep, VPN or network
+/// change) hangs forever. The sync loop awaits its tick, so one hung request
+/// stops syncing indefinitely. The timeouts bound every request instead.
 ///
-/// - No request timeout at all, so a stalled request hangs forever. The sync
-///   loop awaits its tick, so one hung request stops syncing indefinitely.
-/// - HTTP/2 keepalive off, and `pool_idle_timeout` only evicts *idle*
-///   connections. A sync every minute keeps the connection out of the idle
-///   state, so a connection that dies silently (laptop sleep, VPN or network
-///   change) is never evicted and every later request fails with a transport
-///   error until the process restarts.
-///
-/// PINGs let hyper notice a dead peer and drop the connection; the timeouts
-/// bound anything that still gets stuck.
+/// No HTTP/2 tuning: the default native-tls backend is built without
+/// `native-tls-alpn`, so reqwest never negotiates HTTP/2 and every connection
+/// is HTTP/1.1.
 fn build_http_client() -> reqwest::Client {
     reqwest::Client::builder()
         .timeout(REQUEST_TIMEOUT)
         .connect_timeout(CONNECT_TIMEOUT)
-        .http2_keep_alive_interval(H2_KEEPALIVE_INTERVAL)
-        .http2_keep_alive_timeout(H2_KEEPALIVE_TIMEOUT)
-        .http2_keep_alive_while_idle(true)
         .build()
         .unwrap_or_else(|e| {
             // Only TLS/resolver initialisation can fail here. A default client
