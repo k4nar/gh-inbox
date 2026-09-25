@@ -36,6 +36,7 @@ impl From<github::sync::SyncError> for AppError {
         match err {
             SyncError::GitHub(e) => AppError::GitHub(e),
             SyncError::Database(e) => AppError::Database(e),
+            SyncError::IncompleteFeed(msg) => AppError::Internal(msg),
         }
     }
 }
@@ -48,7 +49,10 @@ impl IntoResponse for AppError {
                     .status()
                     .map(|s| StatusCode::from_u16(s.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY))
                     .unwrap_or(StatusCode::BAD_GATEWAY);
-                (status, format!("GitHub API error: {err}"))
+                (
+                    status,
+                    format!("GitHub API error: {}", github::error_chain(err)),
+                )
             }
             AppError::Database(err) => (
                 StatusCode::INTERNAL_SERVER_ERROR,

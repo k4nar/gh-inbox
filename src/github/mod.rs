@@ -7,6 +7,7 @@ mod teams;
 pub(crate) mod test_support;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use reqwest::{Method, Response};
 use serde::Serialize;
@@ -15,9 +16,55 @@ pub const GITHUB_API_BASE: &str = "https://api.github.com";
 
 pub use fetch_pr_graphql::fetch_pr_graphql;
 pub use notifications::{
-    fetch_all_notifications, fetch_notifications_since, mark_thread_done, mark_thread_read,
+    FeedError, NotificationFeed, fetch_all_notifications, fetch_notifications_since,
+    mark_thread_done, mark_thread_read,
 };
 pub use teams::fetch_user_teams;
+
+/// Format an error together with its full `source()` chain.
+///
+/// `reqwest::Error`'s `Display` prints only the kind and the URL — e.g.
+/// "error sending request for url (…)" — while the cause that actually
+/// explains the failure (dns error, connection reset, timed out, certificate
+/// error) is reachable only through `source()`. Logging without the chain
+/// makes every transport failure look identical.
+pub fn error_chain(err: &dyn std::error::Error) -> String {
+    let mut out = err.to_string();
+    let mut source = err.source();
+    while let Some(e) = source {
+        out.push_str(": ");
+        out.push_str(&e.to_string());
+        source = e.source();
+    }
+    out
+}
+
+/// Total budget for one GitHub request, connection included.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// Budget for establishing the TCP+TLS connection alone.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Build the HTTP client shared by every GitHub call.
+///
+/// reqwest's default client has no request timeout at all, so a request
+/// stalled on a connection that died silently (laptop sleep, VPN or network
+/// change) hangs forever. The sync loop awaits its tick, so one hung request
+/// stops syncing indefinitely. The timeouts bound every request instead.
+///
+/// No HTTP/2 tuning: the default native-tls backend is built without
+/// `native-tls-alpn`, so reqwest never negotiates HTTP/2 and every connection
+/// is HTTP/1.1.
+fn build_http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(REQUEST_TIMEOUT)
+        .connect_timeout(CONNECT_TIMEOUT)
+        .build()
+        .unwrap_or_else(|e| {
+            // Only TLS/resolver initialisation can fail here. A default client
+            // still works; it just lacks the hardening above.
+            tracing::warn!(error = %error_chain(&e), "could not build the tuned HTTP client");
+            reqwest::Client::new()
+        })
+}
 
 #[derive(Clone)]
 pub struct GithubClient {
@@ -29,7 +76,7 @@ pub struct GithubClient {
 impl GithubClient {
     pub fn new(token: Arc<str>, base_url: String) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: build_http_client(),
             token,
             base_url,
         }
@@ -49,14 +96,26 @@ impl GithubClient {
 
     /// Fetch a fully-qualified URL with the standard GitHub auth headers.
     /// Used for following pagination `Link: rel="next"` URLs.
-    pub(crate) async fn get_url(&self, url: &str) -> Result<Response, reqwest::Error> {
-        let builder = self
+    ///
+    /// With `if_modified_since` set, sends `If-Modified-Since` so GitHub can
+    /// answer `304 Not Modified` instead of resending the body. The caller
+    /// must handle 304 itself: it carries no body, and it is not an error
+    /// status, so `error_for_status()` lets it through.
+    pub(crate) async fn get_url_conditional(
+        &self,
+        url: &str,
+        if_modified_since: Option<&str>,
+    ) -> Result<Response, reqwest::Error> {
+        let mut builder = self
             .client
             .request(Method::GET, url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "gh-inbox")
             .header("X-GitHub-Api-Version", "2026-03-10");
+        if let Some(value) = if_modified_since {
+            builder = builder.header("If-Modified-Since", value);
+        }
         self.execute(builder, "GET", url).await
     }
 
@@ -99,9 +158,45 @@ impl GithubClient {
         match builder.send().await {
             Ok(response) => Ok(response),
             Err(err) => {
-                tracing::debug!(method = label, path, base_url = %self.base_url, error = %err, "GitHub request failed");
+                tracing::warn!(method = label, path, base_url = %self.base_url, error = %error_chain(&err), "GitHub request failed");
                 Err(err)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::error_chain;
+
+    #[tokio::test]
+    async fn error_chain_exposes_the_cause_display_hides() {
+        // Nothing listens on port 1, so this is a transport error — the same
+        // `Kind::Request` the sync loop reports as "error sending request".
+        let err = reqwest::Client::new()
+            .get("http://127.0.0.1:1/notifications")
+            .send()
+            .await
+            .expect_err("connecting to port 1 must fail");
+
+        // What the logs used to show: the kind and the URL, nothing more.
+        let display = err.to_string();
+        assert!(display.starts_with("error sending request"));
+
+        // What they show now: the chain down to the OS error. Assert on the
+        // content, not just the length — a chain that appended anything at
+        // all would satisfy a length check.
+        let chain = error_chain(&err);
+        assert!(chain.starts_with(&display), "chain extends Display");
+        assert!(
+            chain.contains("os error"),
+            "chain must reach the OS cause Display omits, got {chain:?}"
+        );
+    }
+
+    #[test]
+    fn error_chain_of_a_sourceless_error_is_just_its_display() {
+        let err = std::io::Error::other("boom");
+        assert_eq!(error_chain(&err), "boom");
     }
 }

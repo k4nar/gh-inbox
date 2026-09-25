@@ -35,6 +35,11 @@ pub struct AppState {
     /// Set while a manual full sync is queued but not yet started, so repeat
     /// POST /api/sync requests coalesce into the one already waiting.
     pub manual_sync_queued: Arc<AtomicBool>,
+    /// `last-modified` from the most recent notification feed, replayed as
+    /// `If-Modified-Since` on the next incremental poll so GitHub can answer
+    /// 304 for free. In memory only: startup forces a full sync, which is
+    /// unconditional anyway, so there is nothing worth persisting.
+    pub notifications_last_modified: Arc<RwLock<Option<String>>>,
 }
 
 /// In release mode, the compiled frontend is embedded in the binary.
@@ -247,6 +252,7 @@ pub fn app_with_base_url(
         session_token,
         sync_lock: Arc::new(tokio::sync::Mutex::new(())),
         manual_sync_queued: Arc::new(AtomicBool::new(false)),
+        notifications_last_modified: Arc::new(RwLock::new(None)),
     };
 
     let router = api::router();
