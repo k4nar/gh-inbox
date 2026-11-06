@@ -163,15 +163,14 @@ describe("partitionReviews", () => {
 });
 
 describe("isPassing", () => {
-    it.each([
-        "success",
-        "skipped",
-        "neutral",
-    ])("treats a completed %s run as passing", (conclusion) => {
-        expect(isPassing({ name: "CI", status: "completed", conclusion })).toBe(
-            true,
-        );
-    });
+    it.each(["success", "skipped", "neutral"])(
+        "treats a completed %s run as passing",
+        (conclusion) => {
+            expect(
+                isPassing({ name: "CI", status: "completed", conclusion }),
+            ).toBe(true);
+        },
+    );
 
     it("does not treat an in-progress run as passing", () => {
         expect(

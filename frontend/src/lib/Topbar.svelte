@@ -101,8 +101,7 @@ let statusText = $derived(
     <Select.Root
         type="single"
         value={theme}
-        onValueChange={(v) =>
-            onThemeChange?.(v as Theme)}
+        onValueChange={(v) => onThemeChange?.(v as Theme)}
     >
         <Select.Trigger class="theme-trigger" aria-label="Theme">
             Theme · {themeLabel}

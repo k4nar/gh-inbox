@@ -173,6 +173,7 @@ onMount(() => {
 >
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <!-- biome-ignore lint/a11y/useSemanticElements: a focusable window splitter, which <hr> cannot express -->
     <div
         class="detail-resizer"
         role="separator"

@@ -428,9 +428,9 @@ let authorsOpen = $state(false);
 /* When a section is collapsed, hide every item except the active one, so the
    collapsed header still shows the current selection. */
 :global(
-        .sidebar-section-content[data-state="closed"]
+    .sidebar-section-content[data-state="closed"]
         .sidebar-item[data-state="inactive"]
-    ) {
+) {
     display: none;
 }
 .sidebar-section-title {

@@ -38,14 +38,14 @@ describe("Topbar", () => {
 describe("Topbar theme dropdown", () => {
     it("renders a theme trigger button showing current theme label", () => {
         render(Topbar, { props: { syncStatus: "idle", theme: "system" } });
-        const trigger = screen.getByRole("button", { name: /theme/i });
+        const trigger = screen.getByRole("combobox", { name: /theme/i });
         expect(trigger).toBeInTheDocument();
         expect(trigger).toHaveTextContent("Theme · System");
     });
 
     it("trigger reflects the current theme prop", () => {
         render(Topbar, { props: { syncStatus: "idle", theme: "dark" } });
-        const trigger = screen.getByRole("button", { name: /theme/i });
+        const trigger = screen.getByRole("combobox", { name: /theme/i });
         expect(trigger).toHaveTextContent("Theme · Dark");
     });
 
@@ -54,7 +54,7 @@ describe("Topbar theme dropdown", () => {
         render(Topbar, {
             props: { syncStatus: "idle", theme: "system", onThemeChange },
         });
-        const trigger = screen.getByRole("button", { name: /theme/i });
+        const trigger = screen.getByRole("combobox", { name: /theme/i });
         fireEvent.pointerDown(trigger, {
             button: 0,
             ctrlKey: false,
