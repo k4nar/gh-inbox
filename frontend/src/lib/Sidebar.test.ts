@@ -203,7 +203,7 @@ describe("Sidebar status filter", () => {
 
     it("renders a pill for each PR state", () => {
         render(Sidebar, { props: { options: OPTS, activeFilters: {} } });
-        for (const state of ["open", "draft", "merged", "closed"]) {
+        for (const state of ["open", "queued", "draft", "merged", "closed"]) {
             expect(screen.getByText(state)).toBeInTheDocument();
         }
     });

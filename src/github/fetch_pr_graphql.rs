@@ -25,6 +25,7 @@ query PullRequestFull($owner: String!, $repo: String!, $number: Int!) {
       body
       state
       isDraft
+      isInMergeQueue
       mergedAt
       additions
       deletions
@@ -167,6 +168,8 @@ struct GqlPullRequest {
     state: String,
     #[serde(rename = "isDraft")]
     is_draft: bool,
+    #[serde(rename = "isInMergeQueue")]
+    is_in_merge_queue: bool,
     #[serde(rename = "mergedAt")]
     merged_at: Option<String>,
     additions: Option<i64>,
@@ -403,6 +406,7 @@ fn convert(gql_pr: GqlPullRequest) -> GraphqlPrData {
             sha: gql_pr.head_ref_oid,
         },
         draft: gql_pr.is_draft,
+        in_merge_queue: gql_pr.is_in_merge_queue,
         merged_at: gql_pr.merged_at,
         additions: gql_pr.additions,
         deletions: gql_pr.deletions,
@@ -633,7 +637,7 @@ mod tests {
             "title": "Fix bug",
             "body": "Fixes the parser",
             "state": "OPEN",
-            "isDraft": false,
+            "isDraft": false, "isInMergeQueue": false,
             "mergedAt": null,
             "additions": 10,
             "deletions": 2,
@@ -840,13 +844,46 @@ mod tests {
     }
 
     #[test]
+    fn merge_queue_flag_mapping() {
+        let json = r#"{
+          "data": {
+            "repository": {
+              "pullRequest": {
+                "number": 1, "title": "T", "body": null, "state": "OPEN",
+                "isDraft": false, "isInMergeQueue": true, "mergedAt": null,
+                "additions": null, "deletions": null, "changedFiles": null,
+                "url": "u", "author": { "login": "a" }, "headRefOid": "s",
+                "labels": { "nodes": [] }, "comments": { "nodes": [] },
+                "reviewThreads": { "nodes": [] },
+                "allCommits": { "nodes": [] },
+                "headCommit": { "nodes": [{ "commit": { "statusCheckRollup": null } }] },
+                "reviews": { "nodes": [] }
+              }
+            }
+          }
+        }"#;
+        let response: GqlResponse = serde_json::from_str(json).unwrap();
+        let gql_pr = response
+            .data
+            .unwrap()
+            .repository
+            .unwrap()
+            .pull_request
+            .unwrap();
+        let data = convert(gql_pr);
+
+        assert_eq!(data.pull_request.state, "open");
+        assert!(data.pull_request.in_merge_queue);
+    }
+
+    #[test]
     fn merged_state_mapping() {
         let json = r#"{
           "data": {
             "repository": {
               "pullRequest": {
                 "number": 1, "title": "T", "body": null, "state": "MERGED",
-                "isDraft": false, "mergedAt": "2025-06-01T00:00:00Z",
+                "isDraft": false, "isInMergeQueue": false, "mergedAt": "2025-06-01T00:00:00Z",
                 "additions": null, "deletions": null, "changedFiles": null,
                 "url": "u", "author": { "login": "a" }, "headRefOid": "s",
                 "labels": { "nodes": [] }, "comments": { "nodes": [] },
@@ -882,7 +919,7 @@ mod tests {
             "repository": {
               "pullRequest": {
                 "number": 1, "title": "T", "body": null, "state": "OPEN",
-                "isDraft": false, "mergedAt": null,
+                "isDraft": false, "isInMergeQueue": false, "mergedAt": null,
                 "additions": null, "deletions": null, "changedFiles": null,
                 "url": "u", "author": null, "headRefOid": "s",
                 "labels": { "nodes": [] },
@@ -920,7 +957,7 @@ mod tests {
             "repository": {
               "pullRequest": {
                 "number": 1, "title": "T", "body": null, "state": "OPEN",
-                "isDraft": false, "mergedAt": null,
+                "isDraft": false, "isInMergeQueue": false, "mergedAt": null,
                 "additions": null, "deletions": null, "changedFiles": null,
                 "url": "u", "author": { "login": "a" }, "headRefOid": "s",
                 "labels": { "nodes": [] }, "comments": { "nodes": [] },

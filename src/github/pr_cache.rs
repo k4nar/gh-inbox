@@ -20,11 +20,18 @@ pub struct PrFetchResult {
 }
 
 /// Derive the PR status from its fields.
-pub fn derive_pr_status(merged_at: Option<&str>, state: &str, draft: bool) -> PrStatus {
+pub fn derive_pr_status(
+    merged_at: Option<&str>,
+    state: &str,
+    draft: bool,
+    in_merge_queue: bool,
+) -> PrStatus {
     if merged_at.is_some() {
         PrStatus::Merged
     } else if state == "closed" {
         PrStatus::Closed
+    } else if in_merge_queue {
+        PrStatus::Queued
     } else if draft {
         PrStatus::Draft
     } else {
@@ -34,7 +41,12 @@ pub fn derive_pr_status(merged_at: Option<&str>, state: &str, draft: bool) -> Pr
 
 /// Derive a PR status from a `PullRequestRow`.
 pub fn derive_pr_status_from_row(pr: &PullRequestRow) -> PrStatus {
-    derive_pr_status(pr.merged_at.as_deref(), &pr.state, pr.draft)
+    derive_pr_status(
+        pr.merged_at.as_deref(),
+        &pr.state,
+        pr.draft,
+        pr.in_merge_queue,
+    )
 }
 
 /// Fetch a PR and all related data from GitHub, cache in SQLite, and return a summary.
@@ -69,6 +81,7 @@ pub async fn fetch_and_cache_pr(
         data.pull_request.merged_at.as_deref(),
         &data.pull_request.state,
         data.pull_request.draft,
+        data.pull_request.in_merge_queue,
     );
 
     queries::set_last_fetched_now(pool, &resource_key).await?;
@@ -182,6 +195,7 @@ pub async fn cache_pr_data(
         deletions: gh_pr.deletions.unwrap_or(0),
         changed_files: gh_pr.changed_files.unwrap_or(0),
         draft: gh_pr.draft,
+        in_merge_queue: gh_pr.in_merge_queue,
         merged_at: gh_pr.merged_at.clone(),
         teams: None,
         labels: labels_json,
@@ -348,6 +362,21 @@ mod tests {
     use crate::db::queries;
     use crate::github::GithubClient;
 
+    #[test]
+    fn derive_pr_status_precedence() {
+        let s = |merged: Option<&str>, state: &str, draft: bool, queued: bool| {
+            derive_pr_status(merged, state, draft, queued)
+        };
+        let merged = Some("2025-06-01T00:00:00Z");
+        assert!(matches!(s(None, "open", false, false), PrStatus::Open));
+        assert!(matches!(s(None, "open", true, false), PrStatus::Draft));
+        assert!(matches!(s(None, "open", false, true), PrStatus::Queued));
+        // Queued wins over draft; closed and merged win over queued.
+        assert!(matches!(s(None, "open", true, true), PrStatus::Queued));
+        assert!(matches!(s(None, "closed", false, true), PrStatus::Closed));
+        assert!(matches!(s(merged, "closed", false, true), PrStatus::Merged));
+    }
+
     fn graphql_response(reviews_json: &str, labels_json: &str) -> String {
         format!(
             r#"{{
@@ -358,7 +387,7 @@ mod tests {
                     "title": "Test PR",
                     "body": "body text",
                     "state": "OPEN",
-                    "isDraft": false,
+                    "isDraft": false, "isInMergeQueue": false,
                     "mergedAt": null,
                     "additions": 10,
                     "deletions": 2,
@@ -472,7 +501,7 @@ mod tests {
                     "title": "Test PR",
                     "body": "body text",
                     "state": "OPEN",
-                    "isDraft": false,
+                    "isDraft": false, "isInMergeQueue": false,
                     "mergedAt": null,
                     "additions": 10,
                     "deletions": 2,

@@ -2,12 +2,13 @@ import type { ActiveFilters } from "./types.ts";
 
 const STATE_LABELS: Record<string, string> = {
     open: "Open",
+    queued: "In merge queue",
     draft: "Draft",
     merged: "Merged",
     closed: "Closed",
 };
 
-const STATE_ORDER = ["open", "draft", "merged", "closed"] as const;
+const STATE_ORDER = ["open", "queued", "draft", "merged", "closed"] as const;
 
 /**
  * Human-readable list of the currently active filters, one entry per criterion.

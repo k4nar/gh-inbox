@@ -100,6 +100,7 @@ async fn upsert_updates_draft_and_merged_at() {
     upsert_pull_request(&pool, &sample(300)).await.unwrap(); // draft=false, merged_at=None
     let mut updated = sample(300);
     updated.draft = true;
+    updated.in_merge_queue = true;
     updated.merged_at = Some("2025-06-01T00:00:00Z".to_string());
     upsert_pull_request(&pool, &updated).await.unwrap();
     let row = get_pull_request(&pool, "owner/repo", 300)
@@ -107,6 +108,7 @@ async fn upsert_updates_draft_and_merged_at() {
         .unwrap()
         .unwrap();
     assert!(row.draft);
+    assert!(row.in_merge_queue);
     assert_eq!(row.merged_at.as_deref(), Some("2025-06-01T00:00:00Z"));
 }
 
@@ -170,6 +172,7 @@ async fn query_inbox_enriched_returns_inbox_items() {
             deletions: 0,
             changed_files: 0,
             draft: false,
+            in_merge_queue: false,
             merged_at: None,
             teams: None,
             labels: String::from("[]"),
@@ -222,6 +225,7 @@ async fn pr_status_draft() {
             deletions: 0,
             changed_files: 0,
             draft: true,
+            in_merge_queue: false,
             merged_at: None,
             teams: None,
             labels: String::from("[]"),
@@ -271,6 +275,7 @@ async fn pr_status_merged() {
             deletions: 0,
             changed_files: 0,
             draft: false,
+            in_merge_queue: false,
             merged_at: Some("2025-01-02T12:00:00Z".to_string()),
             teams: None,
             labels: String::from("[]"),
@@ -394,8 +399,8 @@ async fn upsert_roundtrip_labels() {
     assert!(row.labels.contains("enhancement"));
 }
 
-/// `status` is one of "open" | "draft" | "merged" | "closed", expanded into
-/// the (state, draft, merged_at) columns the same way the pr_status CASE
+/// `status` is one of "open" | "queued" | "draft" | "merged" | "closed",
+/// expanded into the (state, draft, in_merge_queue, merged_at) columns the same way the pr_status CASE
 /// derives it back.
 async fn insert_notif_with_pr(
     pool: &SqlitePool,
@@ -405,10 +410,11 @@ async fn insert_notif_with_pr(
     author: &str,
     status: &str,
 ) {
-    let (state, draft, merged) = match status {
-        "draft" => ("open", true, false),
-        "merged" => ("open", false, true),
-        other => (other, false, false),
+    let (state, draft, queued, merged) = match status {
+        "draft" => ("open", true, false, false),
+        "queued" => ("open", false, true, false),
+        "merged" => ("open", false, false, true),
+        other => (other, false, false, false),
     };
     sqlx::query(
         "INSERT INTO notifications (id, title, repository, reason, unread, archived, updated_at, pr_id)
@@ -421,14 +427,15 @@ async fn insert_notif_with_pr(
     .await
     .unwrap();
     sqlx::query(
-        "INSERT INTO pull_requests (id, title, repo, author, url, ci_status, body, state, head_sha, additions, deletions, changed_files, draft, merged_at, labels)
-         VALUES (?, 'T', ?, ?, 'https://x.com', NULL, '', ?, 'abc', 0, 0, 0, ?, ?, '[]')",
+        "INSERT INTO pull_requests (id, title, repo, author, url, ci_status, body, state, head_sha, additions, deletions, changed_files, draft, in_merge_queue, merged_at, labels)
+         VALUES (?, 'T', ?, ?, 'https://x.com', NULL, '', ?, 'abc', 0, 0, 0, ?, ?, ?, '[]')",
     )
     .bind(pr_id)
     .bind(repo)
     .bind(author)
     .bind(state)
     .bind(draft)
+    .bind(queued)
     .bind(if merged { Some("2025-01-02T00:00:00Z") } else { None::<&str> })
     .execute(pool)
     .await
@@ -682,4 +689,44 @@ async fn update_ci_status_sets_clears_and_ignores_wrong_repo() {
         .unwrap()
         .unwrap();
     assert!(row.ci_status.is_none());
+}
+
+#[tokio::test]
+async fn pr_status_queued_and_filter() {
+    let pool = test_pool().await;
+    insert_notif_with_pr(&pool, "n1", "acme/api", 1, "alice", "open").await;
+    insert_notif_with_pr(&pool, "n2", "acme/web", 2, "bob", "queued").await;
+
+    let (items, _) = query_inbox_enriched_paginated(&pool, 100, 0, &FilterParams::default())
+        .await
+        .unwrap();
+    let status_of = |repo: &str| {
+        items
+            .iter()
+            .find(|i| i.repository == repo)
+            .and_then(|i| i.pr_status.clone())
+    };
+    assert_eq!(status_of("acme/api").as_deref(), Some("open"));
+    assert_eq!(status_of("acme/web").as_deref(), Some("queued"));
+
+    // "open" and "queued" are mutually exclusive filters.
+    let f = FilterParams {
+        state_include: vec!["open".to_string()],
+        ..Default::default()
+    };
+    let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
+        .await
+        .unwrap();
+    assert_eq!(total, 1);
+    assert_eq!(items[0].repository, "acme/api");
+
+    let f = FilterParams {
+        state_include: vec!["queued".to_string()],
+        ..Default::default()
+    };
+    let (items, total) = query_inbox_enriched_paginated(&pool, 100, 0, &f)
+        .await
+        .unwrap();
+    assert_eq!(total, 1);
+    assert_eq!(items[0].repository, "acme/web");
 }

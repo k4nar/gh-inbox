@@ -77,7 +77,7 @@ const MOCK_PR: &str = r#"{
                 "title": "Add feature X",
                 "body": "This adds feature X.",
                 "state": "OPEN",
-                "isDraft": false,
+                "isDraft": false, "isInMergeQueue": false,
                 "mergedAt": null,
                 "additions": 15,
                 "deletions": 3,

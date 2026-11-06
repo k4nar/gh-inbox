@@ -65,6 +65,7 @@ pub struct PullRequestRow {
     pub deletions: i64,
     pub changed_files: i64,
     pub draft: bool,
+    pub in_merge_queue: bool,
     pub merged_at: Option<String>,
     /// Raw JSON string, deserialized at the API layer.
     /// NULL = team fetch not yet attempted; '[]' = fetched, no matching teams;
@@ -96,8 +97,15 @@ fn state_predicate(state: &str) -> Option<&'static str> {
     match state {
         "merged" => Some("pr.merged_at IS NOT NULL"),
         "closed" => Some("(pr.merged_at IS NULL AND pr.state = 'closed')"),
-        "draft" => Some("(pr.merged_at IS NULL AND pr.state != 'closed' AND pr.draft = 1)"),
-        "open" => Some("(pr.merged_at IS NULL AND pr.state != 'closed' AND pr.draft = 0)"),
+        "queued" => {
+            Some("(pr.merged_at IS NULL AND pr.state != 'closed' AND pr.in_merge_queue = 1)")
+        }
+        "draft" => Some(
+            "(pr.merged_at IS NULL AND pr.state != 'closed' AND pr.in_merge_queue = 0 AND pr.draft = 1)",
+        ),
+        "open" => Some(
+            "(pr.merged_at IS NULL AND pr.state != 'closed' AND pr.in_merge_queue = 0 AND pr.draft = 0)",
+        ),
         _ => None,
     }
 }
@@ -145,8 +153,8 @@ pub async fn upsert_pull_request<'e>(
     pr: &PullRequestRow,
 ) -> sqlx::Result<()> {
     sqlx::query(
-		"INSERT INTO pull_requests (id, title, repo, author, author_avatar_url, url, ci_status, last_viewed_at, body, body_html, state, head_sha, additions, deletions, changed_files, draft, merged_at, labels)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		"INSERT INTO pull_requests (id, title, repo, author, author_avatar_url, url, ci_status, last_viewed_at, body, body_html, state, head_sha, additions, deletions, changed_files, draft, in_merge_queue, merged_at, labels)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(repo, id) DO UPDATE SET
            title             = excluded.title,
            author            = excluded.author,
@@ -161,6 +169,7 @@ pub async fn upsert_pull_request<'e>(
            deletions         = excluded.deletions,
            changed_files     = excluded.changed_files,
            draft             = excluded.draft,
+           in_merge_queue    = excluded.in_merge_queue,
            merged_at         = excluded.merged_at,
            labels            = excluded.labels",
 	)
@@ -180,6 +189,7 @@ pub async fn upsert_pull_request<'e>(
 	.bind(pr.deletions)
 	.bind(pr.changed_files)
 	.bind(pr.draft)
+	.bind(pr.in_merge_queue)
 	.bind(&pr.merged_at)
 	.bind(&pr.labels)
 	.execute(executor)
@@ -226,7 +236,7 @@ pub async fn get_pull_request(
     number: i64,
 ) -> sqlx::Result<Option<PullRequestRow>> {
     sqlx::query_as::<_, PullRequestRow>(
-		"SELECT id, title, repo, author, author_avatar_url, url, ci_status, last_viewed_at, body, body_html, state, head_sha, additions, deletions, changed_files, draft, merged_at, teams, labels
+		"SELECT id, title, repo, author, author_avatar_url, url, ci_status, last_viewed_at, body, body_html, state, head_sha, additions, deletions, changed_files, draft, in_merge_queue, merged_at, teams, labels
          FROM pull_requests
          WHERE repo = ? AND id = ?",
 	)
@@ -289,6 +299,7 @@ async fn query_enriched_paginated(
              CASE \
                  WHEN pr.merged_at IS NOT NULL THEN 'merged' \
                  WHEN pr.state = 'closed'      THEN 'closed' \
+                 WHEN pr.in_merge_queue = 1    THEN 'queued' \
                  WHEN pr.draft = 1             THEN 'draft' \
                  WHEN pr.id IS NOT NULL        THEN 'open' \
                  ELSE NULL \

@@ -58,6 +58,7 @@ const BASE_DETAIL: PrDetailResponse = {
         deletions: 3,
         changed_files: 2,
         draft: false,
+        in_merge_queue: false,
         merged_at: null,
         teams: null,
         labels: "[]",
@@ -167,6 +168,19 @@ describe("PrDetail — status bar", () => {
         await waitFor(() => {
             expect(container.querySelector(".state-pill")!.textContent).toBe(
                 "Merged",
+            );
+        });
+    });
+
+    it("shows In merge queue pill for queued PRs", async () => {
+        const detail = {
+            ...BASE_DETAIL,
+            pull_request: { ...BASE_DETAIL.pull_request, in_merge_queue: true },
+        };
+        const { container } = renderDetail(detail);
+        await waitFor(() => {
+            expect(container.querySelector(".state-pill")!.textContent).toBe(
+                "In merge queue",
             );
         });
     });

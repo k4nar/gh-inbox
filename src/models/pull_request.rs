@@ -12,6 +12,8 @@ pub struct GithubPullRequest {
     pub head: GithubHead,
     #[serde(default)]
     pub draft: bool,
+    #[serde(default)]
+    pub in_merge_queue: bool,
     pub merged_at: Option<String>,
     pub additions: Option<i64>,
     pub deletions: Option<i64>,
