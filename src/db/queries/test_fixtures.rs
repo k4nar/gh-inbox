@@ -21,6 +21,7 @@ pub(crate) fn sample_pull_request(id: i64) -> PullRequestRow {
         deletions: 0,
         changed_files: 0,
         draft: false,
+        in_merge_queue: false,
         merged_at: None,
         teams: None,
         labels: String::from("[]"),

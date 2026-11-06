@@ -1,12 +1,14 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// The four possible PR statuses, matching the SQL CASE expression in INBOX_ENRICHED_SQL.
+/// The possible PR statuses, matching the `pr_status` SQL CASE in
+/// `db::queries::pull_requests`. `Queued` = open and in the merge queue.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
 pub enum PrStatus {
     Open,
+    Queued,
     Draft,
     Merged,
     Closed,

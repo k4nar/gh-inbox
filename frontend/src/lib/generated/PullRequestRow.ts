@@ -7,7 +7,7 @@ export type PullRequestRow = { id: number, title: string, repo: string, author: 
 /**
  * Markdown of `body` rendered (and sanitized) at cache time.
  */
-body_html: string, state: string, head_sha: string, additions: number, deletions: number, changed_files: number, draft: boolean, merged_at: string | null, 
+body_html: string, state: string, head_sha: string, additions: number, deletions: number, changed_files: number, draft: boolean, in_merge_queue: boolean, merged_at: string | null, 
 /**
  * Raw JSON string, deserialized at the API layer.
  * NULL = team fetch not yet attempted; '[]' = fetched, no matching teams;

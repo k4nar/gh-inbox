@@ -118,6 +118,8 @@ function deriveStatePill(pr: PrDetailResponse["pull_request"]): {
 } {
     if (pr.merged_at) return { label: "Merged", cls: "pill-merged" };
     if (pr.state === "closed") return { label: "Closed", cls: "pill-closed" };
+    if (pr.in_merge_queue)
+        return { label: "In merge queue", cls: "pill-queued" };
     if (pr.draft) return { label: "Draft", cls: "pill-draft" };
     return { label: "Open", cls: "pill-open" };
 }
@@ -678,6 +680,10 @@ let diffSinceUrl = $derived(
 
 .pill-open {
     background: var(--color-success-emphasis, #1a7f37);
+    color: #fff;
+}
+.pill-queued {
+    background: var(--color-attention-emphasis, #9a6700);
     color: #fff;
 }
 .pill-draft {
