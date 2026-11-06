@@ -41,6 +41,7 @@ let avatarFailed = $state(false);
 let sentence = $derived(activitySentence(notif));
 </script>
 
+<!-- biome-ignore lint/a11y/useSemanticElements: the row nests archive buttons, which a <button> cannot contain -->
 <div
     class="pr-item"
     class:read={!notif.unread}
@@ -50,7 +51,7 @@ let sentence = $derived(activitySentence(notif));
     onclick={() => onSelect(notif)}
     role="button"
     tabindex="0"
-    onkeydown={(e) => e.key === 'Enter' && onSelect(notif)}
+    onkeydown={(e) => e.key === "Enter" && onSelect(notif)}
 >
     <div class="unread-dot" class:read={!notif.unread}></div>
 
@@ -92,7 +93,11 @@ let sentence = $derived(activitySentence(notif));
                     {:else}
                         <img
                             class="author-avatar"
-                            src={avatarUrl(notif.author, notif.author_avatar_url, 64)}
+                            src={avatarUrl(
+                                notif.author,
+                                notif.author_avatar_url,
+                                64,
+                            )}
                             alt={notif.author}
                             onerror={() => {
                                 avatarFailed = true;

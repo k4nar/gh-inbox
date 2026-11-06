@@ -131,13 +131,13 @@ function firstLine(text: string): string {
 
         <!-- Diff hunk context (inline review threads only, always visible) -->
         {#if diffLines.length > 0}
-            <div class="diff-hunk" aria-label="Code context">
+            <figure class="diff-hunk" aria-label="Code context">
                 {#each diffLines as line}
                     <div class="diff-line diff-line--{line.type}">
                         {line.text}
                     </div>
                 {/each}
-            </div>
+            </figure>
         {/if}
 
         <Collapsible.Content>
@@ -155,7 +155,10 @@ function firstLine(text: string): string {
                             <div class="comment-header">
                                 <img
                                     class="comment-avatar"
-                                    src={avatarUrl(comment.author, comment.author_avatar_url)}
+                                    src={avatarUrl(
+                                        comment.author,
+                                        comment.author_avatar_url,
+                                    )}
                                     alt={comment.author}
                                     width="18"
                                     height="18"
@@ -193,7 +196,10 @@ function firstLine(text: string): string {
                         <div class="comment-preview">
                             <img
                                 class="preview-avatar"
-                                src={avatarUrl(firstComment.author, firstComment.author_avatar_url)}
+                                src={avatarUrl(
+                                    firstComment.author,
+                                    firstComment.author_avatar_url,
+                                )}
                                 alt={firstComment.author}
                                 width="16"
                                 height="16"
@@ -205,11 +211,15 @@ function firstLine(text: string): string {
                                 >{firstLine(firstComment.body)}</span
                             >
                         </div>
-                        {#if lastOldComment && lastOldComment.id !== firstComment.id}
+                        {#if lastOldComment &&
+                            lastOldComment.id !== firstComment.id}
                             <div class="comment-preview">
                                 <img
                                     class="preview-avatar"
-                                    src={avatarUrl(lastOldComment.author, lastOldComment.author_avatar_url)}
+                                    src={avatarUrl(
+                                        lastOldComment.author,
+                                        lastOldComment.author_avatar_url,
+                                    )}
                                     alt={lastOldComment.author}
                                     width="16"
                                     height="16"
@@ -234,7 +244,10 @@ function firstLine(text: string): string {
                         <div class="comment-header">
                             <img
                                 class="comment-avatar"
-                                src={avatarUrl(lastNewComment.author, lastNewComment.author_avatar_url)}
+                                src={avatarUrl(
+                                    lastNewComment.author,
+                                    lastNewComment.author_avatar_url,
+                                )}
                                 alt={lastNewComment.author}
                                 width="18"
                                 height="18"
@@ -264,7 +277,10 @@ function firstLine(text: string): string {
                     <div class="comment-preview">
                         <img
                             class="preview-avatar"
-                            src={avatarUrl(firstComment.author, firstComment.author_avatar_url)}
+                            src={avatarUrl(
+                                firstComment.author,
+                                firstComment.author_avatar_url,
+                            )}
                             alt={firstComment.author}
                             width="16"
                             height="16"
@@ -280,7 +296,10 @@ function firstLine(text: string): string {
                         <div class="comment-preview">
                             <img
                                 class="preview-avatar"
-                                src={avatarUrl(lastComment.author, lastComment.author_avatar_url)}
+                                src={avatarUrl(
+                                    lastComment.author,
+                                    lastComment.author_avatar_url,
+                                )}
                                 alt={lastComment.author}
                                 width="16"
                                 height="16"
@@ -388,6 +407,7 @@ function firstLine(text: string): string {
 
 /* Diff hunk */
 .diff-hunk {
+    margin: 0;
     font-family:
         ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
     font-size: 11px;

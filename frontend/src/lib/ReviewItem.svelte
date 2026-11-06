@@ -38,9 +38,17 @@ let {
                 >
                 <span class="reviewer-name">{review.reviewer}</span>
                 <span
-                    class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : review.state === 'CHANGES_REQUESTED' ? 'pill-changes' : 'pill-dismissed'}"
+                    class="review-state-pill {review.state === "APPROVED"
+                        ? "pill-approved"
+                        : review.state === "CHANGES_REQUESTED"
+                          ? "pill-changes"
+                          : "pill-dismissed"}"
                 >
-                    {review.state === 'APPROVED' ? 'Approved' : review.state === 'CHANGES_REQUESTED' ? 'Changes requested' : 'Dismissed'}
+                    {review.state === "APPROVED"
+                        ? "Approved"
+                        : review.state === "CHANGES_REQUESTED"
+                          ? "Changes requested"
+                          : "Dismissed"}
                 </span>
                 <span class="timestamp">{timeAgo(review.submitted_at)}</span>
                 {#if showBadge}
@@ -72,7 +80,10 @@ let {
                         <div class="comment-header">
                             <img
                                 class="comment-avatar"
-                                src={avatarUrl(review.reviewer, review.reviewer_avatar_url)}
+                                src={avatarUrl(
+                                    review.reviewer,
+                                    review.reviewer_avatar_url,
+                                )}
                                 alt={review.reviewer}
                                 width="18"
                                 height="18"
@@ -111,9 +122,17 @@ let {
             >
             <span class="reviewer-name">{review.reviewer}</span>
             <span
-                class="review-state-pill {review.state === 'APPROVED' ? 'pill-approved' : review.state === 'CHANGES_REQUESTED' ? 'pill-changes' : 'pill-dismissed'}"
+                class="review-state-pill {review.state === "APPROVED"
+                    ? "pill-approved"
+                    : review.state === "CHANGES_REQUESTED"
+                      ? "pill-changes"
+                      : "pill-dismissed"}"
             >
-                {review.state === 'APPROVED' ? 'Approved' : review.state === 'CHANGES_REQUESTED' ? 'Changes requested' : 'Dismissed'}
+                {review.state === "APPROVED"
+                    ? "Approved"
+                    : review.state === "CHANGES_REQUESTED"
+                      ? "Changes requested"
+                      : "Dismissed"}
             </span>
             <span class="timestamp">{timeAgo(review.submitted_at)}</span>
             {#if showBadge}

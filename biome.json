@@ -1,12 +1,16 @@
 {
-    "$schema": "https://biomejs.dev/schemas/2.4.6/schema.json",
+    "$schema": "https://biomejs.dev/schemas/2.6.5/schema.json",
     "vcs": {
         "enabled": true,
         "clientKind": "git",
         "useIgnoreFile": true
     },
     "files": {
-        "includes": ["frontend/**", "!!frontend/dist", "!!frontend/src/lib/generated"]
+        "includes": [
+            "frontend/**",
+            "!!frontend/dist",
+            "!!frontend/src/lib/generated"
+        ]
     },
     "formatter": {
         "enabled": true,
@@ -16,7 +20,7 @@
     "linter": {
         "enabled": true,
         "rules": {
-            "recommended": true,
+            "preset": "recommended",
             "correctness": {
                 "noUnusedImports": "warn",
                 "noUnusedVariables": "warn"
@@ -47,7 +51,8 @@
                 "rules": {
                     "correctness": {
                         "noUnusedImports": "off",
-                        "noUnusedVariables": "off"
+                        "noUnusedVariables": "off",
+                        "noUnusedFunctionParameters": "off"
                     }
                 }
             }

@@ -13,18 +13,18 @@
 		"svelte-check": "svelte-check --tsconfig frontend/tsconfig.json"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.4.8",
-		"@sveltejs/vite-plugin-svelte": "^7.0.0",
-		"@testing-library/jest-dom": "^6.9.1",
-		"@testing-library/svelte": "^5.3.1",
-		"jsdom": "^29.0.1",
-		"svelte": "^5.54.0",
-		"svelte-check": "^4.4.5",
-		"typescript": "^5.9.3",
-		"vite": "^8.0.1",
-		"vitest": "^4.1.0"
+		"@biomejs/biome": "2.6.5",
+		"@sveltejs/vite-plugin-svelte": "^7.3.1",
+		"@testing-library/jest-dom": "^7.0.1",
+		"@testing-library/svelte": "^5.4.2",
+		"jsdom": "^31.0.0",
+		"svelte": "^5.57.3",
+		"svelte-check": "^4.7.8",
+		"typescript": "^6.0.3",
+		"vite": "^8.3.6",
+		"vitest": "^5.1.0"
 	},
 	"dependencies": {
-		"bits-ui": "^2.16.3"
+		"bits-ui": "^2.20.6"
 	}
 }

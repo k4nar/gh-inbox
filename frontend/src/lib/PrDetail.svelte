@@ -245,6 +245,7 @@ let diffSinceUrl = $derived(
             <Tooltip.Root>
                 <Tooltip.Trigger>
                     {#snippet child({ props })}
+                        <!-- biome-ignore lint/a11y/useAnchorContent: aria-label names the icon-only link -->
                         <a
                             {...props}
                             class="gh-link"
@@ -482,7 +483,8 @@ let diffSinceUrl = $derived(
                             {review}
                             showBadge={true}
                             expanded={expandedReviews.has(review.id)}
-                            onExpandedChange={(v) => setReviewExpanded(review.id, v)}
+                            onExpandedChange={(v) =>
+                                setReviewExpanded(review.id, v)}
                         />
                     {/each}
 
@@ -490,12 +492,16 @@ let diffSinceUrl = $derived(
                         <CommentThread
                             {thread}
                             {previousViewedAt}
-                            initiallyExpanded={(threadNewCounts.get(thread.thread_id) ?? 0) === thread.comments.length}
+                            initiallyExpanded={(threadNewCounts.get(
+                                thread.thread_id,
+                            ) ?? 0) === thread.comments.length}
                         />
                     {/each}
                 </div>
 
-                {#if oldCommits.length > 0 || oldThreads.length > 0 || oldReviews.length > 0}
+                {#if oldCommits.length > 0 ||
+                    oldThreads.length > 0 ||
+                    oldReviews.length > 0}
                     <!-- "Earlier" zone -->
                     <div class="divider divider-old">
                         <div class="divider-line divider-line-old"></div>
@@ -519,7 +525,8 @@ let diffSinceUrl = $derived(
                                 {review}
                                 showBadge={false}
                                 expanded={expandedReviews.has(review.id)}
-                                onExpandedChange={(v) => setReviewExpanded(review.id, v)}
+                                onExpandedChange={(v) =>
+                                    setReviewExpanded(review.id, v)}
                             />
                         {/each}
 
@@ -543,7 +550,8 @@ let diffSinceUrl = $derived(
                             {review}
                             showBadge={false}
                             expanded={expandedReviews.has(review.id)}
-                            onExpandedChange={(v) => setReviewExpanded(review.id, v)}
+                            onExpandedChange={(v) =>
+                                setReviewExpanded(review.id, v)}
                         />
                     {/each}
                     {#each threads as thread (thread.thread_id)}

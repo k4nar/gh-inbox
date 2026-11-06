@@ -18,7 +18,7 @@ function commitUrl(repo: string, sha: string): string {
 </script>
 
 <a
-    class="commit-row {isNew ? 'commit-row-new' : 'commit-row-old'}"
+    class="commit-row {isNew ? "commit-row-new" : "commit-row-old"}"
     href={commitUrl(repo, commit.sha)}
     target="_blank"
     rel="noopener noreferrer"
