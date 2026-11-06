@@ -8,7 +8,7 @@ use axum::http::{StatusCode, header};
 #[cfg(not(debug_assertions))]
 use axum::response::{IntoResponse, Response};
 use axum::{Router, middleware, routing::get};
-use rand::Rng;
+use rand::RngExt;
 use sqlx::SqlitePool;
 use tokio::sync::{RwLock, broadcast};
 
@@ -237,8 +237,8 @@ pub fn app_with_base_url(
     // it rare.
     let (tx, _rx) = broadcast::channel(256);
     let session_token: Arc<str> = Arc::from(
-        rand::thread_rng()
-            .sample_iter(&rand::distributions::Alphanumeric)
+        rand::rng()
+            .sample_iter(&rand::distr::Alphanumeric)
             .take(32)
             .map(char::from)
             .collect::<String>()
