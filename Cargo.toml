@@ -22,6 +22,7 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 comrak = "0.59.0"
 ammonia = "4.2.4"
 ts-rs = "12.0.1"
+clap = { version = "4.6.7", features = ["derive", "env"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

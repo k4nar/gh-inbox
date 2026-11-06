@@ -20,7 +20,7 @@ async fn main() {
         )
         .init();
 
-    let config = Config::from_env();
+    let config = Config::load();
 
     let pool = db::init().await;
     tracing::info!("database initialized");
@@ -41,8 +41,12 @@ async fn main() {
 
     if cfg!(debug_assertions) {
         // Dev mode: spawn the Vite dev server with hot reload
+        let mut args = vec!["run", "dev"];
+        if config.open_browser {
+            args.extend(["--", "--open"]);
+        }
         match std::process::Command::new("npm")
-            .args(["run", "dev", "--", "--open"])
+            .args(args)
             .env("GH_INBOX_PORT", addr.port().to_string())
             .spawn()
         {
@@ -52,7 +56,7 @@ async fn main() {
             }
             Err(e) => tracing::warn!("could not start Vite dev server: {e}"),
         }
-    } else {
+    } else if config.open_browser {
         // Prod mode: open the browser directly to the backend
         if let Err(e) = open::that(&url) {
             tracing::warn!("failed to open browser: {e}");
