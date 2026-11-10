@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PrList from "./PrList.test-helpers.svelte";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
@@ -974,5 +975,329 @@ describe("PrList filter params", () => {
                 .find((u) => u.includes("/api/inbox"));
             expect(url).toContain("state_exclude=merged");
         });
+    });
+});
+
+describe("PrList keyboard shortcuts", () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    function rowFor(title: string): Element {
+        return screen.getByText(title).closest(".pr-item")!;
+    }
+
+    function fetchCalls(spy: ReturnType<typeof vi.fn>): string[] {
+        return (spy.mock.calls as unknown as [unknown, RequestInit?][])
+            .filter(([, init]) => init?.method === "POST")
+            .map(([u]) => String(u));
+    }
+
+    // A fake /api/inbox that honours archives and pages; with holdGets,
+    // list GETs wait until release() so tests can interleave requests.
+    function statefulInbox(
+        pages: InboxItem[][],
+        opts: { holdGets?: boolean; total?: number } = {},
+    ) {
+        const archived = new Set<string>();
+        const calls: { url: string; method: string }[] = [];
+        let held: (() => void)[] = [];
+        const fetchSpy = vi.fn((input: unknown, init?: RequestInit) => {
+            const url = String(input);
+            const method = init?.method ?? "GET";
+            calls.push({ url, method });
+            const archiveMatch = url.match(/\/api\/inbox\/([^/]+)\/archive$/);
+            if (archiveMatch) archived.add(archiveMatch[1]);
+            if (method === "POST") {
+                return Promise.resolve(new Response(null, { status: 204 }));
+            }
+            const page = Number(
+                new URL(url, "http://x").searchParams.get("page"),
+            );
+            const respond = () => {
+                const items = (pages[page - 1] ?? []).filter(
+                    (n) => !archived.has(n.id),
+                );
+                return Response.json({
+                    items,
+                    total: opts.total ?? items.length,
+                    page,
+                    per_page: DEFAULT_PER_PAGE,
+                });
+            };
+            if (!opts.holdGets) return Promise.resolve(respond());
+            return new Promise<Response>((resolve) => {
+                held.push(() => resolve(respond()));
+            });
+        });
+        return {
+            fetchSpy,
+            release() {
+                const pending = held;
+                held = [];
+                for (const r of pending) r();
+            },
+            posts: () =>
+                calls.filter((c) => c.method === "POST").map((c) => c.url),
+            inboxGets: () =>
+                calls.filter(
+                    (c) => c.method === "GET" && c.url.includes("/api/inbox?"),
+                ).length,
+            pageGets: (n: number) =>
+                calls.filter(
+                    (c) => c.method === "GET" && c.url.includes(`page=${n}&`),
+                ).length,
+        };
+    }
+
+    async function renderStateful(
+        server: ReturnType<typeof statefulInbox>,
+        props: Record<string, unknown> = {},
+    ) {
+        globalThis.fetch = server.fetchSpy as unknown as typeof fetch;
+        const result = render(PrList, { props });
+        // With held GETs the initial load needs releasing until rows show.
+        await waitFor(() => {
+            server.release();
+            expect(document.querySelector(".pr-item")).not.toBeNull();
+        });
+        return result;
+    }
+
+    async function renderList(props: Record<string, unknown> = {}) {
+        const fetchSpy = vi.fn(() =>
+            Promise.resolve(
+                Response.json(paginatedResponse(MOCK_NOTIFICATIONS)),
+            ),
+        );
+        globalThis.fetch = fetchSpy as unknown as typeof fetch;
+        const result = render(PrList, { props });
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+        return { ...result, fetchSpy };
+    }
+
+    it("j and k move the cursor without opening the PR", async () => {
+        const onSelect = vi.fn();
+        await renderList({ onSelect });
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+        expect(rowFor("Fix bug in parser")).toHaveClass("cursor");
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+        expect(rowFor("Refactor auth module")).toHaveClass("cursor");
+        expect(rowFor("Fix bug in parser")).not.toHaveClass("cursor");
+
+        await fireEvent.keyDown(document.body, { key: "k" });
+        expect(rowFor("Fix bug in parser")).toHaveClass("cursor");
+
+        expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it("arrow keys move the cursor like j and k", async () => {
+        await renderList();
+
+        await fireEvent.keyDown(document.body, { key: "ArrowDown" });
+        await fireEvent.keyDown(document.body, { key: "ArrowDown" });
+        expect(rowFor("Refactor auth module")).toHaveClass("cursor");
+
+        await fireEvent.keyDown(document.body, { key: "ArrowUp" });
+        expect(rowFor("Fix bug in parser")).toHaveClass("cursor");
+    });
+
+    it("arrow keys open the adjacent PR when the detail panel is open", async () => {
+        const onSelect = vi.fn();
+        await renderList({ onSelect, selectedId: "1" });
+
+        await fireEvent.keyDown(document.body, { key: "ArrowDown" });
+
+        expect(onSelect).toHaveBeenCalledWith(
+            expect.objectContaining({ id: "2" }),
+        );
+    });
+
+    it("o opens the cursor row and marks it read", async () => {
+        const onSelect = vi.fn();
+        const { fetchSpy } = await renderList({ onSelect });
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "o" });
+
+        expect(onSelect).toHaveBeenCalledWith(
+            expect.objectContaining({ id: "1" }),
+        );
+        expect(fetchCalls(fetchSpy)).toContain("/api/inbox/1/read");
+    });
+
+    it("o opens the already-open PR on GitHub instead of closing it", async () => {
+        const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
+        const onSelect = vi.fn();
+        await renderList({ onSelect, selectedId: "1" });
+
+        await fireEvent.keyDown(document.body, { key: "o" });
+
+        expect(onSelect).not.toHaveBeenCalled();
+        expect(openSpy).toHaveBeenCalledWith(
+            "https://github.com/owner/repo/pull/42",
+            "_blank",
+            "noopener",
+        );
+    });
+
+    it("j opens the next PR when the detail panel is open", async () => {
+        const onSelect = vi.fn();
+        await renderList({ onSelect, selectedId: "1" });
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+
+        expect(onSelect).toHaveBeenCalledWith(
+            expect.objectContaining({ id: "2" }),
+        );
+    });
+
+    it("e archives the cursor row and moves the cursor to the next one", async () => {
+        const server = statefulInbox([MOCK_NOTIFICATIONS]);
+        await renderStateful(server);
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "e" });
+
+        // Wait for the refetch (which no longer returns the row), not just
+        // the optimistic removal.
+        await waitFor(() => {
+            expect(server.inboxGets()).toBe(2);
+        });
+        expect(server.posts()).toContain("/api/inbox/1/archive");
+        expect(screen.queryByText("Fix bug in parser")).not.toBeInTheDocument();
+        expect(rowFor("Refactor auth module")).toHaveClass("cursor");
+    });
+
+    it("rapid archives never select a row that was archived meanwhile", async () => {
+        const rows = [
+            makeItem({ id: "1", title: "First" }),
+            makeItem({ id: "2", title: "Second" }),
+            makeItem({ id: "3", title: "Third" }),
+        ];
+        const server = statefulInbox([rows], { holdGets: true });
+        const onSelectionChange = vi.fn();
+        server.release();
+        await renderStateful(server, { selectedId: "1", onSelectionChange });
+
+        await fireEvent.keyDown(document.body, { key: "e" });
+        await fireEvent.keyDown(document.body, { key: "e" });
+        await waitFor(() => {
+            expect(server.posts()).toEqual([
+                "/api/inbox/1/archive",
+                "/api/inbox/2/archive",
+            ]);
+        });
+        server.release();
+
+        await waitFor(() => {
+            expect(onSelectionChange).toHaveBeenCalled();
+        });
+        const picked = onSelectionChange.mock.calls.map(([n]) => n?.id);
+        expect(picked).not.toContain("2");
+        expect(picked.at(-1)).toBe("3");
+    });
+
+    it("Enter on the focused row acts on the cursor row", async () => {
+        const onSelect = vi.fn();
+        await renderList({ onSelect });
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await waitFor(() => {
+            expect(document.activeElement).toBe(rowFor("Refactor auth module"));
+        });
+
+        await fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+
+        expect(onSelect).toHaveBeenCalledOnce();
+        expect(onSelect).toHaveBeenCalledWith(
+            expect.objectContaining({ id: "2" }),
+        );
+    });
+
+    it("focusing a row with Tab moves the cursor to it", async () => {
+        await renderList();
+
+        (rowFor("Refactor auth module") as HTMLElement).focus();
+        await tick();
+
+        expect(rowFor("Refactor auth module")).toHaveClass("cursor");
+    });
+
+    it("j presses during a page load fetch the next page once", async () => {
+        const page1 = [
+            makeItem({ id: "1", title: "First" }),
+            makeItem({ id: "2", title: "Second" }),
+        ];
+        const page2 = [makeItem({ id: "3", title: "Third" })];
+        const server = statefulInbox([page1, page2], {
+            holdGets: true,
+            total: DEFAULT_PER_PAGE + 1,
+        });
+        server.release();
+        await renderStateful(server);
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "k" });
+        server.release();
+
+        await waitFor(() => {
+            expect(rowFor("Third")).toHaveClass("cursor");
+        });
+        expect(server.pageGets(2)).toBe(1);
+    });
+
+    it("e unarchives in the Archived view", async () => {
+        const { fetchSpy } = await renderList({ currentView: "archived" });
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "e" });
+
+        await waitFor(() => {
+            expect(fetchCalls(fetchSpy)).toContain("/api/inbox/1/unarchive");
+        });
+    });
+
+    it("Shift+I marks the cursor row read without opening it", async () => {
+        const onSelect = vi.fn();
+        const { fetchSpy } = await renderList({ onSelect });
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "I", shiftKey: true });
+
+        expect(fetchCalls(fetchSpy)).toContain("/api/inbox/1/read");
+        expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it("v and Shift+O open the cursor row on GitHub", async () => {
+        const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
+        await renderList();
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "v" });
+        await fireEvent.keyDown(document.body, { key: "O", shiftKey: true });
+
+        expect(openSpy).toHaveBeenCalledTimes(2);
+        expect(openSpy).toHaveBeenCalledWith(
+            "https://github.com/owner/repo/pull/42",
+            "_blank",
+            "noopener",
+        );
+    });
+
+    it("e does nothing before the cursor is placed", async () => {
+        const { fetchSpy } = await renderList();
+
+        await fireEvent.keyDown(document.body, { key: "e" });
+
+        expect(fetchCalls(fetchSpy)).toEqual([]);
     });
 });

@@ -8,17 +8,25 @@ import type { InboxItem } from "./types.ts";
 let {
     notif,
     selected = false,
+    cursor = false,
     currentView = "inbox",
     onSelect,
+    onActivate = onSelect,
+    onFocus = () => {},
     onArchive,
     onUnarchive,
 }: {
     notif: InboxItem;
     selected?: boolean;
+    /** Keyboard cursor (j/k) is on this row. */
+    cursor?: boolean;
     currentView?: string;
     onSelect: (notification: InboxItem) => void;
-    onArchive: (e: MouseEvent, notification: InboxItem) => void;
-    onUnarchive: (e: MouseEvent, notification: InboxItem) => void;
+    /** Enter on the focused row (defaults to onSelect). */
+    onActivate?: (notification: InboxItem) => void;
+    onFocus?: (notification: InboxItem) => void;
+    onArchive: (notification: InboxItem) => void;
+    onUnarchive: (notification: InboxItem) => void;
 } = $props();
 
 // SVG path data for GitHub Octicons (16px)
@@ -47,12 +55,14 @@ let sentence = $derived(activitySentence(notif));
     class="pr-item"
     class:read={!notif.unread}
     class:selected
+    class:cursor
     data-notif-id={notif.id}
     data-ci-status={notif.ci_status ?? ""}
     onclick={() => onSelect(notif)}
     role="button"
     tabindex="0"
-    onkeydown={(e) => e.key === "Enter" && onSelect(notif)}
+    onfocus={() => onFocus(notif)}
+    onkeydown={(e) => e.key === "Enter" && onActivate(notif)}
 >
     <div class="unread-dot" class:read={!notif.unread}></div>
 
@@ -152,7 +162,10 @@ let sentence = $derived(activitySentence(notif));
                         class="action-btn"
                         type="button"
                         aria-label="Archive"
-                        onclick={(e) => onArchive(e, notif)}
+                        onclick={(e) => {
+                            e.stopPropagation();
+                            onArchive(notif);
+                        }}
                     >
                         <svg
                             aria-hidden="true"
@@ -178,7 +191,10 @@ let sentence = $derived(activitySentence(notif));
                         class="action-btn"
                         type="button"
                         aria-label="Unarchive"
-                        onclick={(e) => onUnarchive(e, notif)}
+                        onclick={(e) => {
+                            e.stopPropagation();
+                            onUnarchive(notif);
+                        }}
                     >
                         <svg
                             aria-hidden="true"
@@ -220,6 +236,14 @@ let sentence = $derived(activitySentence(notif));
 .pr-item.selected {
     background: var(--accent-subtle);
     border-left: 2px solid var(--accent-fg);
+}
+/* The cursor and selected styles already mark the focused row. */
+.pr-item:focus-visible {
+    outline: none;
+}
+.pr-item.cursor {
+    box-shadow: inset 2px 0 0 var(--accent-fg);
+    background: var(--canvas-subtle);
 }
 
 .unread-dot {
