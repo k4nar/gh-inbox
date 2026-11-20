@@ -62,7 +62,12 @@ let sentence = $derived(activitySentence(notif));
     role="button"
     tabindex="0"
     onfocus={() => onFocus(notif)}
-    onkeydown={(e) => e.key === "Enter" && onActivate(notif)}
+    onkeydown={(e) => {
+        // Enter on the nested Archive button bubbles here too; that press
+        // belongs to the button only.
+        if (e.key === "Enter" && e.target === e.currentTarget)
+            onActivate(notif);
+    }}
 >
     <div class="unread-dot" class:read={!notif.unread}></div>
 

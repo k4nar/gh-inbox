@@ -423,6 +423,43 @@ describe("keyboard shortcuts", () => {
         });
     });
 
+    it("focuses the PR timeline on open and returns focus to the row on close", async () => {
+        await renderApp();
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "o" });
+        await waitFor(() => {
+            expect(document.activeElement?.classList.contains("timeline")).toBe(
+                true,
+            );
+        });
+
+        await fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+        await waitFor(() => {
+            expect(document.activeElement?.closest(".pr-item")).toBe(
+                screen.getByText("Fix bug in parser").closest(".pr-item"),
+            );
+        });
+    });
+
+    it("g i in the Inbox keeps the open PR open", async () => {
+        await renderApp();
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "o" });
+        await waitFor(() => {
+            expect(
+                screen.getByLabelText("Resize PR detail panel"),
+            ).toBeInTheDocument();
+        });
+
+        await fireEvent.keyDown(document.body, { key: "g" });
+        await fireEvent.keyDown(document.body, { key: "i" });
+
+        expect(
+            screen.getByLabelText("Resize PR detail panel"),
+        ).toBeInTheDocument();
+    });
+
     it("g a switches to the Archived view", async () => {
         await renderApp();
 

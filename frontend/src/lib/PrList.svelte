@@ -4,7 +4,7 @@ import { tick, untrack } from "svelte";
 import { apiFetch } from "./api.ts";
 import { countActiveFilters } from "./filters.ts";
 import PrListItem from "./PrListItem.svelte";
-import { registerShortcuts } from "./shortcuts.ts";
+import { registerShortcuts, type Shortcut } from "./shortcuts.ts";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
 import { showError } from "./toast.svelte.ts";
 import type { ActiveFilters } from "./types.ts";
@@ -270,6 +270,24 @@ function nextAfterRemoval(
     return latest[0] ?? null;
 }
 
+// Re-insert `row` into `current` where it sat in `previous`: before the
+// first later row that is still present.
+function restoreRow(
+    current: InboxItem[],
+    previous: InboxItem[],
+    row: InboxItem,
+): InboxItem[] {
+    if (current.some((n) => n.id === row.id)) return current;
+    const after = previous.slice(
+        previous.findIndex((n) => n.id === row.id) + 1,
+    );
+    const anchor = after.find((n) => current.some((c) => c.id === n.id));
+    const at = anchor
+        ? current.findIndex((c) => c.id === anchor.id)
+        : current.length;
+    return [...current.slice(0, at), row, ...current.slice(at)];
+}
+
 // Archive and unarchive both remove the row from the current view, then move
 // the selection and the keyboard cursor to its neighbour.
 async function moveOut(
@@ -309,18 +327,13 @@ async function moveOut(
     } catch (err) {
         console.error(`Failed to ${action}:`, err);
         showError(`Failed to ${action} notification`);
-        notifications = prevNotifications;
-        if (provisionalCursor !== undefined) cursorId = notif.id;
-        if (wasSelected) onSelectionChange(notif);
+        // Put back only this row: another archive may have succeeded since.
+        notifications = restoreRow(notifications, prevNotifications, notif);
+        if (provisionalCursor !== undefined && cursorId === provisionalCursor) {
+            cursorId = notif.id;
+        }
+        // The selection only moves on success, so it needs no restoring.
     }
-}
-
-function handleArchive(notif: InboxItem): Promise<void> {
-    return moveOut(notif, "archive");
-}
-
-function handleUnarchive(notif: InboxItem): Promise<void> {
-    return moveOut(notif, "unarchive");
 }
 
 function goToPage(page: number): void {
@@ -342,11 +355,15 @@ function cursorRow(): InboxItem | undefined {
     return notifications.find((n) => n.id === cursorId);
 }
 
-// Keep the cursor row visible and, when focus is not elsewhere (a sidebar
-// button, a link in the detail panel), focused: screen readers announce it
-// and Enter on the focused row then always means the cursor row.
+// Keep the cursor row visible. With no PR open, also focus it (when focus
+// is not on another control: a sidebar button, a pagination button), so
+// screen readers announce it and Enter on the focused row is the cursor row.
+// With a PR open, PrDetail focuses its timeline instead, so Space and Page
+// Down scroll the PR. Tracking selectedId hands focus back to the row when
+// the panel closes.
 $effect(() => {
     const id = cursorId;
+    const panelOpen = selectedId != null;
     if (!id) return;
     void tick().then(() => {
         const row = listEl?.querySelector<HTMLElement>(
@@ -354,11 +371,12 @@ $effect(() => {
         );
         if (!row) return;
         row.scrollIntoView?.({ block: "nearest" });
+        if (panelOpen) return;
         const active = document.activeElement;
         if (
             active === null ||
             active === document.body ||
-            (listEl?.contains(active) && active.matches(".pr-item"))
+            active.closest(".pr-item") !== null
         ) {
             row.focus({ preventScroll: true });
         }
@@ -395,10 +413,17 @@ async function moveCursor(delta: 1 | -1): Promise<void> {
     if (selectedId) open(target);
 }
 
-function withCursorRow(fn: (notif: InboxItem) => void): () => void {
-    return () => {
-        const notif = cursorRow();
-        if (notif) fn(notif);
+// Shortcut fields for an action on the cursor row: active only while there
+// is one, so the key falls through otherwise.
+function onCursorRow(
+    fn: (notif: InboxItem) => void,
+): Pick<Shortcut, "when" | "run"> {
+    return {
+        when: () => cursorRow() !== undefined,
+        run: () => {
+            const notif = cursorRow();
+            if (notif) fn(notif);
+        },
     };
 }
 
@@ -422,15 +447,13 @@ $effect(() =>
             keys: ["o", "Enter"],
             description: "Open pull request (on GitHub if already open)",
             group: "Navigation",
-            when: () => cursorRow() !== undefined,
-            run: withCursorRow(activate),
+            ...onCursorRow(activate),
         },
         {
             keys: ["e"],
             description: "Archive (unarchive in Archived)",
             group: "Actions",
-            when: () => cursorRow() !== undefined,
-            run: withCursorRow((notif) => {
+            ...onCursorRow((notif) => {
                 void moveOut(
                     notif,
                     currentView === "archived" ? "unarchive" : "archive",
@@ -441,15 +464,14 @@ $effect(() =>
             keys: ["I"],
             description: "Mark as read",
             group: "Actions",
-            when: () => cursorRow() !== undefined,
-            run: withCursorRow((notif) => void markRead(notif)),
+            ...onCursorRow((notif) => void markRead(notif)),
         },
         {
             keys: ["v", "O"],
             description: "Open on GitHub",
             group: "Actions",
+            ...onCursorRow(openOnGitHub),
             when: () => cursorRow()?.pr_id != null,
-            run: withCursorRow(openOnGitHub),
         },
     ]),
 );
@@ -495,8 +517,8 @@ $effect(() =>
                     onFocus={(n) => {
                         cursorId = n.id;
                     }}
-                    onArchive={handleArchive}
-                    onUnarchive={handleUnarchive}
+                    onArchive={(n) => moveOut(n, "archive")}
+                    onUnarchive={(n) => moveOut(n, "unarchive")}
                 />
             {/each}
         {/if}

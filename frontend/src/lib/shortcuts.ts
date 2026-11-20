@@ -53,13 +53,13 @@ export function listShortcuts(): Shortcut[] {
     return [...registry];
 }
 
-/** Human-readable form of one binding: "I" -> "Shift+I", "g i" -> "g then i". */
 const KEY_LABELS: Record<string, string> = {
     Escape: "Esc",
     ArrowUp: "↑",
     ArrowDown: "↓",
 };
 
+/** Display labels for one binding's keys: "I" -> ["Shift+I"], "g i" -> ["g", "i"]. */
 export function formatKeys(binding: string): string[] {
     return binding
         .split(" ")

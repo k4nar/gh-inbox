@@ -45,7 +45,7 @@ let groups = $derived.by(() => {
                     <section>
                         <h3>{group}</h3>
                         <dl>
-                            {#each shortcuts as s (s.description)}
+                            {#each shortcuts as s}
                                 <div class="shortcut-row">
                                     <dt>{s.description}</dt>
                                     <dd>

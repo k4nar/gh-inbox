@@ -997,7 +997,12 @@ describe("PrList keyboard shortcuts", () => {
     // list GETs wait until release() so tests can interleave requests.
     function statefulInbox(
         pages: InboxItem[][],
-        opts: { holdGets?: boolean; total?: number } = {},
+        opts: {
+            holdGets?: boolean;
+            total?: number;
+            // Archives of these ids wait for release(), then fail with 500.
+            failArchive?: string[];
+        } = {},
     ) {
         const archived = new Set<string>();
         const calls: { url: string; method: string }[] = [];
@@ -1007,6 +1012,13 @@ describe("PrList keyboard shortcuts", () => {
             const method = init?.method ?? "GET";
             calls.push({ url, method });
             const archiveMatch = url.match(/\/api\/inbox\/([^/]+)\/archive$/);
+            if (archiveMatch && opts.failArchive?.includes(archiveMatch[1])) {
+                return new Promise<Response>((resolve) => {
+                    held.push(() =>
+                        resolve(new Response(null, { status: 500 })),
+                    );
+                });
+            }
             if (archiveMatch) archived.add(archiveMatch[1]);
             if (method === "POST") {
                 return Promise.resolve(new Response(null, { status: 204 }));
@@ -1200,6 +1212,65 @@ describe("PrList keyboard shortcuts", () => {
         const picked = onSelectionChange.mock.calls.map(([n]) => n?.id);
         expect(picked).not.toContain("2");
         expect(picked.at(-1)).toBe("3");
+    });
+
+    it("a failed archive restores only its own row and leaves a moved cursor", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        const rows = [
+            makeItem({ id: "1", title: "First" }),
+            makeItem({ id: "2", title: "Second" }),
+            makeItem({ id: "3", title: "Third" }),
+        ];
+        const server = statefulInbox([rows], { failArchive: ["1"] });
+        await renderStateful(server);
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "e" }); // 1: held, fails
+        await fireEvent.keyDown(document.body, { key: "e" }); // 2: succeeds
+        await waitFor(() => {
+            expect(server.inboxGets()).toBe(2);
+        });
+        server.release();
+
+        await waitFor(() => {
+            expect(screen.getByText("First")).toBeInTheDocument();
+        });
+        expect(screen.queryByText("Second")).not.toBeInTheDocument();
+        expect(rowFor("Third")).toHaveClass("cursor");
+    });
+
+    it("Enter on a row's Archive button does not also open the row", async () => {
+        const onSelect = vi.fn();
+        await renderList({ onSelect });
+
+        const archive = screen.getAllByRole("button", { name: "Archive" })[0];
+        await fireEvent.keyDown(archive, { key: "Enter" });
+
+        expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it("j moves focus off a control inside the previous row", async () => {
+        await renderList();
+        const archive = screen.getAllByRole("button", {
+            name: "Archive",
+        })[0] as HTMLElement;
+        archive.focus();
+
+        await fireEvent.keyDown(archive, { key: "j" });
+
+        await waitFor(() => {
+            expect(document.activeElement).toBe(rowFor("Fix bug in parser"));
+        });
+    });
+
+    it("does not focus the cursor row while a PR is open", async () => {
+        await renderList({ selectedId: "1" });
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await tick();
+        await tick();
+
+        expect(document.activeElement).toBe(document.body);
     });
 
     it("Enter on the focused row acts on the cursor row", async () => {

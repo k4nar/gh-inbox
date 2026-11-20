@@ -40,6 +40,26 @@ let reviews = $state<Review[]>([]);
 let labels = $state<Label[]>([]);
 let loading = $state(true);
 let error: string | null = $state(null);
+let timelineEl: HTMLElement | undefined = $state();
+
+// Opening a PR (click, Enter, j/k) moves keyboard focus into its timeline so
+// Space and Page Up/Down scroll the PR being read, as in Gmail. Focus is only
+// taken from the page itself or the inbox list, never from a control the user
+// moved to (a sidebar button, a link in this panel).
+$effect(() => {
+    void notification?.pr_id;
+    void notification?.repository;
+    const el = timelineEl;
+    if (!el) return;
+    const active = document.activeElement;
+    if (
+        active === null ||
+        active === document.body ||
+        active.closest(".pr-item") !== null
+    ) {
+        el.focus({ preventScroll: true });
+    }
+});
 $effect(() => {
     if (notification?.pr_id && notification?.repository) {
         // Switching PRs: drop the previous PR's content so the panel shows
@@ -406,7 +426,7 @@ let diffSinceUrl = $derived(
 
         <!-- Timeline -->
 
-        <div class="timeline">
+        <div class="timeline" bind:this={timelineEl} tabindex="-1">
             <div class="timeline-item description-item">
                 <Collapsible.Root
                     open={expandedDescription}
@@ -811,6 +831,9 @@ let diffSinceUrl = $derived(
 }
 
 /* Timeline */
+.timeline:focus {
+    outline: none;
+}
 .timeline {
     flex: 1;
     overflow-y: auto;

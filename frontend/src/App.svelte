@@ -118,6 +118,12 @@ function handleViewChange(view: string): void {
     fetchFilterOptions(view);
 }
 
+// Unlike a tab click, g i / g a can be typed for the view already shown;
+// that must not close the open PR.
+function goToView(view: string): void {
+    if (view !== currentView) handleViewChange(view);
+}
+
 $effect(() =>
     registerShortcuts([
         {
@@ -131,13 +137,13 @@ $effect(() =>
             keys: ["g i"],
             description: "Go to Inbox",
             group: "Navigation",
-            run: () => handleViewChange("inbox"),
+            run: () => goToView("inbox"),
         },
         {
             keys: ["g a"],
             description: "Go to Archived",
             group: "Navigation",
-            run: () => handleViewChange("archived"),
+            run: () => goToView("archived"),
         },
         {
             keys: ["r"],
