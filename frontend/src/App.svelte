@@ -5,7 +5,9 @@ import { apiFetch } from "./lib/api.ts";
 import PrDetail from "./lib/PrDetail.svelte";
 import PrList from "./lib/PrList.svelte";
 import ResizableDetailPanel from "./lib/ResizableDetailPanel.svelte";
+import ShortcutHelp from "./lib/ShortcutHelp.svelte";
 import Sidebar from "./lib/Sidebar.svelte";
+import { registerShortcuts } from "./lib/shortcuts.ts";
 import {
     connectSSE,
     disconnectSSE,
@@ -29,6 +31,7 @@ let currentView = $state("inbox");
 let selectedNotification: InboxItem | null = $state(null);
 let refreshKey = $state(0);
 let theme: Theme = $state("system");
+let helpOpen = $state(false);
 let activeFilters: ActiveFilters = $state({});
 let filterOptions: FilterOptions = $state({
     repos: [],
@@ -115,6 +118,50 @@ function handleViewChange(view: string): void {
     fetchFilterOptions(view);
 }
 
+// Unlike a tab click, g i / g a can be typed for the view already shown;
+// that must not close the open PR.
+function goToView(view: string): void {
+    if (view !== currentView) handleViewChange(view);
+}
+
+$effect(() =>
+    registerShortcuts([
+        {
+            keys: ["u", "Escape"],
+            description: "Close pull request",
+            group: "Navigation",
+            when: () => selectedNotification !== null,
+            run: handleClose,
+        },
+        {
+            keys: ["g i"],
+            description: "Go to Inbox",
+            group: "Navigation",
+            run: () => goToView("inbox"),
+        },
+        {
+            keys: ["g a"],
+            description: "Go to Archived",
+            group: "Navigation",
+            run: () => goToView("archived"),
+        },
+        {
+            keys: ["r"],
+            description: "Sync with GitHub",
+            group: "Actions",
+            run: () => void handleSync(),
+        },
+        {
+            keys: ["?"],
+            description: "Show keyboard shortcuts",
+            group: "Help",
+            run: () => {
+                helpOpen = true;
+            },
+        },
+    ]),
+);
+
 onMount(() => {
     connectSSE();
     fetchFilterOptions(currentView);
@@ -198,6 +245,7 @@ onMount(() => {
         {/if}
     </div>
     <Toast />
+    <ShortcutHelp bind:open={helpOpen} />
 </Tooltip.Provider>
 
 <style>

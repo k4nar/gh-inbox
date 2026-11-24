@@ -395,3 +395,95 @@ describe("filter options", () => {
         });
     });
 });
+
+describe("keyboard shortcuts", () => {
+    async function renderApp(): Promise<void> {
+        render(App);
+        await waitFor(() => {
+            expect(screen.getByText("Fix bug in parser")).toBeInTheDocument();
+        });
+    }
+
+    it("j then o opens the PR, Escape closes it", async () => {
+        await renderApp();
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "o" });
+        await waitFor(() => {
+            expect(
+                screen.getByLabelText("Resize PR detail panel"),
+            ).toBeInTheDocument();
+        });
+
+        await fireEvent.keyDown(document.body, { key: "Escape" });
+        await waitFor(() => {
+            expect(
+                screen.queryByLabelText("Resize PR detail panel"),
+            ).not.toBeInTheDocument();
+        });
+    });
+
+    it("focuses the PR timeline on open and returns focus to the row on close", async () => {
+        await renderApp();
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "o" });
+        await waitFor(() => {
+            expect(document.activeElement?.classList.contains("timeline")).toBe(
+                true,
+            );
+        });
+
+        await fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+        await waitFor(() => {
+            expect(document.activeElement?.closest(".pr-item")).toBe(
+                screen.getByText("Fix bug in parser").closest(".pr-item"),
+            );
+        });
+    });
+
+    it("g i in the Inbox keeps the open PR open", async () => {
+        await renderApp();
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "o" });
+        await waitFor(() => {
+            expect(
+                screen.getByLabelText("Resize PR detail panel"),
+            ).toBeInTheDocument();
+        });
+
+        await fireEvent.keyDown(document.body, { key: "g" });
+        await fireEvent.keyDown(document.body, { key: "i" });
+
+        expect(
+            screen.getByLabelText("Resize PR detail panel"),
+        ).toBeInTheDocument();
+    });
+
+    it("g a switches to the Archived view", async () => {
+        await renderApp();
+
+        await fireEvent.keyDown(document.body, { key: "g" });
+        await fireEvent.keyDown(document.body, { key: "a" });
+
+        await waitFor(() => {
+            const urls = (
+                vi.mocked(globalThis.fetch).mock.calls as unknown as [unknown][]
+            ).map(([u]) => String(u));
+            expect(urls.some((u) => u.includes("status=archived"))).toBe(true);
+        });
+    });
+
+    it("? opens the shortcut help listing registered shortcuts", async () => {
+        await renderApp();
+
+        await fireEvent.keyDown(document.body, { key: "?" });
+
+        const dialog = await screen.findByRole("dialog");
+        expect(dialog).toHaveTextContent("Keyboard shortcuts");
+        expect(dialog).toHaveTextContent("Next pull request");
+        // j and ↓ share one row
+        expect(dialog).toHaveTextContent(/Next pull request\s*j\s*or\s*↓/);
+        expect(dialog).toHaveTextContent("Go to Archived");
+    });
+});

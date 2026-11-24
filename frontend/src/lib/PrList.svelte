@@ -1,9 +1,11 @@
 <script lang="ts">
 import { Pagination } from "bits-ui";
-import { untrack } from "svelte";
+import { tick, untrack } from "svelte";
 import { apiFetch } from "./api.ts";
 import { countActiveFilters } from "./filters.ts";
+import { focusIsFree, rowSelector } from "./focus.ts";
 import PrListItem from "./PrListItem.svelte";
+import { registerShortcuts, type Shortcut } from "./shortcuts.ts";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
 import { showError } from "./toast.svelte.ts";
 import type { ActiveFilters } from "./types.ts";
@@ -137,7 +139,7 @@ $effect(() => {
         { rootMargin: "200px" },
     );
 
-    listEl.querySelectorAll("[data-notif-id]").forEach((el) => {
+    listEl.querySelectorAll(rowSelector()).forEach((el) => {
         observer.observe(el);
     });
 
@@ -205,74 +207,139 @@ let emptyMessage = $derived(
         : "All caught up!",
 );
 
-async function handleSelect(notif: InboxItem): Promise<void> {
-    if (notif.unread) {
-        notif.unread = false;
-        notifications = [...notifications];
-        try {
-            await apiFetch(`/api/inbox/${notif.id}/read`, { method: "POST" });
-        } catch (err) {
-            console.error("Failed to mark read:", err);
-            showError("Failed to mark notification as read");
-        }
+async function markRead(notif: InboxItem): Promise<void> {
+    if (!notif.unread) return;
+    notif.unread = false;
+    notifications = [...notifications];
+    try {
+        await apiFetch(`/api/inbox/${notif.id}/read`, { method: "POST" });
+    } catch (err) {
+        console.error("Failed to mark read:", err);
+        showError("Failed to mark notification as read");
     }
+}
+
+function handleSelect(notif: InboxItem): void {
+    cursorId = notif.id;
+    // markRead flips the flag synchronously; the panel need not wait for
+    // the POST.
+    void markRead(notif);
     onSelect(notif);
 }
 
-function getAdjacentNotification(
-    items: InboxItem[],
-    removedId: string,
-): InboxItem | null {
-    const removedIndex = items.findIndex((item) => item.id === removedId);
-    if (removedIndex === -1) return null;
-    return items[removedIndex + 1] ?? items[removedIndex - 1] ?? null;
+// Open without toggling: the parent closes the panel when the already-open
+// row is selected again, which a keyboard "open" must never do.
+function open(notif: InboxItem): void {
+    if (notif.id !== selectedId) handleSelect(notif);
 }
 
-function resolveNextSelection(
-    removedNotification: InboxItem,
-    previousItems: InboxItem[],
-    refreshedItems: InboxItem[] | null,
-): InboxItem | null {
-    const adjacent = getAdjacentNotification(
-        previousItems,
-        removedNotification.id,
+// o / Enter: open in the panel, or on GitHub when it is already open.
+function activate(notif: InboxItem): void {
+    if (notif.id === selectedId) openOnGitHub(notif);
+    else open(notif);
+}
+
+function openOnGitHub(notif: InboxItem): void {
+    if (notif.pr_id === null) return;
+    window.open(
+        `https://github.com/${notif.repository}/pull/${notif.pr_id}`,
+        "_blank",
+        "noopener",
     );
-    if (adjacent === null) {
-        return refreshedItems?.[0] ?? null;
-    }
-
-    return refreshedItems?.find((item) => item.id === adjacent.id) ?? adjacent;
 }
 
-async function handleArchive(e: MouseEvent, notif: InboxItem): Promise<void> {
-    e.stopPropagation();
+// The row to land on after `removedId` leaves the list: its nearest
+// neighbour (below first, then above) that is still in `latest`, so a row
+// removed meanwhile (rapid archives) is never picked.
+function nextAfterRemoval(
+    previousItems: InboxItem[],
+    removedId: string,
+    latest: InboxItem[],
+): InboxItem | null {
+    const index = previousItems.findIndex((item) => item.id === removedId);
+    const present = (id: string) => latest.find((item) => item.id === id);
+    if (index !== -1) {
+        for (let i = index + 1; i < previousItems.length; i++) {
+            const hit = present(previousItems[i].id);
+            if (hit) return hit;
+        }
+        for (let i = index - 1; i >= 0; i--) {
+            const hit = present(previousItems[i].id);
+            if (hit) return hit;
+        }
+    }
+    return latest[0] ?? null;
+}
+
+// Re-insert `row` into `current` where it sat in `previous`: before the
+// first later row that is still present.
+function restoreRow(
+    current: InboxItem[],
+    previous: InboxItem[],
+    row: InboxItem,
+): InboxItem[] {
+    if (current.some((n) => n.id === row.id)) return current;
+    const after = previous.slice(
+        previous.findIndex((n) => n.id === row.id) + 1,
+    );
+    const anchor = after.find((n) => current.some((c) => c.id === n.id));
+    const at = anchor
+        ? current.findIndex((c) => c.id === anchor.id)
+        : current.length;
+    return [...current.slice(0, at), row, ...current.slice(at)];
+}
+
+// Archive and unarchive both remove the row from the current view, then move
+// the selection and the keyboard cursor to its neighbour.
+async function moveOut(
+    notif: InboxItem,
+    action: "archive" | "unarchive",
+): Promise<void> {
     const prevNotifications = [...notifications];
-    const archivedWasSelected = selectedId === notif.id;
+    const wasSelected = selectedId === notif.id;
+    const viewAtStart = currentView;
+    const pageAtStart = currentPage;
     notifications = notifications.filter((n) => n.id !== notif.id);
+    // Move the cursor at once; the refetch below may refine it.
+    const provisionalCursor =
+        cursorId === notif.id
+            ? (nextAfterRemoval(prevNotifications, notif.id, notifications)
+                  ?.id ?? null)
+            : undefined;
+    if (provisionalCursor !== undefined) cursorId = provisionalCursor;
     try {
-        await apiFetch(`/api/inbox/${notif.id}/archive`, { method: "POST" });
+        await apiFetch(`/api/inbox/${notif.id}/${action}`, { method: "POST" });
         // Refetch; if page is now empty and not page 1, go back
         const page =
             notifications.length === 0 && currentPage > 1
                 ? currentPage - 1
                 : currentPage;
         const result = await fetchNotifications(currentView, page);
-        if (archivedWasSelected) {
-            onSelectionChange(
-                resolveNextSelection(
-                    notif,
-                    prevNotifications,
-                    result?.items ?? null,
-                ),
-            );
+        // A superseded refetch returns null: fall back to the local list,
+        // which already reflects any later archive.
+        const next = nextAfterRemoval(
+            prevNotifications,
+            notif.id,
+            result?.items ?? notifications,
+        );
+        // Only move what nobody has moved since (another archive, j/k).
+        if (provisionalCursor !== undefined && cursorId === provisionalCursor) {
+            cursorId = next?.id ?? null;
         }
+        if (wasSelected && selectedId === notif.id) onSelectionChange(next);
     } catch (err) {
-        console.error("Failed to archive:", err);
-        showError("Failed to archive notification");
-        notifications = prevNotifications;
-        if (archivedWasSelected) {
-            onSelectionChange(notif);
+        console.error(`Failed to ${action}:`, err);
+        showError(`Failed to ${action} notification`);
+        // Put back only this row (another archive may have succeeded since),
+        // and only into the page it came from: after j/k crossed pages or the
+        // view changed, it is not on screen and the next refetch shows it.
+        if (currentView === viewAtStart && currentPage === pageAtStart) {
+            notifications = restoreRow(notifications, prevNotifications, notif);
         }
+        if (provisionalCursor !== undefined && cursorId === provisionalCursor) {
+            cursorId = notif.id;
+        }
+        // The selection only moves on success, so it needs no restoring.
     }
 }
 
@@ -280,36 +347,131 @@ function goToPage(page: number): void {
     fetchNotifications(currentView, page);
 }
 
-async function handleUnarchive(e: MouseEvent, notif: InboxItem): Promise<void> {
-    e.stopPropagation();
-    const prevNotifications = [...notifications];
-    const unarchivedWasSelected = selectedId === notif.id;
-    notifications = notifications.filter((n) => n.id !== notif.id);
-    try {
-        await apiFetch(`/api/inbox/${notif.id}/unarchive`, { method: "POST" });
-        const page =
-            notifications.length === 0 && currentPage > 1
-                ? currentPage - 1
-                : currentPage;
-        const result = await fetchNotifications(currentView, page);
-        if (unarchivedWasSelected) {
-            onSelectionChange(
-                resolveNextSelection(
-                    notif,
-                    prevNotifications,
-                    result?.items ?? null,
-                ),
-            );
-        }
-    } catch (err) {
-        console.error("Failed to unarchive:", err);
-        showError("Failed to unarchive notification");
-        notifications = prevNotifications;
-        if (unarchivedWasSelected) {
-            onSelectionChange(notif);
-        }
-    }
+// --- Keyboard navigation ---
+
+// The keyboard cursor (j/k) is separate from the open PR, so moving through
+// the list does not mark every row read or fetch every PR.
+let cursorId: string | null = $state(null);
+
+// Follow selection changes made elsewhere (click, select-next after archive).
+$effect(() => {
+    if (selectedId) cursorId = selectedId;
+});
+
+function cursorRow(): InboxItem | undefined {
+    return notifications.find((n) => n.id === cursorId);
 }
+
+// Keep the cursor row visible. With no PR open, also focus it (when focus
+// is not on another control: a sidebar button, a pagination button), so
+// screen readers announce it and Enter on the focused row is the cursor row.
+// With a PR open, PrDetail focuses its timeline instead, so Space and Page
+// Down scroll the PR. Tracking selectedId hands focus back to the row when
+// the panel closes.
+$effect(() => {
+    const id = cursorId;
+    const panelOpen = selectedId != null;
+    if (!id) return;
+    void tick().then(() => {
+        const row = listEl?.querySelector<HTMLElement>(rowSelector(id));
+        if (!row) return;
+        row.scrollIntoView?.({ block: "nearest" });
+        if (!panelOpen && focusIsFree()) row.focus({ preventScroll: true });
+    });
+});
+
+// Set while j/k load the adjacent page, so presses during the load neither
+// refetch the same page nor move the cursor on the page being replaced.
+let crossingPage = false;
+
+async function moveCursor(delta: 1 | -1): Promise<void> {
+    if (crossingPage || notifications.length === 0) return;
+    const index = notifications.findIndex((n) => n.id === cursorId);
+    let target: InboxItem | undefined =
+        index === -1
+            ? notifications[delta > 0 ? 0 : notifications.length - 1]
+            : notifications[index + delta];
+    if (!target) {
+        // Past either end of the page: continue on the adjacent page.
+        const page = currentPage + delta;
+        if (page < 1 || page > totalPages) return;
+        crossingPage = true;
+        try {
+            const result = await fetchNotifications(currentView, page);
+            if (!result || notifications.length === 0) return;
+        } finally {
+            crossingPage = false;
+        }
+        target = notifications[delta > 0 ? 0 : notifications.length - 1];
+    }
+    cursorId = target.id;
+    // With the detail panel open, j/k walk through PRs like Gmail's
+    // conversation view.
+    if (selectedId) open(target);
+}
+
+// Shortcut fields for an action on the cursor row: active only while there
+// is one, so the key falls through otherwise.
+function onCursorRow(
+    fn: (notif: InboxItem) => void,
+): Pick<Shortcut, "when" | "run"> {
+    return {
+        when: () => cursorRow() !== undefined,
+        run: () => {
+            const notif = cursorRow();
+            if (notif) fn(notif);
+        },
+    };
+}
+
+$effect(() =>
+    registerShortcuts([
+        {
+            keys: ["j", "ArrowDown"],
+            description: "Next pull request",
+            group: "Navigation",
+            repeat: true,
+            run: () => void moveCursor(1),
+        },
+        {
+            keys: ["k", "ArrowUp"],
+            description: "Previous pull request",
+            group: "Navigation",
+            repeat: true,
+            run: () => void moveCursor(-1),
+        },
+        {
+            keys: ["o", "Enter"],
+            description: "Open pull request (on GitHub if already open)",
+            group: "Navigation",
+            ...onCursorRow(activate),
+        },
+        {
+            keys: ["e"],
+            description: "Archive (unarchive in Archived)",
+            group: "Actions",
+            ...onCursorRow((notif) => {
+                void moveOut(
+                    notif,
+                    currentView === "archived" ? "unarchive" : "archive",
+                );
+            }),
+        },
+        {
+            keys: ["I"],
+            description: "Mark as read",
+            group: "Actions",
+            ...onCursorRow((notif) => void markRead(notif)),
+        },
+        {
+            keys: ["v", "O"],
+            description: "Open on GitHub",
+            group: "Actions",
+            ...onCursorRow(openOnGitHub),
+            when: () => cursorRow()?.pr_id != null,
+        },
+    ]),
+);
 </script>
 
 <div class="main">
@@ -345,10 +507,15 @@ async function handleUnarchive(e: MouseEvent, notif: InboxItem): Promise<void> {
                 <PrListItem
                     {notif}
                     selected={notif.id === selectedId}
+                    cursor={notif.id === cursorId && notif.id !== selectedId}
                     {currentView}
                     onSelect={handleSelect}
-                    onArchive={handleArchive}
-                    onUnarchive={handleUnarchive}
+                    onActivate={activate}
+                    onFocus={(n) => {
+                        cursorId = n.id;
+                    }}
+                    onArchive={(n) => moveOut(n, "archive")}
+                    onUnarchive={(n) => moveOut(n, "unarchive")}
                 />
             {/each}
         {/if}
