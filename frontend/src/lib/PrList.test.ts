@@ -1239,6 +1239,60 @@ describe("PrList keyboard shortcuts", () => {
         expect(rowFor("Third")).toHaveClass("cursor");
     });
 
+    it("a failed archive puts the row back in its original position", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        const rows = [
+            makeItem({ id: "1", title: "First" }),
+            makeItem({ id: "2", title: "Second" }),
+            makeItem({ id: "3", title: "Third" }),
+        ];
+        const server = statefulInbox([rows], { failArchive: ["2"] });
+        await renderStateful(server);
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "e" });
+        expect(screen.queryByText("Second")).not.toBeInTheDocument();
+        server.release();
+
+        await waitFor(() => {
+            expect(screen.getByText("Second")).toBeInTheDocument();
+        });
+        const titles = [...document.querySelectorAll(".pr-title")].map((el) =>
+            el.textContent?.replace(/#\d+/, "").trim(),
+        );
+        expect(titles).toEqual(["First", "Second", "Third"]);
+        expect(rowFor("Second")).toHaveClass("cursor");
+    });
+
+    it("a failed archive does not put its row onto another page", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        const page1 = [
+            makeItem({ id: "1", title: "First" }),
+            makeItem({ id: "2", title: "Second" }),
+        ];
+        const page2 = [makeItem({ id: "3", title: "Third" })];
+        const server = statefulInbox([page1, page2], {
+            failArchive: ["2"],
+            total: DEFAULT_PER_PAGE + 1,
+        });
+        await renderStateful(server);
+
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "j" });
+        await fireEvent.keyDown(document.body, { key: "e" }); // held, fails
+        await fireEvent.keyDown(document.body, { key: "j" }); // cursor on 1: to page 2
+        await waitFor(() => {
+            expect(screen.getByText("Third")).toBeInTheDocument();
+        });
+        server.release();
+
+        await waitFor(() => {
+            expect(console.error).toHaveBeenCalled();
+        });
+        expect(screen.queryByText("Second")).not.toBeInTheDocument();
+    });
+
     it("Enter on a row's Archive button does not also open the row", async () => {
         const onSelect = vi.fn();
         await renderList({ onSelect });

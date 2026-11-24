@@ -3,6 +3,7 @@ import { Pagination } from "bits-ui";
 import { tick, untrack } from "svelte";
 import { apiFetch } from "./api.ts";
 import { countActiveFilters } from "./filters.ts";
+import { focusIsFree, rowSelector } from "./focus.ts";
 import PrListItem from "./PrListItem.svelte";
 import { registerShortcuts, type Shortcut } from "./shortcuts.ts";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
@@ -138,7 +139,7 @@ $effect(() => {
         { rootMargin: "200px" },
     );
 
-    listEl.querySelectorAll("[data-notif-id]").forEach((el) => {
+    listEl.querySelectorAll(rowSelector()).forEach((el) => {
         observer.observe(el);
     });
 
@@ -296,6 +297,8 @@ async function moveOut(
 ): Promise<void> {
     const prevNotifications = [...notifications];
     const wasSelected = selectedId === notif.id;
+    const viewAtStart = currentView;
+    const pageAtStart = currentPage;
     notifications = notifications.filter((n) => n.id !== notif.id);
     // Move the cursor at once; the refetch below may refine it.
     const provisionalCursor =
@@ -327,8 +330,12 @@ async function moveOut(
     } catch (err) {
         console.error(`Failed to ${action}:`, err);
         showError(`Failed to ${action} notification`);
-        // Put back only this row: another archive may have succeeded since.
-        notifications = restoreRow(notifications, prevNotifications, notif);
+        // Put back only this row (another archive may have succeeded since),
+        // and only into the page it came from: after j/k crossed pages or the
+        // view changed, it is not on screen and the next refetch shows it.
+        if (currentView === viewAtStart && currentPage === pageAtStart) {
+            notifications = restoreRow(notifications, prevNotifications, notif);
+        }
         if (provisionalCursor !== undefined && cursorId === provisionalCursor) {
             cursorId = notif.id;
         }
@@ -366,20 +373,10 @@ $effect(() => {
     const panelOpen = selectedId != null;
     if (!id) return;
     void tick().then(() => {
-        const row = listEl?.querySelector<HTMLElement>(
-            `[data-notif-id="${id}"]`,
-        );
+        const row = listEl?.querySelector<HTMLElement>(rowSelector(id));
         if (!row) return;
         row.scrollIntoView?.({ block: "nearest" });
-        if (panelOpen) return;
-        const active = document.activeElement;
-        if (
-            active === null ||
-            active === document.body ||
-            active.closest(".pr-item") !== null
-        ) {
-            row.focus({ preventScroll: true });
-        }
+        if (!panelOpen && focusIsFree()) row.focus({ preventScroll: true });
     });
 });
 

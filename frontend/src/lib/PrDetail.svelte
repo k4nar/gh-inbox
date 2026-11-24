@@ -7,6 +7,7 @@ import { avatarUrl } from "./avatar.ts";
 import CiWheel from "./CiWheel.svelte";
 import CommentThread from "./CommentThread.svelte";
 import CommitItem from "./CommitItem.svelte";
+import { focusIsFree } from "./focus.ts";
 import "./markdown.css";
 import ReviewItem from "./ReviewItem.svelte";
 import { onPrInfoUpdated } from "./sse.svelte.ts";
@@ -50,15 +51,7 @@ $effect(() => {
     void notification?.pr_id;
     void notification?.repository;
     const el = timelineEl;
-    if (!el) return;
-    const active = document.activeElement;
-    if (
-        active === null ||
-        active === document.body ||
-        active.closest(".pr-item") !== null
-    ) {
-        el.focus({ preventScroll: true });
-    }
+    if (el && focusIsFree()) el.focus({ preventScroll: true });
 });
 $effect(() => {
     if (notification?.pr_id && notification?.repository) {
@@ -831,7 +824,12 @@ let diffSinceUrl = $derived(
 }
 
 /* Timeline */
-.timeline:focus {
+/* Show where focus went after a keyboard open; hide it after a click. */
+.timeline:focus-visible {
+    outline: 2px solid var(--accent-fg);
+    outline-offset: -2px;
+}
+.timeline:focus:not(:focus-visible) {
     outline: none;
 }
 .timeline {
